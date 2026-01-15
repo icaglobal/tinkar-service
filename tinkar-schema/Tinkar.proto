@@ -1,0 +1,376 @@
+﻿syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "dev.ikm.tinkar.schema";
+option java_outer_classname = "TinkarSchema";
+
+option csharp_namespace = "Dev.IKM.Tinkar.Schema";
+
+package dev.ikm.tinkar.schema;
+
+// Vertex UUID message.
+message VertexUUID {
+    // Unique vertex UUID.
+    string uuid = 1;
+}
+
+// Public id message.
+// A public id is the base unique id for Tinkar concepts, semantics, and other publicly
+// identifiable Tinkar items.
+message PublicId {
+    // Unique Public id.
+    repeated string uuids = 1 ;
+}
+
+// Public id list message.
+// A list of public ids.
+message PublicIdList {
+  repeated PublicId public_ids = 1 ;
+}
+
+// Public id set message.
+// A set of public ids.
+message PublicIdSet {
+  repeated PublicId public_ids = 1 ;
+}
+
+// Field message.
+// Fields are used in Vertex and SemanticVersion objects to store
+// that can have varying types.
+// Each message contains one field item and the data type of that field item.
+message Field {
+    // Field value. This is one of the types defined in the protobuf message.
+
+    oneof Value {
+        // String value.
+        string string_value = 1;
+
+        // Boolean value.
+        bool boolean_value = 2;
+
+        // Int32 value.
+        sint32 int_value = 3;
+
+        // Single precision floating point value.
+        float float_value = 4;
+
+        // Byte string value.
+        bytes bytes_value = 5;
+
+        // Time value.
+        int64 time_value = 6;
+
+        // Tinkar Public id value.
+        PublicId public_id = 21;
+
+        // Tinkar Vertex uuid value.
+        VertexUUID vertex_uuid = 22;
+
+        // Tinkar Public id list value.
+        PublicIdList public_ids = 23;
+
+        // Tinkar Public id set value.
+        PublicIdSet public_idset = 24;
+
+        // Tinkar Directed graph value.
+        DiGraph di_graph = 30;
+
+        // Tinkar Directed tree value.
+        DiTree di_tree = 31;
+
+        // Tinkar Graph value.
+        Graph graph = 32;
+
+        // Tinkar Vertex value.
+        Vertex vertex = 33;
+
+        // Tinkar Planar Point value
+        PlanarPoint planar_point = 40;
+
+        // Tinkar Spatial Point value
+        SpatialPoint spatial_point = 41;
+
+        // Tinkar Int to Int Map
+        IntToIntMap int_to_int_map = 50;
+
+        // Tinkar Int to Multiple Int Map
+        IntToMultipleIntMap int_to_multiple_int_map = 51;
+
+        // BigDecimal value
+        BigDecimal big_decimal = 60;
+
+        // Long value
+        Long long = 61;
+        // TODO: Consider future use of a Tinkar Object array.
+    };
+}
+
+// Planar point value.
+// Float point on a 2 dimensional plane.
+message PlanarPoint {
+    // X position of point.
+    float x = 1;
+    // Y position of point.
+    float y = 2;
+}
+
+// Spatial point value.
+// Float point in a 3 dimensional space.
+message SpatialPoint {
+    // X position of point.
+    float x = 1;
+    // Y position of point.
+    float y = 2;
+    // Z position of point.
+    float z = 3;
+}
+
+// Integer to Integer Map.
+// Maps one integer value to another integer value.
+message IntToIntMap {
+    // Source value.
+    int32 source = 1;
+    // Target value.
+    int32 target = 2;
+}
+
+// Integer to Multiple Integer Map.
+// Maps one integer value to multiple other integer values.
+message IntToMultipleIntMap {
+    // Source value.
+    int32 source = 1;
+
+    // Target values.
+    repeated int32 targets = 2;
+}
+
+// BigDecimal
+message BigDecimal {
+    uint32 scale = 1;
+    uint32 precision = 2;
+    string value = 3;
+}
+
+// Long
+message Long {
+    int64 value = 1;
+}
+// Directed Tree message.
+// A directed tree is a tree with a single root. Each vertex in the Tree
+// except the root contains a single predecessor, and may contain zero to many
+// successors.
+message DiTree {
+    // List of all vertices in this DiTree. Each vertex contains a
+    // VertexIndex which must match that vertex's index in this map.
+    repeated Vertex vertices = 1;
+
+    // Root vertex.
+    int32 root = 2;
+
+    // Maps each vertex with a predecessor to its predecessor.
+    repeated IntToIntMap predecessor_map = 3;
+
+    // Maps each vertex with successors to its successors.
+    repeated IntToMultipleIntMap successor_map = 4;
+}
+
+// Directed Graph message.
+// A directed graph is a graph with a multiple roots. Each vertex in the graph
+// may contain zero to many successors and predecessors.
+message DiGraph {
+    // List of all vertices in this DiTree. Each vertex contains a
+    // VertexIndex which must match that vertex's index in this map.
+    repeated Vertex vertices = 1;
+
+    // List of all root vertices.
+    repeated int32 roots = 2;
+
+    // Maps each vertex to its predecessors.
+    repeated IntToMultipleIntMap successor_map = 3;
+
+    // Maps each vertex to its successors.
+    repeated IntToMultipleIntMap predecessor_map = 4;
+}
+
+// Graph message.
+message Graph {
+    // List of all vertices in this graph. Each vertex contains a
+    // VertexIndex which must match that vertex's index in this map
+    repeated Vertex vertices = 1;
+
+    // Maps each vertex to its successors.
+    repeated IntToMultipleIntMap successor_map = 2;
+
+    // List of all root vertices.
+    repeated int32 roots = 3;
+}
+
+// Vertex message.
+message Vertex {
+    // Vertex property message
+    message Property {
+        // Concept identifying this property.
+        PublicId public_id = 1;
+
+        // Value of this property.
+        Field field = 2;
+    }
+
+    // Unique uuid for this vertex.
+    VertexUUID vertex_uuid = 1;
+
+    // Vertex index if containers vertex map.
+    int32 index = 2;
+
+    // Meaning of this vertex.
+    PublicId meaning_public_id = 3;
+
+    // Properties for this vertex.
+    repeated Property properties = 4;
+}
+
+// Stamp Chronology message
+// This contains a list of stamp versions (a chronology)
+message StampChronology {
+    // Unique public id for this STAMP.
+    PublicId public_id = 1;
+
+    // The stamp version.
+    StampVersion first_stamp_version = 2;
+
+    // Second stamp version.
+    optional StampVersion second_stamp_version = 3;
+}
+
+// Stamp Version message
+// This contains the info for a single version of a STAMP, sans the STAMP public id.
+message StampVersion {
+    // Status of the item this STAMP references.
+    PublicId status_public_id = 1;
+
+    // Status of the item this STAMP references.
+    PublicId author_public_id = 2;
+
+    // Module of the item this STAMP references.
+    PublicId module_public_id = 3;
+
+    // Path of the item this STAMP references.
+    PublicId path_public_id = 4;
+
+    // Creation time of the item this STAMP references.
+    int64 time = 5;
+}
+
+// Concept Chronology message.
+// This contains a chronology (multiple versions) of a single concept.
+message ConceptChronology {
+    // Unique Public id of this concept.
+    PublicId public_id = 1;
+
+    // List of concept versions.
+    repeated ConceptVersion concept_versions = 2;
+}
+
+// Concept Version message.
+// This contains a version of a single concept.
+message ConceptVersion {
+    // STAMP chronology public ID for this version.
+    PublicId stamp_chronology_public_id = 1;
+}
+
+
+// Field definition message.
+// Defines the information for a field in a pattern.
+message FieldDefinition {
+    // Meaning of the field.    
+    PublicId meaning_public_id = 1;
+
+    // Data type of the field.
+    PublicId data_type_public_id = 2;
+
+    // Purpose of the field.
+    PublicId purpose_public_id = 3;
+
+    //Index of a given pattern.
+    int32 index = 4;
+}
+
+// Pattern chronology
+// Contains multiple versions of pattern item.
+message PatternChronology {
+    // Unique Public id of this pattern chronology.
+    PublicId public_id = 1;
+
+    // Versions of pattern.
+    repeated PatternVersion pattern_versions = 2;
+}
+
+
+// Pattern Version
+// Single version of pattern item.
+message PatternVersion {
+
+    // STAMP chronology public ID for this version.
+    PublicId stamp_chronology_public_id = 1;
+
+    // Purpose of the Semantic that this pattern references.
+    PublicId referenced_component_purpose_public_id = 2;
+
+    // Meaning of the Semantic that this pattern references.
+    PublicId referenced_component_meaning_public_id = 3;
+
+    // Definitions for each field in the Semantic that this pattern references.
+    repeated FieldDefinition field_definitions = 4;
+}
+
+// Semantic Chronology.
+// Contains list of Semantic versions.
+message SemanticChronology {
+    // Unique Public id of this semantic chronology.
+    PublicId public_id = 1;
+
+    // ID of Concept that this semantic references.
+    PublicId referenced_component_public_id = 2;
+
+    // ID of Pattern that defines the allowable fields in this semantic.
+    PublicId pattern_for_semantic_public_id = 3;
+
+    // List of versions of this semantic.
+    repeated SemanticVersion semantic_versions = 4;
+}
+
+// Semantic Version.
+// Single Semantic versions.
+message SemanticVersion {
+    // STAMP chronology public ID for this version.
+    PublicId stamp_chronology_public_id = 1;
+
+    // Fields for this semantic. Each field defined is defined by
+    // a matching entry in the pattern field definition list.
+    repeated Field fields = 2;
+}
+
+
+// Tinkar Message. This is a wrapper around the Tinkar messages that may be serialized out to a persistent
+// storage. This wrapper allows any of the indicated message types to be stored and when deserialized the type
+// of the message can be determined.
+message TinkarMsg {
+    // Value of the message. This can be one and only one 
+    // of the indicated types as defined in the protobuf description.
+    oneof Value {
+        // Re-evaluate to see if one-of value can be changed, to help with change-sets and represent more of a "commit-style"
+        // One STAMP_chronology, One or more of the other types of chronologies (concept, pattern, or semantic)
+
+        // Message contains a Concept Chronology.
+        ConceptChronology concept_chronology = 10;
+
+        // Message contains a Semantic Chronology.
+        SemanticChronology semantic_chronology = 20;
+
+        // Message contains a Pattern Chronology.
+        PatternChronology pattern_chronology = 30;
+
+        // Message contains a Stamp Chronology.
+        StampChronology stamp_chronology = 40;
+    };
+}

@@ -1,0 +1,90 @@
+syntax = "proto3";
+
+package ai.ica.tinkar;
+
+option java_multiple_files = true;
+option java_package = "ai.ica.tinkar.proto";
+option java_outer_classname = "TinkarSearchProto";
+
+// Search query request
+message TinkarSearchQueryRequest {
+  string query = 1;
+}
+
+// Concept search request
+message TinkarConceptSearchRequest {
+  string query = 1;
+  /*
+   * Maximum number of results to return. If not specified or <= 0, uses server default (100).
+   */
+  int32 max_results = 2;
+}
+
+// Concept ID request for single ID lookups
+message TinkarConceptIdRequest {
+  string concept_id = 1;
+}
+
+// Tinkar search result
+message TinkarSearchResult {
+  /*
+   * The concept ID of the result.
+   */
+  string concept_id = 1;
+  /*
+   * The description of the concept ID of the result.
+   */
+  string description = 2;
+  /*
+   * The name of the concept ID of the result.
+   */
+  string name = 3;
+  /*
+   * The fully qualified name of the concept.
+   */
+  string fully_qualified_name = 4;
+  /*
+   * The regular description text of the concept.
+   */
+  string regular_name = 5;
+  /*
+   * The status of the concept (e.g., ACTIVE, INACTIVE).
+   */
+  string status = 6;
+  /*
+   * The last modified timestamp in epoch milliseconds.
+   */
+  int64 last_modified_time = 7;
+}
+
+// Search query response
+message TinkarSearchQueryResponse {
+  string query = 1;
+  int64 total_count = 2;
+  repeated TinkarSearchResult results = 3;
+  bool success = 4;
+  string error_message = 5;
+}
+
+// Rebuild index response
+message TinkarRebuildIndexResponse {
+  string message = 1;
+  bool success = 2;
+}
+
+// Empty request for rebuild index
+message TinkarRebuildIndexRequest {
+}
+
+// gRPC service definition
+service TinkarSearchService {
+  rpc Search(TinkarSearchQueryRequest) returns (TinkarSearchQueryResponse);
+  rpc ConceptSearch(TinkarConceptSearchRequest) returns (TinkarSearchQueryResponse);
+  rpc GetEntity(TinkarConceptIdRequest) returns (TinkarSearchQueryResponse);
+  rpc GetChildConcepts(TinkarConceptIdRequest) returns (TinkarSearchQueryResponse);
+  rpc GetDescendantConcepts(TinkarConceptIdRequest) returns (TinkarSearchQueryResponse);
+  rpc GetLIDRRecordConceptsFromTestKit(TinkarConceptIdRequest) returns (TinkarSearchQueryResponse);
+  rpc GetResultConformanceConceptsFromLIDRRecord(TinkarConceptIdRequest) returns (TinkarSearchQueryResponse);
+  rpc GetAllowedResultConceptsFromResultConformance(TinkarConceptIdRequest) returns (TinkarSearchQueryResponse);
+  rpc RebuildSearchIndex(TinkarRebuildIndexRequest) returns (TinkarRebuildIndexResponse);
+}

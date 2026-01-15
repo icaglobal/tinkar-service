@@ -1,0 +1,77 @@
+# ignore any source files generated for this project, as this generates code
+src
+code
+
+**/CompiledNugetPackages/*
+# CodeGen temp files.
+#OS junk files
+[Tt]humbs.db
+*.DS_Store
+#Visual Studio files
+*.[Oo]bj
+*.user
+*.aps
+*.pch
+*.vspscc
+*.vssscc
+*_i.c
+*_p.c
+*.ncb
+*.suo
+*.tlb
+*.tlh
+*.bak
+*.[Cc]ache
+*.ilk
+*.log
+*.lib
+*.sbr
+*.sdf
+*.vspx
+*.vsp
+*.psess
+*.opensdf
+*.unsuccessfulbuild
+ipch/
+[Cc]ache/
+[Ll]ogs/
+[Oo]bj/
+[Bb]in
+[Qq]a/
+
+[Rr]elease*/
+*.eps
+
+#Tooling
+_ReSharper*/
+*.resharper
+[Tt]est[Rr]esult*
+*.sass-cache
+.[Ii][Dd][Ee][Aa]
+# The packages folder can be ignored because of Package Restore
+**/packages/*
+# except build/, which is used as an MSBuild target.
+!**/packages/build/
+
+**/.vs/*
+
+node_modules/
+package-lock.json
+
+#VS Code IDE
+.vscode/*
+Java/.classpath
+Java/.project
+Java/.settings/org.eclipse.core.resources.prefs
+Java/.settings/*
+target/*
+Java/.vscode/*
+Java/src/main/java/*
+!Java/src/main/java/module-info.java
+java-deps/target/*
+
+
+#Intellj Ignored
+*.iml
+Java/*.iml
+.idea/

@@ -1,0 +1,37 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <RootNamespace>Tinkar.Schema.CS</RootNamespace>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <Description>C# compiled library of Tinkar Schema Protobuf files.</Description>
+    <PackageProjectUrl>https://github.com/IKM/tinkar-proto</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/IKM/tinkar-proto</RepositoryUrl>
+    <Version>1.4.1</Version>
+    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+  </PropertyGroup>
+
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.20.1" />
+    <PackageReference Include="Google.Protobuf.Tools" Version="3.20.1" />
+    <PackageReference Include="Grpc" Version="2.45.0" />
+    <PackageReference Include="Grpc.Tools" Version="2.45.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include=".\Tinkar.proto" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include=".\LICENSE">
+      <Pack>True</Pack>
+      <PackagePath></PackagePath>
+    </None>
+  </ItemGroup>
+
+</Project>
