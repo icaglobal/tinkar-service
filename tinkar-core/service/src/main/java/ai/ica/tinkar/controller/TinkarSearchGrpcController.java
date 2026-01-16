@@ -3,6 +3,8 @@ package ai.ica.tinkar.controller;
 import ai.ica.tinkar.dto.TinkarSearchQueryResponse;
 import ai.ica.tinkar.proto.*;
 import ai.ica.tinkar.service.TinkarService;
+import dev.ikm.tinkar.schema.PublicId;
+import dev.ikm.tinkar.schema.StampVersion;
 import io.grpc.stub.StreamObserver;
 import net.devh.boot.grpc.server.service.GrpcService;
 import lombok.extern.slf4j.Slf4j;
@@ -45,8 +47,9 @@ public class TinkarSearchGrpcController extends TinkarSearchServiceGrpc.TinkarSe
     @Override
     public void getEntity(TinkarConceptIdRequest request,
             StreamObserver<ai.ica.tinkar.proto.TinkarSearchQueryResponse> responseObserver) {
-        log.info("gRPC getEntity request for conceptId: {}", request.getConceptId());
-        TinkarSearchQueryResponse response = tinkarService.getEntity(request.getConceptId());
+        String conceptId = extractConceptId(request.getPublicId());
+        log.info("gRPC getEntity request for conceptId: {}", conceptId);
+        TinkarSearchQueryResponse response = tinkarService.getEntity(conceptId);
         responseObserver.onNext(mapToProto(response));
         responseObserver.onCompleted();
     }
@@ -54,8 +57,9 @@ public class TinkarSearchGrpcController extends TinkarSearchServiceGrpc.TinkarSe
     @Override
     public void getChildConcepts(TinkarConceptIdRequest request,
             StreamObserver<ai.ica.tinkar.proto.TinkarSearchQueryResponse> responseObserver) {
-        log.info("gRPC getChildConcepts request for conceptId: {}", request.getConceptId());
-        TinkarSearchQueryResponse response = tinkarService.getChildConcepts(request.getConceptId());
+        String conceptId = extractConceptId(request.getPublicId());
+        log.info("gRPC getChildConcepts request for conceptId: {}", conceptId);
+        TinkarSearchQueryResponse response = tinkarService.getChildConcepts(conceptId);
         responseObserver.onNext(mapToProto(response));
         responseObserver.onCompleted();
     }
@@ -63,8 +67,9 @@ public class TinkarSearchGrpcController extends TinkarSearchServiceGrpc.TinkarSe
     @Override
     public void getDescendantConcepts(TinkarConceptIdRequest request,
             StreamObserver<ai.ica.tinkar.proto.TinkarSearchQueryResponse> responseObserver) {
-        log.info("gRPC getDescendantConcepts request for conceptId: {}", request.getConceptId());
-        TinkarSearchQueryResponse response = tinkarService.getDescendantConcepts(request.getConceptId());
+        String conceptId = extractConceptId(request.getPublicId());
+        log.info("gRPC getDescendantConcepts request for conceptId: {}", conceptId);
+        TinkarSearchQueryResponse response = tinkarService.getDescendantConcepts(conceptId);
         responseObserver.onNext(mapToProto(response));
         responseObserver.onCompleted();
     }
@@ -72,8 +77,9 @@ public class TinkarSearchGrpcController extends TinkarSearchServiceGrpc.TinkarSe
     @Override
     public void getLIDRRecordConceptsFromTestKit(TinkarConceptIdRequest request,
             StreamObserver<ai.ica.tinkar.proto.TinkarSearchQueryResponse> responseObserver) {
-        log.info("gRPC getLIDRRecordConceptsFromTestKit request for conceptId: {}", request.getConceptId());
-        TinkarSearchQueryResponse response = tinkarService.getLIDRRecordConceptsFromTestKit(request.getConceptId());
+        String conceptId = extractConceptId(request.getPublicId());
+        log.info("gRPC getLIDRRecordConceptsFromTestKit request for conceptId: {}", conceptId);
+        TinkarSearchQueryResponse response = tinkarService.getLIDRRecordConceptsFromTestKit(conceptId);
         responseObserver.onNext(mapToProto(response));
         responseObserver.onCompleted();
     }
@@ -81,9 +87,10 @@ public class TinkarSearchGrpcController extends TinkarSearchServiceGrpc.TinkarSe
     @Override
     public void getResultConformanceConceptsFromLIDRRecord(TinkarConceptIdRequest request,
             StreamObserver<ai.ica.tinkar.proto.TinkarSearchQueryResponse> responseObserver) {
-        log.info("gRPC getResultConformanceConceptsFromLIDRRecord request for conceptId: {}", request.getConceptId());
+        String conceptId = extractConceptId(request.getPublicId());
+        log.info("gRPC getResultConformanceConceptsFromLIDRRecord request for conceptId: {}", conceptId);
         TinkarSearchQueryResponse response = tinkarService
-                .getResultConformanceConceptsFromLIDRRecord(request.getConceptId());
+                .getResultConformanceConceptsFromLIDRRecord(conceptId);
         responseObserver.onNext(mapToProto(response));
         responseObserver.onCompleted();
     }
@@ -91,10 +98,11 @@ public class TinkarSearchGrpcController extends TinkarSearchServiceGrpc.TinkarSe
     @Override
     public void getAllowedResultConceptsFromResultConformance(TinkarConceptIdRequest request,
             StreamObserver<ai.ica.tinkar.proto.TinkarSearchQueryResponse> responseObserver) {
+        String conceptId = extractConceptId(request.getPublicId());
         log.info("gRPC getAllowedResultConceptsFromResultConformance request for conceptId: {}",
-                request.getConceptId());
+                conceptId);
         TinkarSearchQueryResponse response = tinkarService
-                .getAllowedResultConceptsFromResultConformance(request.getConceptId());
+                .getAllowedResultConceptsFromResultConformance(conceptId);
         responseObserver.onNext(mapToProto(response));
         responseObserver.onCompleted();
     }
@@ -113,6 +121,26 @@ public class TinkarSearchGrpcController extends TinkarSearchServiceGrpc.TinkarSe
         responseObserver.onCompleted();
     }
 
+    /**
+     * Extracts the first UUID from a PublicId as the concept ID string.
+     */
+    private String extractConceptId(PublicId publicId) {
+        if (publicId == null || publicId.getUuidsList().isEmpty()) {
+            return "";
+        }
+        return publicId.getUuids(0);
+    }
+
+    /**
+     * Converts a list of UUID strings to a PublicId proto message.
+     */
+    private PublicId toPublicId(java.util.List<String> uuids) {
+        if (uuids == null || uuids.isEmpty()) {
+            return PublicId.getDefaultInstance();
+        }
+        return PublicId.newBuilder().addAllUuids(uuids).build();
+    }
+
     private ai.ica.tinkar.proto.TinkarSearchQueryResponse mapToProto(TinkarSearchQueryResponse dto) {
         ai.ica.tinkar.proto.TinkarSearchQueryResponse.Builder responseBuilder = ai.ica.tinkar.proto.TinkarSearchQueryResponse
                 .newBuilder()
@@ -123,31 +151,57 @@ public class TinkarSearchGrpcController extends TinkarSearchServiceGrpc.TinkarSe
 
         if (dto.results() != null) {
             responseBuilder.addAllResults(dto.results().stream()
-                    .map(result -> {
-                        TinkarSearchResult.Builder resultBuilder = TinkarSearchResult.newBuilder()
-                                .setConceptId(result.conceptId() != null ? result.conceptId() : "")
-                                .setName(result.name() != null ? result.name() : "")
-                                .setDescription(result.description() != null ? result.description() : "");
-
-                        // Add new fields if present
-                        if (result.fullyQualifiedName() != null) {
-                            resultBuilder.setFullyQualifiedName(result.fullyQualifiedName());
-                        }
-                        if (result.regularName() != null) {
-                            resultBuilder.setRegularName(result.regularName());
-                        }
-                        if (result.status() != null) {
-                            resultBuilder.setStatus(result.status());
-                        }
-                        if (result.lastModifiedTime() != null) {
-                            resultBuilder.setLastModifiedTime(result.lastModifiedTime());
-                        }
-
-                        return resultBuilder.build();
-                    })
+                    .map(this::mapSearchResultToProto)
                     .collect(Collectors.toList()));
         }
 
         return responseBuilder.build();
+    }
+
+    private TinkarSearchResult mapSearchResultToProto(TinkarSearchQueryResponse.SearchResult result) {
+        TinkarSearchResult.Builder resultBuilder = TinkarSearchResult.newBuilder();
+
+        // Set PublicId
+        if (result.publicId() != null) {
+            resultBuilder.setPublicId(toPublicId(result.publicId()));
+        }
+
+        // Set descriptions
+        if (result.descriptions() != null) {
+            TinkarConceptDescriptions.Builder descriptionsBuilder = TinkarConceptDescriptions.newBuilder();
+            if (result.descriptions().fullyQualifiedName() != null) {
+                descriptionsBuilder.setFullyQualifiedName(result.descriptions().fullyQualifiedName());
+            }
+            if (result.descriptions().regularName() != null) {
+                descriptionsBuilder.setRegularName(result.descriptions().regularName());
+            }
+            if (result.descriptions().definition() != null) {
+                descriptionsBuilder.setDefinition(result.descriptions().definition());
+            }
+            resultBuilder.setDescriptions(descriptionsBuilder.build());
+        }
+
+        // Set StampVersion
+        if (result.stamp() != null) {
+            StampVersion.Builder stampBuilder = StampVersion.newBuilder();
+            if (result.stamp().statusPublicId() != null) {
+                stampBuilder.setStatusPublicId(toPublicId(java.util.List.of(result.stamp().statusPublicId())));
+            }
+            if (result.stamp().authorPublicId() != null) {
+                stampBuilder.setAuthorPublicId(toPublicId(java.util.List.of(result.stamp().authorPublicId())));
+            }
+            if (result.stamp().modulePublicId() != null) {
+                stampBuilder.setModulePublicId(toPublicId(java.util.List.of(result.stamp().modulePublicId())));
+            }
+            if (result.stamp().pathPublicId() != null) {
+                stampBuilder.setPathPublicId(toPublicId(java.util.List.of(result.stamp().pathPublicId())));
+            }
+            if (result.stamp().time() != null) {
+                stampBuilder.setTime(result.stamp().time());
+            }
+            resultBuilder.setStamp(stampBuilder.build());
+        }
+
+        return resultBuilder.build();
     }
 }

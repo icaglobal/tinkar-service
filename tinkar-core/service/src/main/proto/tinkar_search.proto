@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package ai.ica.tinkar;
 
+import "Tinkar.proto";
+
 option java_multiple_files = true;
 option java_package = "ai.ica.tinkar.proto";
 option java_outer_classname = "TinkarSearchProto";
@@ -22,39 +24,44 @@ message TinkarConceptSearchRequest {
 
 // Concept ID request for single ID lookups
 message TinkarConceptIdRequest {
-  string concept_id = 1;
+  /*
+   * The public ID of the concept (supports multiple UUIDs).
+   */
+  dev.ikm.tinkar.schema.PublicId public_id = 1;
 }
 
-// Tinkar search result
+// Tinkar search result representing a concept with its descriptions and STAMP info
 message TinkarSearchResult {
   /*
-   * The concept ID of the result.
+   * The public ID of the concept (supports multiple UUIDs).
    */
-  string concept_id = 1;
+  dev.ikm.tinkar.schema.PublicId public_id = 1;
+
   /*
-   * The description of the concept ID of the result.
+   * The descriptions associated with this concept.
    */
-  string description = 2;
+  TinkarConceptDescriptions descriptions = 2;
+
   /*
-   * The name of the concept ID of the result.
+   * The STAMP version info for this concept (status, author, module, path, time).
    */
-  string name = 3;
+  dev.ikm.tinkar.schema.StampVersion stamp = 3;
+}
+
+// Descriptions associated with a concept
+message TinkarConceptDescriptions {
   /*
    * The fully qualified name of the concept.
    */
-  string fully_qualified_name = 4;
+  string fully_qualified_name = 1;
   /*
-   * The regular description text of the concept.
+   * The regular/preferred description text of the concept.
    */
-  string regular_name = 5;
+  string regular_name = 2;
   /*
-   * The status of the concept (e.g., ACTIVE, INACTIVE).
+   * Additional definition or description text.
    */
-  string status = 6;
-  /*
-   * The last modified timestamp in epoch milliseconds.
-   */
-  int64 last_modified_time = 7;
+  string definition = 3;
 }
 
 // Search query response

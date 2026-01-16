@@ -1,6 +1,5 @@
 package ai.ica.tinkar.service.impl;
 
-import ai.ica.tinkar.proto.TinkarSearchResult;
 import ai.ica.tinkar.service.TinkarPrimitive;
 import dev.ikm.tinkar.common.id.PublicId;
 import dev.ikm.tinkar.common.service.PrimitiveData;
@@ -13,12 +12,14 @@ import dev.ikm.tinkar.entity.StampEntity;
 import org.springframework.stereotype.Service;
 
 import ai.ica.tinkar.dto.TinkarSearchQueryResponse;
+import ai.ica.tinkar.dto.TinkarSearchQueryResponse.Descriptions;
+import ai.ica.tinkar.dto.TinkarSearchQueryResponse.Stamp;
+import ai.ica.tinkar.dto.TinkarSearchQueryResponse.SearchResult;
 import ai.ica.tinkar.service.TinkarService;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -40,21 +41,9 @@ public class TinkarServiceImpl implements TinkarService {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-        List<TinkarSearchResult> results = searchResults.stream()
-                .map(this::extract)
+        List<SearchResult> dtoResults = searchResults.stream()
+                .map(this::publicIdToSearchResult)
                 .toList();
-
-        // Convert proto results to DTO SearchResult format
-        List<TinkarSearchQueryResponse.SearchResult> dtoResults = results.stream()
-                .map(result -> new TinkarSearchQueryResponse.SearchResult(
-                        result.getConceptId(),
-                        result.getName(),
-                        result.getDescription(),
-                        null, // fullyQualifiedName - not available in proto result
-                        null, // regularName - not available in proto result
-                        null, // status - not available in proto result
-                        null)) // lastModifiedTime - not available in proto result
-                .collect(Collectors.toList());
 
         return TinkarSearchQueryResponse.success(query, dtoResults);
     }
@@ -65,54 +54,13 @@ public class TinkarServiceImpl implements TinkarService {
             // Use provided maxResults or fall back to default
             int limit = (maxResults != null && maxResults > 0) ? maxResults : MAX_RESULTS;
 
-            List<TinkarSearchQueryResponse.SearchResult> dtoResults = Calculators.View.Default()
+            List<SearchResult> dtoResults = Calculators.View.Default()
                     .search(query, limit).stream()
                     .map(LatestVersionSearchResult::latestVersion)
                     .filter(Latest::isPresent)
                     .map(latestVersion -> latestVersion.get().referencedComponent().publicId())
                     .distinct()
-                    .map(publicId -> {
-                        int nid = EntityService.get().nidForPublicId(publicId);
-                        String conceptId = publicId.asUuidList().getFirst().toString();
-
-                        // Get different types of names/descriptions using LanguageCalculator
-                        String name = PrimitiveData.textOptional(nid).orElse(null);
-
-                        // Get fully qualified name (also used as description fallback)
-                        String fullyQualifiedName = Calculators.View.Default()
-                                .languageCalculator()
-                                .getFullyQualifiedNameText(nid)
-                                .orElse(null);
-
-                        // Get regular description
-                        String regularName = Calculators.View.Default()
-                                .languageCalculator()
-                                .getRegularDescriptionText(nid)
-                                .orElse(null);
-
-                        // Use FQN as description (matches what Searcher.descriptionsOf does)
-                        String description = fullyQualifiedName != null ? fullyQualifiedName : "";
-
-                        // Get status and timestamp from STAMP
-                        String status = null;
-                        Long lastModifiedTime = null;
-                        try {
-                            Entity<?> entity = EntityService.get().getEntityFast(nid);
-                            if (entity != null && !entity.versions().isEmpty()) {
-                                int stampNid = entity.versions().get(0).stampNid();
-                                StampEntity<?> stampEntity = EntityService.get().getStampFast(stampNid);
-                                if (stampEntity != null) {
-                                    status = PrimitiveData.text(stampEntity.stateNid());
-                                    lastModifiedTime = stampEntity.time();
-                                }
-                            }
-                        } catch (Exception ex) {
-                            log.warn("Failed to get STAMP data for concept {}: {}", conceptId, ex.getMessage());
-                        }
-
-                        return new TinkarSearchQueryResponse.SearchResult(
-                                conceptId, name, description, fullyQualifiedName, regularName, status, lastModifiedTime);
-                    })
+                    .map(this::publicIdToSearchResult)
                     .toList();
 
             return TinkarSearchQueryResponse.success(query, dtoResults);
@@ -125,46 +73,7 @@ public class TinkarServiceImpl implements TinkarService {
     public TinkarSearchQueryResponse getEntity(String conceptId) {
         try {
             PublicId publicId = primitive.getPublicId(conceptId);
-            int nid = EntityService.get().nidForPublicId(publicId);
-
-            // Get different types of names/descriptions using LanguageCalculator
-            String name = PrimitiveData.textOptional(nid).orElse(null);
-
-            // Get fully qualified name (also used as description fallback)
-            String fullyQualifiedName = Calculators.View.Default()
-                    .languageCalculator()
-                    .getFullyQualifiedNameText(nid)
-                    .orElse(null);
-
-            // Get regular description
-            String regularName = Calculators.View.Default()
-                    .languageCalculator()
-                    .getRegularDescriptionText(nid)
-                    .orElse(null);
-
-            // Use FQN as description (matches what Searcher.descriptionsOf does)
-            String description = fullyQualifiedName != null ? fullyQualifiedName : "";
-
-            // Get status and timestamp from STAMP
-            String status = null;
-            Long lastModifiedTime = null;
-            try {
-                Entity<?> entity = EntityService.get().getEntityFast(nid);
-                if (entity != null && !entity.versions().isEmpty()) {
-                    int stampNid = entity.versions().get(0).stampNid();
-                    StampEntity<?> stampEntity = EntityService.get().getStampFast(stampNid);
-                    if (stampEntity != null) {
-                        status = PrimitiveData.text(stampEntity.stateNid());
-                        lastModifiedTime = stampEntity.time();
-                    }
-                }
-            } catch (Exception ex) {
-                log.warn("Failed to get STAMP data for concept {}: {}", conceptId, ex.getMessage());
-            }
-
-            TinkarSearchQueryResponse.SearchResult result = new TinkarSearchQueryResponse.SearchResult(
-                    conceptId, name, description, fullyQualifiedName, regularName, status, lastModifiedTime);
-
+            SearchResult result = publicIdToSearchResult(publicId);
             return TinkarSearchQueryResponse.success(conceptId, List.of(result));
         } catch (Exception e) {
             return TinkarSearchQueryResponse.error(conceptId, e.getMessage());
@@ -176,10 +85,10 @@ public class TinkarServiceImpl implements TinkarService {
         try {
             PublicId parentConceptId = primitive.getPublicId(conceptId);
             List<PublicId> children = primitive.childrenOf(parentConceptId);
-            List<TinkarSearchQueryResponse.SearchResult> results = children.stream()
+            List<SearchResult> results = children.stream()
                     .map(this::publicIdToSearchResult)
                     .toList();
-            
+
             return TinkarSearchQueryResponse.success(conceptId, results);
         } catch (Exception e) {
             return TinkarSearchQueryResponse.error(conceptId, e.getMessage());
@@ -191,10 +100,10 @@ public class TinkarServiceImpl implements TinkarService {
         try {
             PublicId parentConceptId = primitive.getPublicId(conceptId);
             List<PublicId> descendants = primitive.descendantsOf(parentConceptId);
-            List<TinkarSearchQueryResponse.SearchResult> results = descendants.stream()
+            List<SearchResult> results = descendants.stream()
                     .map(this::publicIdToSearchResult)
                     .toList();
-            
+
             return TinkarSearchQueryResponse.success(conceptId, results);
         } catch (Exception e) {
             return TinkarSearchQueryResponse.error(conceptId, e.getMessage());
@@ -206,10 +115,10 @@ public class TinkarServiceImpl implements TinkarService {
         try {
             PublicId testKitConceptId = primitive.getPublicId(conceptId);
             List<PublicId> lidrRecords = primitive.getLidrRecordSemanticsFromTestKit(testKitConceptId);
-            List<TinkarSearchQueryResponse.SearchResult> results = lidrRecords.stream()
+            List<SearchResult> results = lidrRecords.stream()
                     .map(this::publicIdToSearchResult)
                     .toList();
-            
+
             return TinkarSearchQueryResponse.success(conceptId, results);
         } catch (Exception e) {
             return TinkarSearchQueryResponse.error(conceptId, e.getMessage());
@@ -221,10 +130,10 @@ public class TinkarServiceImpl implements TinkarService {
         try {
             PublicId lidrRecordConceptId = primitive.getPublicId(conceptId);
             List<PublicId> resultConformances = primitive.getResultConformancesFromLidrRecord(lidrRecordConceptId);
-            List<TinkarSearchQueryResponse.SearchResult> results = resultConformances.stream()
+            List<SearchResult> results = resultConformances.stream()
                     .map(this::publicIdToSearchResult)
                     .toList();
-            
+
             return TinkarSearchQueryResponse.success(conceptId, results);
         } catch (Exception e) {
             return TinkarSearchQueryResponse.error(conceptId, e.getMessage());
@@ -236,29 +145,14 @@ public class TinkarServiceImpl implements TinkarService {
         try {
             PublicId resultConformanceConceptId = primitive.getPublicId(conceptId);
             List<PublicId> allowedResults = primitive.getAllowedResultsFromResultConformance(resultConformanceConceptId);
-            List<TinkarSearchQueryResponse.SearchResult> results = allowedResults.stream()
+            List<SearchResult> results = allowedResults.stream()
                     .map(this::publicIdToSearchResult)
                     .toList();
-            
+
             return TinkarSearchQueryResponse.success(conceptId, results);
         } catch (Exception e) {
             return TinkarSearchQueryResponse.error(conceptId, e.getMessage());
         }
-    }
-
-    private TinkarSearchResult extract(PublicId conceptId) {
-        int nid = EntityService.get().nidForPublicId(conceptId);
-
-        // Get fully qualified name (used as description)
-        String description = Calculators.View.Default()
-                .languageCalculator()
-                .getFullyQualifiedNameText(nid)
-                .orElse("");
-
-        return TinkarSearchResult.newBuilder()
-                .setConceptId(conceptId.asUuidList().getFirst().toString())
-                .setDescription(description)
-                .build();
     }
 
     @Override
@@ -267,7 +161,7 @@ public class TinkarServiceImpl implements TinkarService {
         try {
             CompletableFuture<Void> future = PrimitiveData.get().recreateLuceneIndex();
             log.info("Lucene index rebuild started asynchronously");
-            
+
             // Optionally, you can wait for completion or handle it in background
             future.whenComplete((result, throwable) -> {
                 if (throwable != null) {
@@ -276,7 +170,7 @@ public class TinkarServiceImpl implements TinkarService {
                     log.info("Lucene index rebuild completed successfully");
                 }
             });
-            
+
             return "Lucene search index rebuild started. This operation may take several minutes. Check logs for completion status.";
         } catch (Exception e) {
             log.error("Failed to start Lucene index rebuild: {}", e.getMessage(), e);
@@ -284,46 +178,63 @@ public class TinkarServiceImpl implements TinkarService {
         }
     }
 
-    private TinkarSearchQueryResponse.SearchResult publicIdToSearchResult(PublicId publicId) {
+    private SearchResult publicIdToSearchResult(PublicId publicId) {
         int nid = EntityService.get().nidForPublicId(publicId);
-        String conceptId = publicId.asUuidList().getFirst().toString();
 
-        // Get different types of names/descriptions using LanguageCalculator
-        String name = PrimitiveData.textOptional(nid).orElse(null);
+        // Convert PublicId to list of UUID strings
+        List<String> uuids = publicId.asUuidList().stream()
+                .map(java.util.UUID::toString)
+                .toList();
 
-        // Get fully qualified name (also used as description fallback)
+        // Get descriptions using LanguageCalculator
         String fullyQualifiedName = Calculators.View.Default()
                 .languageCalculator()
                 .getFullyQualifiedNameText(nid)
                 .orElse(null);
 
-        // Get regular description
         String regularName = Calculators.View.Default()
                 .languageCalculator()
                 .getRegularDescriptionText(nid)
                 .orElse(null);
 
-        // Use FQN as description (matches what Searcher.descriptionsOf does)
-        String description = fullyQualifiedName != null ? fullyQualifiedName : "";
+        // Use FQN as definition fallback
+        String definition = fullyQualifiedName != null ? fullyQualifiedName : "";
 
-        // Get status and timestamp from STAMP
-        String status = null;
-        Long lastModifiedTime = null;
+        Descriptions descriptions = new Descriptions(fullyQualifiedName, regularName, definition);
+
+        // Get STAMP info
+        Stamp stamp = null;
         try {
             Entity<?> entity = EntityService.get().getEntityFast(nid);
             if (entity != null && !entity.versions().isEmpty()) {
                 int stampNid = entity.versions().get(0).stampNid();
                 StampEntity<?> stampEntity = EntityService.get().getStampFast(stampNid);
                 if (stampEntity != null) {
-                    status = PrimitiveData.text(stampEntity.stateNid());
-                    lastModifiedTime = stampEntity.time();
+                    String statusPublicId = getPublicIdString(stampEntity.stateNid());
+                    String authorPublicId = getPublicIdString(stampEntity.authorNid());
+                    String modulePublicId = getPublicIdString(stampEntity.moduleNid());
+                    String pathPublicId = getPublicIdString(stampEntity.pathNid());
+                    Long time = stampEntity.time();
+
+                    stamp = new Stamp(statusPublicId, authorPublicId, modulePublicId, pathPublicId, time);
                 }
             }
         } catch (Exception ex) {
-            log.warn("Failed to get STAMP data for concept {}: {}", conceptId, ex.getMessage());
+            log.warn("Failed to get STAMP data for concept {}: {}", uuids.get(0), ex.getMessage());
         }
 
-        return new TinkarSearchQueryResponse.SearchResult(
-                conceptId, name, description, fullyQualifiedName, regularName, status, lastModifiedTime);
+        return new SearchResult(uuids, descriptions, stamp);
+    }
+
+    private String getPublicIdString(int nid) {
+        try {
+            Entity<?> entity = EntityService.get().getEntityFast(nid);
+            if (entity != null && entity.publicId() != null) {
+                return entity.publicId().asUuidList().getFirst().toString();
+            }
+        } catch (Exception e) {
+            log.warn("Failed to get public ID for nid {}: {}", nid, e.getMessage());
+        }
+        return null;
     }
 }
