@@ -1,6 +1,6 @@
 package ai.ica.tinkar.controller;
 
-import ai.ica.tinkar.dto.TinkarSearchQueryResponse;
+import ai.ica.tinkar.proto.TinkarSearchQueryResponse;
 import ai.ica.tinkar.service.TinkarService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;

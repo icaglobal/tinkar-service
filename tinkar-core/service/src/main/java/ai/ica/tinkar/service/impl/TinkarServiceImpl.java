@@ -1,6 +1,10 @@
 package ai.ica.tinkar.service.impl;
 
+import ai.ica.tinkar.proto.TinkarConceptDescriptions;
+import ai.ica.tinkar.proto.TinkarSearchQueryResponse;
+import ai.ica.tinkar.proto.TinkarSearchResult;
 import ai.ica.tinkar.service.TinkarPrimitive;
+import ai.ica.tinkar.service.TinkarService;
 import dev.ikm.tinkar.common.id.PublicId;
 import dev.ikm.tinkar.common.service.PrimitiveData;
 import dev.ikm.tinkar.coordinate.Calculators;
@@ -9,14 +13,9 @@ import dev.ikm.tinkar.coordinate.stamp.calculator.LatestVersionSearchResult;
 import dev.ikm.tinkar.entity.Entity;
 import dev.ikm.tinkar.entity.EntityService;
 import dev.ikm.tinkar.entity.StampEntity;
-import org.springframework.stereotype.Service;
-
-import ai.ica.tinkar.dto.TinkarSearchQueryResponse;
-import ai.ica.tinkar.dto.TinkarSearchQueryResponse.Descriptions;
-import ai.ica.tinkar.dto.TinkarSearchQueryResponse.Stamp;
-import ai.ica.tinkar.dto.TinkarSearchQueryResponse.SearchResult;
-import ai.ica.tinkar.service.TinkarService;
+import dev.ikm.tinkar.schema.StampVersion;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -35,26 +34,24 @@ public class TinkarServiceImpl implements TinkarService {
 
     @Override
     public TinkarSearchQueryResponse search(String query) {
-        List<PublicId> searchResults = null;
         try {
-            searchResults = primitive.search(query, MAX_RESULTS);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-        List<SearchResult> dtoResults = searchResults.stream()
-                .map(this::publicIdToSearchResult)
-                .toList();
+            List<PublicId> searchResults = primitive.search(query, MAX_RESULTS);
+            List<TinkarSearchResult> results = searchResults.stream()
+                    .map(this::publicIdToSearchResult)
+                    .toList();
 
-        return TinkarSearchQueryResponse.success(query, dtoResults);
+            return buildSuccessResponse(query, results);
+        } catch (Exception e) {
+            return buildErrorResponse(query, e.getMessage());
+        }
     }
 
     @Override
     public TinkarSearchQueryResponse conceptSearch(String query, Integer maxResults) {
         try {
-            // Use provided maxResults or fall back to default
             int limit = (maxResults != null && maxResults > 0) ? maxResults : MAX_RESULTS;
 
-            List<SearchResult> dtoResults = Calculators.View.Default()
+            List<TinkarSearchResult> results = Calculators.View.Default()
                     .search(query, limit).stream()
                     .map(LatestVersionSearchResult::latestVersion)
                     .filter(Latest::isPresent)
@@ -63,9 +60,9 @@ public class TinkarServiceImpl implements TinkarService {
                     .map(this::publicIdToSearchResult)
                     .toList();
 
-            return TinkarSearchQueryResponse.success(query, dtoResults);
+            return buildSuccessResponse(query, results);
         } catch (Exception e) {
-            return TinkarSearchQueryResponse.error(query, e.getMessage());
+            return buildErrorResponse(query, e.getMessage());
         }
     }
 
@@ -73,10 +70,10 @@ public class TinkarServiceImpl implements TinkarService {
     public TinkarSearchQueryResponse getEntity(String conceptId) {
         try {
             PublicId publicId = primitive.getPublicId(conceptId);
-            SearchResult result = publicIdToSearchResult(publicId);
-            return TinkarSearchQueryResponse.success(conceptId, List.of(result));
+            TinkarSearchResult result = publicIdToSearchResult(publicId);
+            return buildSuccessResponse(conceptId, List.of(result));
         } catch (Exception e) {
-            return TinkarSearchQueryResponse.error(conceptId, e.getMessage());
+            return buildErrorResponse(conceptId, e.getMessage());
         }
     }
 
@@ -85,13 +82,13 @@ public class TinkarServiceImpl implements TinkarService {
         try {
             PublicId parentConceptId = primitive.getPublicId(conceptId);
             List<PublicId> children = primitive.childrenOf(parentConceptId);
-            List<SearchResult> results = children.stream()
+            List<TinkarSearchResult> results = children.stream()
                     .map(this::publicIdToSearchResult)
                     .toList();
 
-            return TinkarSearchQueryResponse.success(conceptId, results);
+            return buildSuccessResponse(conceptId, results);
         } catch (Exception e) {
-            return TinkarSearchQueryResponse.error(conceptId, e.getMessage());
+            return buildErrorResponse(conceptId, e.getMessage());
         }
     }
 
@@ -100,13 +97,13 @@ public class TinkarServiceImpl implements TinkarService {
         try {
             PublicId parentConceptId = primitive.getPublicId(conceptId);
             List<PublicId> descendants = primitive.descendantsOf(parentConceptId);
-            List<SearchResult> results = descendants.stream()
+            List<TinkarSearchResult> results = descendants.stream()
                     .map(this::publicIdToSearchResult)
                     .toList();
 
-            return TinkarSearchQueryResponse.success(conceptId, results);
+            return buildSuccessResponse(conceptId, results);
         } catch (Exception e) {
-            return TinkarSearchQueryResponse.error(conceptId, e.getMessage());
+            return buildErrorResponse(conceptId, e.getMessage());
         }
     }
 
@@ -115,13 +112,13 @@ public class TinkarServiceImpl implements TinkarService {
         try {
             PublicId testKitConceptId = primitive.getPublicId(conceptId);
             List<PublicId> lidrRecords = primitive.getLidrRecordSemanticsFromTestKit(testKitConceptId);
-            List<SearchResult> results = lidrRecords.stream()
+            List<TinkarSearchResult> results = lidrRecords.stream()
                     .map(this::publicIdToSearchResult)
                     .toList();
 
-            return TinkarSearchQueryResponse.success(conceptId, results);
+            return buildSuccessResponse(conceptId, results);
         } catch (Exception e) {
-            return TinkarSearchQueryResponse.error(conceptId, e.getMessage());
+            return buildErrorResponse(conceptId, e.getMessage());
         }
     }
 
@@ -130,13 +127,13 @@ public class TinkarServiceImpl implements TinkarService {
         try {
             PublicId lidrRecordConceptId = primitive.getPublicId(conceptId);
             List<PublicId> resultConformances = primitive.getResultConformancesFromLidrRecord(lidrRecordConceptId);
-            List<SearchResult> results = resultConformances.stream()
+            List<TinkarSearchResult> results = resultConformances.stream()
                     .map(this::publicIdToSearchResult)
                     .toList();
 
-            return TinkarSearchQueryResponse.success(conceptId, results);
+            return buildSuccessResponse(conceptId, results);
         } catch (Exception e) {
-            return TinkarSearchQueryResponse.error(conceptId, e.getMessage());
+            return buildErrorResponse(conceptId, e.getMessage());
         }
     }
 
@@ -145,13 +142,13 @@ public class TinkarServiceImpl implements TinkarService {
         try {
             PublicId resultConformanceConceptId = primitive.getPublicId(conceptId);
             List<PublicId> allowedResults = primitive.getAllowedResultsFromResultConformance(resultConformanceConceptId);
-            List<SearchResult> results = allowedResults.stream()
+            List<TinkarSearchResult> results = allowedResults.stream()
                     .map(this::publicIdToSearchResult)
                     .toList();
 
-            return TinkarSearchQueryResponse.success(conceptId, results);
+            return buildSuccessResponse(conceptId, results);
         } catch (Exception e) {
-            return TinkarSearchQueryResponse.error(conceptId, e.getMessage());
+            return buildErrorResponse(conceptId, e.getMessage());
         }
     }
 
@@ -162,7 +159,6 @@ public class TinkarServiceImpl implements TinkarService {
             CompletableFuture<Void> future = PrimitiveData.get().recreateLuceneIndex();
             log.info("Lucene index rebuild started asynchronously");
 
-            // Optionally, you can wait for completion or handle it in background
             future.whenComplete((result, throwable) -> {
                 if (throwable != null) {
                     log.error("Error rebuilding Lucene index: {}", throwable.getMessage(), throwable);
@@ -178,63 +174,102 @@ public class TinkarServiceImpl implements TinkarService {
         }
     }
 
-    private SearchResult publicIdToSearchResult(PublicId publicId) {
+    private TinkarSearchQueryResponse buildSuccessResponse(String query, List<TinkarSearchResult> results) {
+        return TinkarSearchQueryResponse.newBuilder()
+                .setQuery(query != null ? query : "")
+                .setTotalCount(results.size())
+                .addAllResults(results)
+                .setSuccess(true)
+                .setErrorMessage("")
+                .build();
+    }
+
+    private TinkarSearchQueryResponse buildErrorResponse(String query, String errorMessage) {
+        return TinkarSearchQueryResponse.newBuilder()
+                .setQuery(query != null ? query : "")
+                .setTotalCount(0)
+                .setSuccess(false)
+                .setErrorMessage(errorMessage != null ? errorMessage : "Unknown error")
+                .build();
+    }
+
+    private TinkarSearchResult publicIdToSearchResult(PublicId publicId) {
         int nid = EntityService.get().nidForPublicId(publicId);
 
-        // Convert PublicId to list of UUID strings
-        List<String> uuids = publicId.asUuidList().stream()
-                .map(java.util.UUID::toString)
-                .toList();
+        // Build PublicId proto
+        dev.ikm.tinkar.schema.PublicId protoPublicId = dev.ikm.tinkar.schema.PublicId.newBuilder()
+                .addAllUuids(publicId.asUuidList().stream()
+                        .map(java.util.UUID::toString)
+                        .toList())
+                .build();
 
-        // Get descriptions using LanguageCalculator
+        // Build descriptions
         String fullyQualifiedName = Calculators.View.Default()
                 .languageCalculator()
                 .getFullyQualifiedNameText(nid)
-                .orElse(null);
+                .orElse("");
 
         String regularName = Calculators.View.Default()
                 .languageCalculator()
                 .getRegularDescriptionText(nid)
-                .orElse(null);
+                .orElse("");
 
-        // Use FQN as definition fallback
-        String definition = fullyQualifiedName != null ? fullyQualifiedName : "";
+        TinkarConceptDescriptions descriptions = TinkarConceptDescriptions.newBuilder()
+                .setFullyQualifiedName(fullyQualifiedName)
+                .setRegularName(regularName)
+                .setDefinition(fullyQualifiedName)
+                .build();
 
-        Descriptions descriptions = new Descriptions(fullyQualifiedName, regularName, definition);
+        // Build StampVersion
+        StampVersion stamp = buildStampVersion(nid);
 
-        // Get STAMP info
-        Stamp stamp = null;
+        return TinkarSearchResult.newBuilder()
+                .setPublicId(protoPublicId)
+                .setDescriptions(descriptions)
+                .setStamp(stamp)
+                .build();
+    }
+
+    private StampVersion buildStampVersion(int nid) {
+        StampVersion.Builder stampBuilder = StampVersion.newBuilder();
+
         try {
             Entity<?> entity = EntityService.get().getEntityFast(nid);
             if (entity != null && !entity.versions().isEmpty()) {
                 int stampNid = entity.versions().get(0).stampNid();
                 StampEntity<?> stampEntity = EntityService.get().getStampFast(stampNid);
                 if (stampEntity != null) {
-                    String statusPublicId = getPublicIdString(stampEntity.stateNid());
-                    String authorPublicId = getPublicIdString(stampEntity.authorNid());
-                    String modulePublicId = getPublicIdString(stampEntity.moduleNid());
-                    String pathPublicId = getPublicIdString(stampEntity.pathNid());
-                    Long time = stampEntity.time();
-
-                    stamp = new Stamp(statusPublicId, authorPublicId, modulePublicId, pathPublicId, time);
+                    setPublicIdIfPresent(stampBuilder, stampEntity.stateNid(), "status");
+                    setPublicIdIfPresent(stampBuilder, stampEntity.authorNid(), "author");
+                    setPublicIdIfPresent(stampBuilder, stampEntity.moduleNid(), "module");
+                    setPublicIdIfPresent(stampBuilder, stampEntity.pathNid(), "path");
+                    stampBuilder.setTime(stampEntity.time());
                 }
             }
         } catch (Exception ex) {
-            log.warn("Failed to get STAMP data for concept {}: {}", uuids.get(0), ex.getMessage());
+            log.warn("Failed to get STAMP data for nid {}: {}", nid, ex.getMessage());
         }
 
-        return new SearchResult(uuids, descriptions, stamp);
+        return stampBuilder.build();
     }
 
-    private String getPublicIdString(int nid) {
+    private void setPublicIdIfPresent(StampVersion.Builder stampBuilder, int nid, String fieldType) {
         try {
             Entity<?> entity = EntityService.get().getEntityFast(nid);
             if (entity != null && entity.publicId() != null) {
-                return entity.publicId().asUuidList().getFirst().toString();
+                dev.ikm.tinkar.schema.PublicId protoPublicId = dev.ikm.tinkar.schema.PublicId.newBuilder()
+                        .addUuids(entity.publicId().asUuidList().getFirst().toString())
+                        .build();
+
+                switch (fieldType) {
+                    case "status" -> stampBuilder.setStatusPublicId(protoPublicId);
+                    case "author" -> stampBuilder.setAuthorPublicId(protoPublicId);
+                    case "module" -> stampBuilder.setModulePublicId(protoPublicId);
+                    case "path" -> stampBuilder.setPathPublicId(protoPublicId);
+                }
             }
         } catch (Exception e) {
-            log.warn("Failed to get public ID for nid {}: {}", nid, e.getMessage());
+            log.warn("Failed to get {} public ID for nid {}: {}", fieldType, nid, e.getMessage());
         }
-        return null;
     }
 }
