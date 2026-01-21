@@ -1,7 +1,13 @@
 package ai.ica.tinkar.controller;
 
-import ai.ica.tinkar.proto.TinkarSearchQueryResponse;
+import ai.ica.tinkar.dto.TinkarSearchQueryResponse;
+import ai.ica.tinkar.dto.TinkarSearchQueryResponse.Descriptions;
+import ai.ica.tinkar.dto.TinkarSearchQueryResponse.SearchResult;
+import ai.ica.tinkar.dto.TinkarSearchQueryResponse.Stamp;
+import ai.ica.tinkar.proto.TinkarConceptDescriptions;
+import ai.ica.tinkar.proto.TinkarSearchResult;
 import ai.ica.tinkar.service.TinkarService;
+import dev.ikm.tinkar.schema.StampVersion;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -15,6 +21,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/tinkar")
@@ -36,8 +44,7 @@ public class TinkarSearchController {
         public ResponseEntity<TinkarSearchQueryResponse> search(
                         @Parameter(description = "Search query string", required = true, example = "chronic lung") @RequestParam String query) {
 
-                return ResponseEntity.ok(
-                                tinkarService.search(query));
+                return ResponseEntity.ok(toDto(tinkarService.search(query)));
         }
 
         @Operation(summary = "Search for concepts", description = "Search for concepts based off a search term")
@@ -50,8 +57,7 @@ public class TinkarSearchController {
                         @Parameter(description = "Search query string", required = true, example = "chronic lung") @RequestParam String query,
                         @Parameter(description = "Maximum number of results to return", required = false) @RequestParam(name = "maxResults", required = false) Integer maxResults) {
 
-                return ResponseEntity.ok(
-                                tinkarService.conceptSearch(query, maxResults));
+                return ResponseEntity.ok(toDto(tinkarService.conceptSearch(query, maxResults)));
         }
 
         @Operation(summary = "Get entity by concept ID", description = "Look up an entity by the tinkar concept public ID")
@@ -63,8 +69,7 @@ public class TinkarSearchController {
         public ResponseEntity<TinkarSearchQueryResponse> getEntity(
                         @Parameter(description = "Concept ID", required = true, example = "f5c39ec3-7256-3a03-b651-d17b623a30ec") @RequestParam("conceptId") String conceptId) {
 
-                return ResponseEntity.ok(
-                                tinkarService.getEntity(conceptId));
+                return ResponseEntity.ok(toDto(tinkarService.getEntity(conceptId)));
         }
 
         @Operation(summary = "Get child concepts", description = "Look up child concepts for the tinkar concept public ID")
@@ -76,8 +81,7 @@ public class TinkarSearchController {
         public ResponseEntity<TinkarSearchQueryResponse> getTinkarChildConcepts(
                         @Parameter(description = "Concept ID", required = true, example = "f5c39ec3-7256-3a03-b651-d17b623a30ec") @RequestParam("conceptId") String conceptId) {
 
-                return ResponseEntity.ok(
-                                tinkarService.getChildConcepts(conceptId));
+                return ResponseEntity.ok(toDto(tinkarService.getChildConcepts(conceptId)));
         }
 
         @Operation(summary = "Get descendant concepts", description = "Look up descendant concepts for the tinkar concept public ID")
@@ -89,8 +93,7 @@ public class TinkarSearchController {
         public ResponseEntity<TinkarSearchQueryResponse> getTinkarDescendantConcepts(
                         @Parameter(description = "Concept ID", required = true, example = "f5c39ec3-7256-3a03-b651-d17b623a30ec") @RequestParam("conceptId") String conceptId) {
 
-                return ResponseEntity.ok(
-                                tinkarService.getDescendantConcepts(conceptId));
+                return ResponseEntity.ok(toDto(tinkarService.getDescendantConcepts(conceptId)));
         }
 
         @Operation(summary = "Get LIDR record concepts from test kit", description = "Look up lidr record concepts for a test kit concept public ID")
@@ -102,8 +105,7 @@ public class TinkarSearchController {
         public ResponseEntity<TinkarSearchQueryResponse> getLIDRRecordConceptsFromTestKit(
                         @Parameter(description = "Test kit concept ID", required = true, example = "f5c39ec3-7256-3a03-b651-d17b623a30ec") @RequestParam("testKitConceptId") String testKitConceptId) {
 
-                return ResponseEntity.ok(
-                                tinkarService.getLIDRRecordConceptsFromTestKit(testKitConceptId));
+                return ResponseEntity.ok(toDto(tinkarService.getLIDRRecordConceptsFromTestKit(testKitConceptId)));
         }
 
         @Operation(summary = "Get result conformance concepts from LIDR record", description = "Look up result conformances for a LIDR record concept public ID")
@@ -115,8 +117,7 @@ public class TinkarSearchController {
         public ResponseEntity<TinkarSearchQueryResponse> getResultConformanceConceptsFromLIDRRecord(
                         @Parameter(description = "LIDR record concept ID", required = true, example = "f5c39ec3-7256-3a03-b651-d17b623a30ec") @RequestParam("lidrRecordConceptId") String lidrRecordConceptId) {
 
-                return ResponseEntity.ok(
-                                tinkarService.getResultConformanceConceptsFromLIDRRecord(lidrRecordConceptId));
+                return ResponseEntity.ok(toDto(tinkarService.getResultConformanceConceptsFromLIDRRecord(lidrRecordConceptId)));
         }
 
         @Operation(summary = "Get allowed result concepts from result conformance", description = "Look up allowed results for a result conformance concept public ID")
@@ -128,9 +129,8 @@ public class TinkarSearchController {
         public ResponseEntity<TinkarSearchQueryResponse> getAllowedResultConceptsFromResultConformance(
                         @Parameter(description = "Result conformance concept ID", required = true, example = "f5c39ec3-7256-3a03-b651-d17b623a30ec") @RequestParam("resultConformanceConceptId") String resultConformanceConceptId) {
 
-                return ResponseEntity.ok(
-                                tinkarService.getAllowedResultConceptsFromResultConformance(
-                                                resultConformanceConceptId));
+                return ResponseEntity.ok(toDto(tinkarService.getAllowedResultConceptsFromResultConformance(
+                                resultConformanceConceptId)));
         }
 
         @Operation(summary = "Rebuild Lucene search index", description = "Rebuilds the Lucene search index.")
@@ -142,5 +142,56 @@ public class TinkarSearchController {
         public ResponseEntity<String> rebuildSearchIndex() {
                 String message = tinkarService.rebuildSearchIndex();
                 return ResponseEntity.ok(message);
+        }
+
+        private TinkarSearchQueryResponse toDto(ai.ica.tinkar.proto.TinkarSearchQueryResponse proto) {
+                List<SearchResult> results = proto.getResultsList().stream()
+                                .map(this::toSearchResultDto)
+                                .toList();
+
+                return new TinkarSearchQueryResponse(
+                                proto.getQuery(),
+                                proto.getTotalCount(),
+                                results,
+                                proto.getSuccess(),
+                                proto.getErrorMessage().isEmpty() ? null : proto.getErrorMessage());
+        }
+
+        private SearchResult toSearchResultDto(TinkarSearchResult proto) {
+                List<String> publicIds = proto.getPublicId().getUuidsList();
+
+                Descriptions descriptions = toDescriptionsDto(proto.getDescriptions());
+                Stamp stamp = toStampDto(proto.getStamp());
+
+                return new SearchResult(publicIds, descriptions, stamp);
+        }
+
+        private Descriptions toDescriptionsDto(TinkarConceptDescriptions proto) {
+                return new Descriptions(
+                                proto.getFullyQualifiedName(),
+                                proto.getRegularName(),
+                                proto.getDefinition());
+        }
+
+        private Stamp toStampDto(StampVersion proto) {
+                String statusPublicId = proto.hasStatusPublicId() && !proto.getStatusPublicId().getUuidsList().isEmpty()
+                                ? proto.getStatusPublicId().getUuids(0)
+                                : null;
+                String authorPublicId = proto.hasAuthorPublicId() && !proto.getAuthorPublicId().getUuidsList().isEmpty()
+                                ? proto.getAuthorPublicId().getUuids(0)
+                                : null;
+                String modulePublicId = proto.hasModulePublicId() && !proto.getModulePublicId().getUuidsList().isEmpty()
+                                ? proto.getModulePublicId().getUuids(0)
+                                : null;
+                String pathPublicId = proto.hasPathPublicId() && !proto.getPathPublicId().getUuidsList().isEmpty()
+                                ? proto.getPathPublicId().getUuids(0)
+                                : null;
+
+                return new Stamp(
+                                statusPublicId,
+                                authorPublicId,
+                                modulePublicId,
+                                pathPublicId,
+                                proto.getTime());
         }
 }
