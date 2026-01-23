@@ -1,5 +1,8 @@
 package ai.ica.tinkar.controller;
 
+import ai.ica.tinkar.dto.ChangeHistoryResponse;
+import ai.ica.tinkar.dto.ConceptChangeHistoryResponse;
+import ai.ica.tinkar.dto.ConceptSemanticsResponse;
 import ai.ica.tinkar.dto.TinkarSearchQueryResponse;
 import ai.ica.tinkar.dto.TinkarSearchQueryResponse.Descriptions;
 import ai.ica.tinkar.dto.TinkarSearchQueryResponse.SearchResult;
@@ -18,6 +21,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -142,6 +146,67 @@ public class TinkarSearchController {
         public ResponseEntity<String> rebuildSearchIndex() {
                 String message = tinkarService.rebuildSearchIndex();
                 return ResponseEntity.ok(message);
+        }
+
+        @Operation(summary = "Get change history for an entity", description = "Retrieves the complete change history for an entity, showing all STAMP versions and field modifications. This demonstrates IKE-Flow change tracking capabilities.")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "Change history retrieved successfully", content = @Content(schema = @Schema(implementation = ChangeHistoryResponse.class))),
+                        @ApiResponse(responseCode = "400", description = "Invalid entity ID parameter")
+        })
+        @GetMapping("/change-history")
+        public ResponseEntity<ChangeHistoryResponse> getChangeHistory(
+                        @Parameter(description = "Entity ID (UUID)", required = true, example = "f5c39ec3-7256-3a03-b651-d17b623a30ec") @RequestParam("entityId") String entityId) {
+
+                return ResponseEntity.ok(tinkarService.getChangeHistory(entityId));
+        }
+
+        @Operation(summary = "Create a sample change (comment)", description = "Creates a new comment semantic attached to the specified concept to demonstrate change tracking. Returns the change history for the newly created semantic.")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "Change created successfully", content = @Content(schema = @Schema(implementation = ChangeHistoryResponse.class))),
+                        @ApiResponse(responseCode = "400", description = "Invalid concept ID or comment parameter")
+        })
+        @PostMapping("/create-change")
+        public ResponseEntity<ChangeHistoryResponse> createSampleChange(
+                        @Parameter(description = "Concept ID to attach the comment to (UUID)", required = true, example = "f5c39ec3-7256-3a03-b651-d17b623a30ec") @RequestParam("conceptId") String conceptId,
+                        @Parameter(description = "Comment text to add", required = true, example = "This is a sample comment for demonstration") @RequestParam("comment") String comment) {
+
+                return ResponseEntity.ok(tinkarService.createSampleChange(conceptId, comment));
+        }
+
+        @Operation(summary = "Get comments for a concept", description = "Retrieves all comment semantics attached to a concept. Use this to view all comments added via the create-change endpoint.")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "Comments retrieved successfully", content = @Content(schema = @Schema(implementation = ConceptSemanticsResponse.class))),
+                        @ApiResponse(responseCode = "400", description = "Invalid concept ID parameter")
+        })
+        @GetMapping("/comments")
+        public ResponseEntity<ConceptSemanticsResponse> getConceptComments(
+                        @Parameter(description = "Concept ID (UUID)", required = true, example = "9fc3832b-a5f8-5504-ba16-7551976841dc") @RequestParam("conceptId") String conceptId) {
+
+                return ResponseEntity.ok(tinkarService.getConceptComments(conceptId));
+        }
+
+        @Operation(summary = "Get all semantics for a concept", description = "Retrieves all semantics (comments, descriptions, axioms, etc.) attached to a concept.")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "Semantics retrieved successfully", content = @Content(schema = @Schema(implementation = ConceptSemanticsResponse.class))),
+                        @ApiResponse(responseCode = "400", description = "Invalid concept ID parameter")
+        })
+        @GetMapping("/semantics")
+        public ResponseEntity<ConceptSemanticsResponse> getConceptSemantics(
+                        @Parameter(description = "Concept ID (UUID)", required = true, example = "9fc3832b-a5f8-5504-ba16-7551976841dc") @RequestParam("conceptId") String conceptId) {
+
+                return ResponseEntity.ok(tinkarService.getConceptSemantics(conceptId));
+        }
+
+        @Operation(summary = "Get comprehensive change history for a concept", description = "Retrieves the full change history for a concept INCLUDING all attached semantics (comments, descriptions, axioms, etc.). Use this to see all changes made to a concept and its associated data.")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "Change history retrieved successfully", content = @Content(schema = @Schema(implementation = ConceptChangeHistoryResponse.class))),
+                        @ApiResponse(responseCode = "400", description = "Invalid concept ID parameter")
+        })
+        @GetMapping("/concept-change-history")
+        public ResponseEntity<ConceptChangeHistoryResponse> getConceptChangeHistory(
+                        @Parameter(description = "Concept ID (UUID)", required = true, example = "9fc3832b-a5f8-5504-ba16-7551976841dc") @RequestParam("conceptId") String conceptId) {
+
+                return ResponseEntity.ok(tinkarService.getConceptChangeHistory(conceptId));
         }
 
         private TinkarSearchQueryResponse toDto(ai.ica.tinkar.proto.TinkarSearchQueryResponse proto) {

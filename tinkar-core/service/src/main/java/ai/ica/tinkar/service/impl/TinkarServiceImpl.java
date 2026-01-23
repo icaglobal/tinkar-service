@@ -1,23 +1,47 @@
 package ai.ica.tinkar.service.impl;
 
+import ai.ica.tinkar.dto.ChangeHistoryResponse;
+import ai.ica.tinkar.dto.ChangeHistoryResponse.FieldChange;
+import ai.ica.tinkar.dto.ChangeHistoryResponse.StampInfo;
+import ai.ica.tinkar.dto.ChangeHistoryResponse.VersionChange;
+import ai.ica.tinkar.dto.ConceptChangeHistoryResponse;
+import ai.ica.tinkar.dto.ConceptSemanticsResponse;
+import ai.ica.tinkar.dto.ConceptSemanticsResponse.SemanticInfo;
+import ai.ica.tinkar.dto.ConceptSemanticsResponse.FieldValue;
 import ai.ica.tinkar.proto.TinkarConceptDescriptions;
 import ai.ica.tinkar.proto.TinkarSearchQueryResponse;
 import ai.ica.tinkar.proto.TinkarSearchResult;
 import ai.ica.tinkar.service.TinkarPrimitive;
 import ai.ica.tinkar.service.TinkarService;
 import dev.ikm.tinkar.common.id.PublicId;
+import dev.ikm.tinkar.common.id.PublicIds;
 import dev.ikm.tinkar.common.service.PrimitiveData;
 import dev.ikm.tinkar.coordinate.Calculators;
 import dev.ikm.tinkar.coordinate.stamp.calculator.Latest;
 import dev.ikm.tinkar.coordinate.stamp.calculator.LatestVersionSearchResult;
+import dev.ikm.tinkar.coordinate.stamp.change.ChangeChronology;
+import dev.ikm.tinkar.coordinate.stamp.change.FieldChangeRecord;
+import dev.ikm.tinkar.coordinate.stamp.change.VersionChangeRecord;
 import dev.ikm.tinkar.entity.Entity;
 import dev.ikm.tinkar.entity.EntityService;
+import dev.ikm.tinkar.entity.SemanticEntity;
+import dev.ikm.tinkar.entity.SemanticEntityVersion;
+import dev.ikm.tinkar.entity.SemanticRecord;
+import dev.ikm.tinkar.entity.SemanticVersionRecord;
 import dev.ikm.tinkar.entity.StampEntity;
+import dev.ikm.tinkar.entity.transaction.Transaction;
 import dev.ikm.tinkar.schema.StampVersion;
+import dev.ikm.tinkar.terms.TinkarTerm;
 import lombok.extern.slf4j.Slf4j;
+import org.eclipse.collections.api.factory.Lists;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 @Service
@@ -270,6 +294,550 @@ public class TinkarServiceImpl implements TinkarService {
             }
         } catch (Exception e) {
             log.warn("Failed to get {} public ID for nid {}: {}", fieldType, nid, e.getMessage());
+        }
+    }
+
+    @Override
+    public ChangeHistoryResponse getChangeHistory(String entityId) {
+        try {
+            PublicId publicId = primitive.getPublicId(entityId);
+            int nid = EntityService.get().nidForPublicId(publicId);
+
+            // Get the entity description
+            String entityDescription = Calculators.View.Default()
+                    .languageCalculator()
+                    .getRegularDescriptionText(nid)
+                    .orElse("Unknown entity");
+
+            // Get change chronology using the stamp calculator
+            ChangeChronology changeChronology = Calculators.View.Default()
+                    .stampCalculator()
+                    .changeChronology(nid);
+
+            // Convert to DTO
+            List<VersionChange> versionChanges = convertChangeChronologyToDto(changeChronology);
+
+            return ChangeHistoryResponse.success(entityId, entityDescription, versionChanges);
+        } catch (Exception e) {
+            log.error("Failed to get change history for entity {}: {}", entityId, e.getMessage(), e);
+            return ChangeHistoryResponse.error(entityId, e.getMessage());
+        }
+    }
+
+    @Override
+    public ChangeHistoryResponse createSampleChange(String conceptId, String comment) {
+        try {
+            PublicId conceptPublicId = primitive.getPublicId(conceptId);
+            int conceptNid = EntityService.get().nidForPublicId(conceptPublicId);
+
+            // Get the entity description for context
+            String conceptDescription = Calculators.View.Default()
+                    .languageCalculator()
+                    .getRegularDescriptionText(conceptNid)
+                    .orElse("Unknown concept");
+
+            // Create a new semantic (comment) attached to the concept
+            UUID semanticUuid = UUID.randomUUID();
+            long currentTime = System.currentTimeMillis();
+
+            // Create a transaction for the change
+            Transaction transaction = Transaction.make("Add comment to " + conceptDescription);
+
+            try {
+                // Get STAMP for this transaction (Active state, current time, user, module, path)
+                StampEntity<?> stamp = transaction.getStamp(
+                        dev.ikm.tinkar.terms.State.ACTIVE,
+                        currentTime,
+                        TinkarTerm.USER.nid(),
+                        TinkarTerm.SOLOR_OVERLAY_MODULE.nid(),
+                        TinkarTerm.DEVELOPMENT_PATH.nid()
+                );
+
+                // Build the semantic record with the comment pattern
+                // Comment pattern has one field: the comment text
+                SemanticRecord semanticRecord = SemanticRecord.build(
+                        semanticUuid,
+                        TinkarTerm.COMMENT_PATTERN.nid(),
+                        conceptNid,
+                        stamp.versions().get(0),
+                        Lists.immutable.of(comment)
+                );
+
+                // Persist the semantic record to the entity store
+                EntityService.get().putEntity(semanticRecord);
+
+                // Add to transaction and commit
+                transaction.addComponent(semanticRecord);
+                transaction.commit();
+
+                log.info("Created comment semantic {} on concept {} with comment: {}",
+                        semanticUuid, conceptId, comment);
+
+                // Build the response directly from the data we just created
+                // (The newly created semantic may not be immediately queryable)
+                return buildChangeResponseForNewSemantic(
+                        semanticUuid.toString(),
+                        conceptDescription,
+                        comment,
+                        stamp,
+                        currentTime
+                );
+
+            } catch (Exception e) {
+                transaction.cancel();
+                throw e;
+            }
+
+        } catch (Exception e) {
+            log.error("Failed to create sample change for concept {}: {}", conceptId, e.getMessage(), e);
+            return ChangeHistoryResponse.error(conceptId, e.getMessage());
+        }
+    }
+
+    private ChangeHistoryResponse buildChangeResponseForNewSemantic(
+            String semanticId,
+            String conceptDescription,
+            String comment,
+            StampEntity<?> stamp,
+            long time) {
+
+        // Build STAMP info from the stamp entity
+        String status = getDescriptionForNid(stamp.stateNid());
+        String author = getDescriptionForNid(stamp.authorNid());
+        String module = getDescriptionForNid(stamp.moduleNid());
+        String path = getDescriptionForNid(stamp.pathNid());
+        String formattedTime = formatTimestamp(time);
+
+        StampInfo stampInfo = new StampInfo(status, author, module, path, time, formattedTime);
+
+        // Build field change for the comment field (newly added)
+        String patternName = getDescriptionForNid(TinkarTerm.COMMENT_PATTERN.nid());
+        FieldChange commentFieldChange = new FieldChange(
+                patternName + " [0]",
+                0,
+                null,  // No prior value - this is a new semantic
+                comment,
+                "ADDED"
+        );
+
+        VersionChange versionChange = new VersionChange(stampInfo, List.of(commentFieldChange));
+
+        String entityDescription = "Comment on: " + conceptDescription;
+
+        return new ChangeHistoryResponse(
+                semanticId,
+                entityDescription,
+                1,
+                List.of(versionChange),
+                true,
+                null
+        );
+    }
+
+    private List<VersionChange> convertChangeChronologyToDto(ChangeChronology changeChronology) {
+        List<VersionChange> versionChanges = new ArrayList<>();
+
+        for (VersionChangeRecord versionChange : changeChronology.changeRecords()) {
+            StampInfo stampInfo = buildStampInfo(versionChange.stampNid());
+            List<FieldChange> fieldChanges = convertFieldChanges(versionChange.changes());
+            versionChanges.add(new VersionChange(stampInfo, fieldChanges));
+        }
+
+        return versionChanges;
+    }
+
+    private StampInfo buildStampInfo(int stampNid) {
+        try {
+            StampEntity<?> stampEntity = EntityService.get().getStampFast(stampNid);
+            if (stampEntity == null) {
+                return new StampInfo(null, null, null, null, null, null);
+            }
+
+            String status = getDescriptionForNid(stampEntity.stateNid());
+            String author = getDescriptionForNid(stampEntity.authorNid());
+            String module = getDescriptionForNid(stampEntity.moduleNid());
+            String path = getDescriptionForNid(stampEntity.pathNid());
+            long time = stampEntity.time();
+            String formattedTime = formatTimestamp(time);
+
+            return new StampInfo(status, author, module, path, time, formattedTime);
+        } catch (Exception e) {
+            log.warn("Failed to build STAMP info for stampNid {}: {}", stampNid, e.getMessage());
+            return new StampInfo(null, null, null, null, null, null);
+        }
+    }
+
+    private String getDescriptionForNid(int nid) {
+        try {
+            return Calculators.View.Default()
+                    .languageCalculator()
+                    .getRegularDescriptionText(nid)
+                    .orElse("nid: " + nid);
+        } catch (Exception e) {
+            return "nid: " + nid;
+        }
+    }
+
+    private String formatTimestamp(long epochMillis) {
+        if (epochMillis == Long.MIN_VALUE || epochMillis == Long.MAX_VALUE) {
+            return "N/A";
+        }
+        return DateTimeFormatter.ISO_LOCAL_DATE_TIME
+                .withZone(ZoneId.systemDefault())
+                .format(Instant.ofEpochMilli(epochMillis));
+    }
+
+    private List<FieldChange> convertFieldChanges(Iterable<FieldChangeRecord> fieldChangeRecords) {
+        List<FieldChange> fieldChanges = new ArrayList<>();
+
+        for (FieldChangeRecord fieldChange : fieldChangeRecords) {
+            String fieldName = determineFieldName(fieldChange);
+            Integer fieldIndex = fieldChange.currentValue() != null
+                    ? fieldChange.currentValue().indexInPattern()
+                    : (fieldChange.priorValue() != null ? fieldChange.priorValue().indexInPattern() : null);
+
+            String priorValue = fieldChange.priorValue() != null
+                    ? formatFieldValue(fieldChange.priorValue().value())
+                    : null;
+            String currentValue = fieldChange.currentValue() != null
+                    ? formatFieldValue(fieldChange.currentValue().value())
+                    : null;
+
+            String changeType = determineChangeType(priorValue, currentValue);
+
+            fieldChanges.add(new FieldChange(fieldName, fieldIndex, priorValue, currentValue, changeType));
+        }
+
+        return fieldChanges;
+    }
+
+    private String determineFieldName(FieldChangeRecord fieldChange) {
+        // Try to get a meaningful name from the pattern
+        int patternNid = fieldChange.currentValue() != null
+                ? fieldChange.currentValue().patternNid()
+                : (fieldChange.priorValue() != null ? fieldChange.priorValue().patternNid() : 0);
+
+        if (patternNid != 0) {
+            try {
+                String patternName = Calculators.View.Default()
+                        .languageCalculator()
+                        .getRegularDescriptionText(patternNid)
+                        .orElse(null);
+                if (patternName != null) {
+                    int index = fieldChange.currentValue() != null
+                            ? fieldChange.currentValue().indexInPattern()
+                            : fieldChange.priorValue().indexInPattern();
+                    return patternName + " [" + index + "]";
+                }
+            } catch (Exception e) {
+                // Fall through to default
+            }
+        }
+        return "Field";
+    }
+
+    private String formatFieldValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof PublicId publicId) {
+            // Try to get a description for the public ID
+            try {
+                int nid = EntityService.get().nidForPublicId(publicId);
+                return Calculators.View.Default()
+                        .languageCalculator()
+                        .getRegularDescriptionText(nid)
+                        .orElse(publicId.toString());
+            } catch (Exception e) {
+                return publicId.toString();
+            }
+        }
+        return value.toString();
+    }
+
+    private String determineChangeType(String priorValue, String currentValue) {
+        if (priorValue == null && currentValue != null) {
+            return "ADDED";
+        } else if (priorValue != null && currentValue == null) {
+            return "REMOVED";
+        } else {
+            return "MODIFIED";
+        }
+    }
+
+    @Override
+    public ConceptSemanticsResponse getConceptComments(String conceptId) {
+        try {
+            PublicId publicId = primitive.getPublicId(conceptId);
+            int conceptNid = EntityService.get().nidForPublicId(publicId);
+
+            // Get the concept description
+            String conceptDescription = Calculators.View.Default()
+                    .languageCalculator()
+                    .getRegularDescriptionText(conceptNid)
+                    .orElse("Unknown concept");
+
+            // Get all comment semantics for this concept using the Comment Pattern
+            int[] semanticNids = EntityService.get().semanticNidsForComponentOfPattern(
+                    conceptNid, TinkarTerm.COMMENT_PATTERN.nid());
+
+            List<SemanticInfo> semantics = new ArrayList<>();
+            for (int semanticNid : semanticNids) {
+                SemanticInfo semanticInfo = buildSemanticInfo(semanticNid);
+                if (semanticInfo != null) {
+                    semantics.add(semanticInfo);
+                }
+            }
+
+            return ConceptSemanticsResponse.success(conceptId, conceptDescription, semantics);
+        } catch (Exception e) {
+            log.error("Failed to get comments for concept {}: {}", conceptId, e.getMessage(), e);
+            return ConceptSemanticsResponse.error(conceptId, e.getMessage());
+        }
+    }
+
+    @Override
+    public ConceptSemanticsResponse getConceptSemantics(String conceptId) {
+        try {
+            PublicId publicId = primitive.getPublicId(conceptId);
+            int conceptNid = EntityService.get().nidForPublicId(publicId);
+
+            // Get the concept description
+            String conceptDescription = Calculators.View.Default()
+                    .languageCalculator()
+                    .getRegularDescriptionText(conceptNid)
+                    .orElse("Unknown concept");
+
+            // Get all semantics for this concept (any pattern)
+            int[] semanticNids = EntityService.get().semanticNidsForComponent(conceptNid);
+
+            List<SemanticInfo> semantics = new ArrayList<>();
+            for (int semanticNid : semanticNids) {
+                SemanticInfo semanticInfo = buildSemanticInfo(semanticNid);
+                if (semanticInfo != null) {
+                    semantics.add(semanticInfo);
+                }
+            }
+
+            return ConceptSemanticsResponse.success(conceptId, conceptDescription, semantics);
+        } catch (Exception e) {
+            log.error("Failed to get semantics for concept {}: {}", conceptId, e.getMessage(), e);
+            return ConceptSemanticsResponse.error(conceptId, e.getMessage());
+        }
+    }
+
+    private SemanticInfo buildSemanticInfo(int semanticNid) {
+        try {
+            Entity<?> entity = EntityService.get().getEntityFast(semanticNid);
+            if (!(entity instanceof SemanticEntity<?> semanticEntity)) {
+                return null;
+            }
+
+            // Get the semantic's public ID
+            String semanticId = semanticEntity.publicId().asUuidList().get(0).toString();
+
+            // Get the pattern name
+            String patternName = getDescriptionForNid(semanticEntity.patternNid());
+
+            // Get the latest version to extract fields and stamp
+            if (semanticEntity.versions().isEmpty()) {
+                return null;
+            }
+
+            SemanticEntityVersion latestVersion = semanticEntity.versions().get(
+                    semanticEntity.versions().size() - 1);
+
+            // Build field values
+            List<FieldValue> fields = new ArrayList<>();
+            Object[] fieldValues = latestVersion.fieldValues().toArray();
+            for (int i = 0; i < fieldValues.length; i++) {
+                String value = formatFieldValue(fieldValues[i]);
+                fields.add(new FieldValue(i, value));
+            }
+
+            // Build stamp info
+            ConceptSemanticsResponse.StampInfo stampInfo = buildSemanticStampInfo(latestVersion.stampNid());
+
+            return new SemanticInfo(semanticId, patternName, fields, stampInfo);
+        } catch (Exception e) {
+            log.warn("Failed to build semantic info for nid {}: {}", semanticNid, e.getMessage());
+            return null;
+        }
+    }
+
+    private ConceptSemanticsResponse.StampInfo buildSemanticStampInfo(int stampNid) {
+        try {
+            StampEntity<?> stampEntity = EntityService.get().getStampFast(stampNid);
+            if (stampEntity == null) {
+                return new ConceptSemanticsResponse.StampInfo(null, null, null, null, null, null);
+            }
+
+            String status = getDescriptionForNid(stampEntity.stateNid());
+            String author = getDescriptionForNid(stampEntity.authorNid());
+            String module = getDescriptionForNid(stampEntity.moduleNid());
+            String path = getDescriptionForNid(stampEntity.pathNid());
+            long time = stampEntity.time();
+            String formattedTime = formatTimestamp(time);
+
+            return new ConceptSemanticsResponse.StampInfo(status, author, module, path, time, formattedTime);
+        } catch (Exception e) {
+            log.warn("Failed to build STAMP info for stampNid {}: {}", stampNid, e.getMessage());
+            return new ConceptSemanticsResponse.StampInfo(null, null, null, null, null, null);
+        }
+    }
+
+    @Override
+    public ConceptChangeHistoryResponse getConceptChangeHistory(String conceptId) {
+        try {
+            PublicId publicId = primitive.getPublicId(conceptId);
+            int conceptNid = EntityService.get().nidForPublicId(publicId);
+
+            // Get the concept description
+            String conceptDescription = Calculators.View.Default()
+                    .languageCalculator()
+                    .getRegularDescriptionText(conceptNid)
+                    .orElse("Unknown concept");
+
+            // Get change chronology for the concept itself
+            ChangeChronology conceptChronology = Calculators.View.Default()
+                    .stampCalculator()
+                    .changeChronology(conceptNid);
+            List<ConceptChangeHistoryResponse.VersionChange> conceptChanges =
+                    convertToConceptVersionChanges(conceptChronology);
+
+            // Get all semantics attached to this concept and their change histories
+            int[] semanticNids = EntityService.get().semanticNidsForComponent(conceptNid);
+            List<ConceptChangeHistoryResponse.SemanticChangeHistory> semanticChanges = new ArrayList<>();
+
+            for (int semanticNid : semanticNids) {
+                ConceptChangeHistoryResponse.SemanticChangeHistory semanticHistory =
+                        buildSemanticChangeHistory(semanticNid);
+                if (semanticHistory != null) {
+                    semanticChanges.add(semanticHistory);
+                }
+            }
+
+            return ConceptChangeHistoryResponse.success(conceptId, conceptDescription, conceptChanges, semanticChanges);
+        } catch (Exception e) {
+            log.error("Failed to get concept change history for {}: {}", conceptId, e.getMessage(), e);
+            return ConceptChangeHistoryResponse.error(conceptId, e.getMessage());
+        }
+    }
+
+    private List<ConceptChangeHistoryResponse.VersionChange> convertToConceptVersionChanges(ChangeChronology changeChronology) {
+        List<ConceptChangeHistoryResponse.VersionChange> versionChanges = new ArrayList<>();
+
+        for (VersionChangeRecord versionChange : changeChronology.changeRecords()) {
+            ConceptChangeHistoryResponse.StampInfo stampInfo = buildConceptStampInfo(versionChange.stampNid());
+            List<ConceptChangeHistoryResponse.FieldChange> fieldChanges = convertToConceptFieldChanges(versionChange.changes());
+            versionChanges.add(new ConceptChangeHistoryResponse.VersionChange(stampInfo, fieldChanges));
+        }
+
+        return versionChanges;
+    }
+
+    private ConceptChangeHistoryResponse.StampInfo buildConceptStampInfo(int stampNid) {
+        try {
+            StampEntity<?> stampEntity = EntityService.get().getStampFast(stampNid);
+            if (stampEntity == null) {
+                return new ConceptChangeHistoryResponse.StampInfo(null, null, null, null, null, null);
+            }
+
+            String status = getDescriptionForNid(stampEntity.stateNid());
+            String author = getDescriptionForNid(stampEntity.authorNid());
+            String module = getDescriptionForNid(stampEntity.moduleNid());
+            String path = getDescriptionForNid(stampEntity.pathNid());
+            long time = stampEntity.time();
+            String formattedTime = formatTimestamp(time);
+
+            return new ConceptChangeHistoryResponse.StampInfo(status, author, module, path, time, formattedTime);
+        } catch (Exception e) {
+            log.warn("Failed to build STAMP info for stampNid {}: {}", stampNid, e.getMessage());
+            return new ConceptChangeHistoryResponse.StampInfo(null, null, null, null, null, null);
+        }
+    }
+
+    private List<ConceptChangeHistoryResponse.FieldChange> convertToConceptFieldChanges(
+            Iterable<FieldChangeRecord> fieldChangeRecords) {
+        List<ConceptChangeHistoryResponse.FieldChange> fieldChanges = new ArrayList<>();
+
+        for (FieldChangeRecord fieldChange : fieldChangeRecords) {
+            String fieldName = determineFieldName(fieldChange);
+            Integer fieldIndex = fieldChange.currentValue() != null
+                    ? fieldChange.currentValue().indexInPattern()
+                    : (fieldChange.priorValue() != null ? fieldChange.priorValue().indexInPattern() : null);
+
+            String priorValue = fieldChange.priorValue() != null
+                    ? formatFieldValue(fieldChange.priorValue().value())
+                    : null;
+            String currentValue = fieldChange.currentValue() != null
+                    ? formatFieldValue(fieldChange.currentValue().value())
+                    : null;
+
+            String changeType = determineChangeType(priorValue, currentValue);
+
+            fieldChanges.add(new ConceptChangeHistoryResponse.FieldChange(
+                    fieldName, fieldIndex, priorValue, currentValue, changeType));
+        }
+
+        return fieldChanges;
+    }
+
+    private ConceptChangeHistoryResponse.SemanticChangeHistory buildSemanticChangeHistory(int semanticNid) {
+        try {
+            Entity<?> entity = EntityService.get().getEntityFast(semanticNid);
+            if (!(entity instanceof SemanticEntity<?> semanticEntity)) {
+                return null;
+            }
+
+            // Get the semantic's public ID
+            String semanticId = semanticEntity.publicId().asUuidList().get(0).toString();
+
+            // Get the pattern name
+            String patternName = getDescriptionForNid(semanticEntity.patternNid());
+
+            // Get a summary of the semantic content (first field value if available)
+            String summary = getSemanticSummary(semanticEntity);
+
+            // Get change chronology for this semantic
+            ChangeChronology semanticChronology = Calculators.View.Default()
+                    .stampCalculator()
+                    .changeChronology(semanticNid);
+            List<ConceptChangeHistoryResponse.VersionChange> versionChanges =
+                    convertToConceptVersionChanges(semanticChronology);
+
+            return new ConceptChangeHistoryResponse.SemanticChangeHistory(
+                    semanticId, patternName, summary, versionChanges);
+        } catch (Exception e) {
+            log.warn("Failed to build semantic change history for nid {}: {}", semanticNid, e.getMessage());
+            return null;
+        }
+    }
+
+    private String getSemanticSummary(SemanticEntity<?> semanticEntity) {
+        try {
+            if (semanticEntity.versions().isEmpty()) {
+                return null;
+            }
+            SemanticEntityVersion latestVersion = semanticEntity.versions().get(
+                    semanticEntity.versions().size() - 1);
+
+            if (latestVersion.fieldValues().isEmpty()) {
+                return null;
+            }
+
+            // Get the first field value as summary
+            Object firstField = latestVersion.fieldValues().get(0);
+            String summary = formatFieldValue(firstField);
+
+            // Truncate if too long
+            if (summary != null && summary.length() > 100) {
+                summary = summary.substring(0, 97) + "...";
+            }
+
+            return summary;
+        } catch (Exception e) {
+            return null;
         }
     }
 }
