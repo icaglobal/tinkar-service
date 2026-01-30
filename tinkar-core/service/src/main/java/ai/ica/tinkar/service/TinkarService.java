@@ -94,6 +94,15 @@ public interface TinkarService {
     DescendantOperationResponse addDescendant(String parentConceptId, String descendantConceptId);
 
     /**
+     * Creates a new concept with the given name and adds it as a descendant of the parent concept.
+     * This is a convenience method that creates both the concept and the IS-A relationship.
+     * @param parentConceptId The public ID (UUID) of the parent concept
+     * @param conceptName The fully qualified name for the new concept
+     * @return DescendantOperationResponse containing the newly created concept's ID
+     */
+    DescendantOperationResponse createAndAddDescendant(String parentConceptId, String conceptName);
+
+    /**
      * Removes a descendant relationship between a parent concept and a descendant concept.
      * This removes the IS-A relationship making the descendant no longer a child of the parent.
      * @param parentConceptId The public ID (UUID) of the parent concept

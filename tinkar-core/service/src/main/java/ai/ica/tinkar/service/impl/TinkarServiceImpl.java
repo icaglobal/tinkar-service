@@ -950,6 +950,100 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     @Override
+    public DescendantOperationResponse createAndAddDescendant(String parentConceptId, String conceptName) {
+        try {
+            PublicId parentPublicId = primitive.getPublicId(parentConceptId);
+            int parentNid = EntityService.get().nidForPublicId(parentPublicId);
+
+            // Create a new concept with a new UUID
+            UUID newConceptUuid = UUID.randomUUID();
+            PublicId newConceptPublicId = PublicIds.of(newConceptUuid);
+            long currentTime = System.currentTimeMillis();
+
+            Transaction transaction = Transaction.make("Create new concept: " + conceptName);
+
+            try {
+                // Create STAMP for the new concept
+                StampEntity<?> stamp = transaction.getStamp(
+                        dev.ikm.tinkar.terms.State.ACTIVE,
+                        currentTime,
+                        TinkarTerm.USER.nid(),
+                        TinkarTerm.SOLOR_OVERLAY_MODULE.nid(),
+                        TinkarTerm.DEVELOPMENT_PATH.nid()
+                );
+
+                // Create the concept record
+                dev.ikm.tinkar.entity.ConceptRecord conceptRecord =
+                        dev.ikm.tinkar.entity.ConceptRecord.build(
+                                newConceptUuid,
+                                stamp.versions().get(0)
+                        );
+
+                EntityService.get().putEntity(conceptRecord);
+                transaction.addComponent(conceptRecord);
+
+                // Get the NID for the newly created concept
+                int newConceptNid = EntityService.get().nidForPublicId(newConceptPublicId);
+
+                // Create a fully qualified name semantic for the concept
+                UUID fqnSemanticUuid = UUID.randomUUID();
+                SemanticRecord fqnSemantic = SemanticRecord.build(
+                        fqnSemanticUuid,
+                        TinkarTerm.DESCRIPTION_PATTERN.nid(),
+                        newConceptNid,
+                        stamp.versions().get(0),
+                        Lists.immutable.of(
+                                TinkarTerm.ENGLISH_LANGUAGE.publicId(),
+                                conceptName,
+                                TinkarTerm.CASE_SIGNIFICANCE.publicId(),
+                                TinkarTerm.FULLY_QUALIFIED_NAME_DESCRIPTION_TYPE.publicId()
+                        )
+                );
+
+                EntityService.get().putEntity(fqnSemantic);
+                transaction.addComponent(fqnSemantic);
+
+                // Create navigation semantic to establish parent-child relationship
+                UUID navSemanticUuid = UUID.randomUUID();
+                IntIdSet destinationSet = IntIds.set.of(parentNid);
+                IntIdSet originSet = IntIds.set.empty();
+
+                SemanticRecord navSemantic = SemanticRecord.build(
+                        navSemanticUuid,
+                        TinkarTerm.STATED_NAVIGATION_PATTERN.nid(),
+                        newConceptNid,
+                        stamp.versions().get(0),
+                        Lists.immutable.of(destinationSet, originSet)
+                );
+
+                EntityService.get().putEntity(navSemantic);
+                transaction.addComponent(navSemantic);
+
+                transaction.commit();
+
+                log.info("Created new concept {} with name '{}' as descendant of {}",
+                        newConceptUuid, conceptName, parentConceptId);
+
+                return DescendantOperationResponse.success(
+                        parentConceptId,
+                        newConceptUuid.toString(),
+                        conceptName,
+                        "CREATED"
+                );
+
+            } catch (Exception e) {
+                transaction.cancel();
+                throw e;
+            }
+
+        } catch (Exception e) {
+            log.error("Failed to create and add descendant to parent {}: {}",
+                    parentConceptId, e.getMessage(), e);
+            return DescendantOperationResponse.error(parentConceptId, null, e.getMessage());
+        }
+    }
+
+    @Override
     public DescendantOperationResponse removeDescendant(String parentConceptId, String descendantConceptId) {
         try {
             PublicId parentPublicId = primitive.getPublicId(parentConceptId);

@@ -81,3 +81,23 @@ export async function addDescendant(
 
   return response.json();
 }
+
+export async function createAndAddDescendant(
+  parentConceptId: string,
+  conceptName: string
+): Promise<DescendantOperationResponse> {
+  const params = new URLSearchParams({ parentConceptId, conceptName });
+
+  const response = await fetch(`${API_BASE_URL}/descendants/create?${params}`, {
+    method: 'POST',
+    headers: {
+      accept: '*/*',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json();
+}

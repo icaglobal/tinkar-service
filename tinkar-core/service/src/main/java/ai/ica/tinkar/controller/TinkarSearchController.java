@@ -246,6 +246,19 @@ public class TinkarSearchController {
                 return ResponseEntity.ok(tinkarService.addDescendant(parentConceptId, descendantConceptId));
         }
 
+        @Operation(summary = "Create a new concept and add as descendant", description = "Creates a new concept with the specified name and establishes an IS-A relationship with the parent concept.")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "New concept created and added as descendant successfully", content = @Content(schema = @Schema(implementation = DescendantOperationResponse.class))),
+                        @ApiResponse(responseCode = "400", description = "Invalid concept ID or name parameter")
+        })
+        @PostMapping("/descendants/create")
+        public ResponseEntity<DescendantOperationResponse> createAndAddDescendant(
+                        @Parameter(description = "Parent concept ID (UUID)", required = true, example = "f6978e15-e169-58c2-a93d-eac1511974da") @RequestParam("parentConceptId") String parentConceptId,
+                        @Parameter(description = "Name for the new concept", required = true, example = "New Medical Condition") @RequestParam("conceptName") String conceptName) {
+
+                return ResponseEntity.ok(tinkarService.createAndAddDescendant(parentConceptId, conceptName));
+        }
+
         @Operation(summary = "Remove a descendant from a concept", description = "Removes the IS-A relationship between a parent concept and a descendant concept. The descendant will no longer appear as a child of the parent.")
         @ApiResponses(value = {
                         @ApiResponse(responseCode = "200", description = "Descendant removed successfully", content = @Content(schema = @Schema(implementation = DescendantOperationResponse.class))),
