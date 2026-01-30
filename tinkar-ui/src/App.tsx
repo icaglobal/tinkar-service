@@ -2,13 +2,14 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { SearchBox } from './components/SearchBox';
 import { ResultsTable } from './components/ResultsTable';
-import { conceptSearch, getDescendants, removeDescendant } from './api/tinkarApi';
+import { conceptSearch, getDescendants, removeDescendant, addDescendant } from './api/tinkarApi';
 import './App.css';
 
 function App() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedConceptId, setSelectedConceptId] = useState<string | null>(null);
   const [selectedConceptName, setSelectedConceptName] = useState<string>('');
+  const [newDescendantId, setNewDescendantId] = useState<string>('');
 
   const queryClient = useQueryClient();
 
@@ -42,6 +43,15 @@ function App() {
     },
   });
 
+  const addMutation = useMutation({
+    mutationFn: ({ parentId, descendantId }: { parentId: string; descendantId: string }) =>
+      addDescendant(parentId, descendantId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['descendants', selectedConceptId] });
+      setNewDescendantId('');
+    },
+  });
+
   const handleSearch = (query: string) => {
     setSearchQuery(query);
     setSelectedConceptId(null);
@@ -62,6 +72,14 @@ function App() {
   const handleDelete = (descendantId: string) => {
     if (selectedConceptId && confirm('Are you sure you want to remove this descendant?')) {
       deleteMutation.mutate({ parentId: selectedConceptId, descendantId });
+    }
+  };
+
+  const handleAddDescendant = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmedId = newDescendantId.trim();
+    if (selectedConceptId && trimmedId) {
+      addMutation.mutate({ parentId: selectedConceptId, descendantId: trimmedId });
     }
   };
 
@@ -106,6 +124,39 @@ function App() {
                 Error: {deleteMutation.error instanceof Error ? deleteMutation.error.message : 'Failed to delete descendant'}
               </div>
             )}
+            {addMutation.isError && (
+              <div className="error-message">
+                Error: {addMutation.error instanceof Error ? addMutation.error.message : 'Failed to add descendant'}
+              </div>
+            )}
+            {addMutation.isSuccess && (
+              <div className="success-message">
+                Descendant added successfully!
+              </div>
+            )}
+
+            <form className="add-descendant-form" onSubmit={handleAddDescendant}>
+              <label htmlFor="descendant-id">Add Descendant by Concept ID:</label>
+              <div className="add-descendant-input-group">
+                <input
+                  id="descendant-id"
+                  type="text"
+                  placeholder="Enter concept UUID"
+                  value={newDescendantId}
+                  onChange={(e) => setNewDescendantId(e.target.value)}
+                  disabled={addMutation.isPending}
+                  className="descendant-input"
+                />
+                <button
+                  type="submit"
+                  disabled={!newDescendantId.trim() || addMutation.isPending}
+                  className="add-button"
+                >
+                  {addMutation.isPending ? 'Adding...' : 'Add'}
+                </button>
+              </div>
+            </form>
+
             {descendantsData && descendantsData.success && (
               <ResultsTable
                 results={sortedDescendants}

@@ -61,3 +61,23 @@ export async function removeDescendant(
 
   return response.json();
 }
+
+export async function addDescendant(
+  parentConceptId: string,
+  descendantConceptId: string
+): Promise<DescendantOperationResponse> {
+  const params = new URLSearchParams({ parentConceptId, descendantConceptId });
+
+  const response = await fetch(`${API_BASE_URL}/descendants?${params}`, {
+    method: 'POST',
+    headers: {
+      accept: '*/*',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json();
+}
