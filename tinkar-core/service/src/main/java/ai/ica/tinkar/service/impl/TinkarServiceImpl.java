@@ -124,7 +124,18 @@ public class TinkarServiceImpl implements TinkarService {
     public TinkarSearchQueryResponse getDescendantConcepts(String conceptId) {
         try {
             PublicId parentConceptId = primitive.getPublicId(conceptId);
+
+            // Debug: Log navigation semantics for this parent
+            int parentNid = EntityService.get().nidForPublicId(parentConceptId);
+            log.debug("Getting descendants for parent {} (nid: {})", conceptId, parentNid);
+
+            int[] parentNavSemantics = PrimitiveData.get().semanticNidsForComponentOfPattern(
+                parentNid, TinkarTerm.STATED_NAVIGATION_PATTERN.nid());
+            log.debug("Parent has {} navigation semantics attached", parentNavSemantics.length);
+
             List<PublicId> descendants = primitive.descendantsOf(parentConceptId);
+            log.debug("NavigationCalculator returned {} descendants", descendants.size());
+
             List<TinkarSearchResult> results = descendants.stream()
                     .map(this::publicIdToSearchResult)
                     .toList();
@@ -1049,6 +1060,32 @@ public class TinkarServiceImpl implements TinkarService {
                     log.debug("Changes saved successfully");
                 } catch (Exception saveEx) {
                     log.error("Failed to save changes after creating concept: {}", saveEx.getMessage(), saveEx);
+                }
+
+                // Debug: Test if navigation semantic is queryable from parent's perspective
+                log.debug("Testing if navigation semantic is queryable from parent's perspective...");
+                try {
+                    int[] parentNavSemantics = PrimitiveData.get().semanticNidsForComponentOfPattern(
+                        parentNid, TinkarTerm.STATED_NAVIGATION_PATTERN.nid());
+                    log.debug("Parent {} has {} total navigation semantics", parentConceptId, parentNavSemantics.length);
+
+                    // Also verify the child has its navigation semantic
+                    int[] childNavSemantics = PrimitiveData.get().semanticNidsForComponentOfPattern(
+                        newConceptNid, TinkarTerm.STATED_NAVIGATION_PATTERN.nid());
+                    log.debug("New child {} has {} navigation semantics", newConceptUuid, childNavSemantics.length);
+
+                    if (childNavSemantics.length > 0) {
+                        log.debug("Child's navigation semantic nid: {}", childNavSemantics[0]);
+                        // Try to read the semantic to verify it's actually stored
+                        Entity<?> semanticEntity = EntityService.get().getEntityFast(childNavSemantics[0]);
+                        log.debug("Successfully retrieved navigation semantic entity: {}", semanticEntity != null ? "FOUND" : "NOT FOUND");
+                        if (semanticEntity != null && semanticEntity instanceof SemanticEntity<?> semantic) {
+                            log.debug("Navigation semantic details - referencedComponent: {}, pattern: {}",
+                                semantic.referencedComponentNid(), semantic.patternNid());
+                        }
+                    }
+                } catch (Exception ex) {
+                    log.error("Failed to query navigation semantics: {}", ex.getMessage(), ex);
                 }
 
                 return DescendantOperationResponse.success(
