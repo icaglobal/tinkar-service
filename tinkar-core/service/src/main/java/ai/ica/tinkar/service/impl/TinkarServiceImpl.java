@@ -995,7 +995,7 @@ public class TinkarServiceImpl implements TinkarService {
                         Lists.immutable.of(
                                 TinkarTerm.ENGLISH_LANGUAGE.publicId(),
                                 conceptName,
-                                TinkarTerm.CASE_SIGNIFICANCE.publicId(),
+                                TinkarTerm.DESCRIPTION_CASE_SIGNIFICANCE.publicId(),
                                 TinkarTerm.FULLY_QUALIFIED_NAME_DESCRIPTION_TYPE.publicId()
                         )
                 );
