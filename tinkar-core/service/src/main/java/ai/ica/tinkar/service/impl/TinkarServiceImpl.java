@@ -27,11 +27,9 @@ import dev.ikm.tinkar.coordinate.stamp.change.FieldChangeRecord;
 import dev.ikm.tinkar.coordinate.stamp.change.VersionChangeRecord;
 import dev.ikm.tinkar.entity.Entity;
 import dev.ikm.tinkar.entity.EntityService;
-import dev.ikm.tinkar.entity.RecordListBuilder;
 import dev.ikm.tinkar.entity.SemanticEntity;
 import dev.ikm.tinkar.entity.SemanticEntityVersion;
 import dev.ikm.tinkar.entity.SemanticRecord;
-import dev.ikm.tinkar.entity.SemanticVersionRecord;
 import dev.ikm.tinkar.entity.StampEntity;
 import dev.ikm.tinkar.entity.transaction.Transaction;
 import dev.ikm.tinkar.schema.StampVersion;
@@ -126,33 +124,7 @@ public class TinkarServiceImpl implements TinkarService {
     public TinkarSearchQueryResponse getDescendantConcepts(String conceptId) {
         try {
             PublicId parentConceptId = primitive.getPublicId(conceptId);
-
-            // Debug: Log navigation semantics for this parent
-            int parentNid = EntityService.get().nidForPublicId(parentConceptId);
-            log.debug("Getting descendants for parent {} (nid: {})", conceptId, parentNid);
-
-            int[] parentNavSemantics = PrimitiveData.get().semanticNidsForComponentOfPattern(
-                parentNid, TinkarTerm.INFERRED_NAVIGATION_PATTERN.nid());
-            log.debug("Parent has {} INFERRED navigation semantics attached", parentNavSemantics.length);
-
-            // Debug: Examine the first navigation semantic to understand the structure
-            if (parentNavSemantics.length > 0) {
-                Entity<?> firstSemantic = EntityService.get().getEntityFast(parentNavSemantics[0]);
-                if (firstSemantic instanceof SemanticEntity<?> semantic) {
-                    log.debug("Example navigation semantic structure:");
-                    log.debug("  - Attached to component nid: {}", semantic.referencedComponentNid());
-                    log.debug("  - Pattern nid: {}", semantic.patternNid());
-                    if (!semantic.versions().isEmpty()) {
-                        SemanticEntityVersion version = semantic.versions().get(semantic.versions().size() - 1);
-                        log.debug("  - Field 0 (DESTINATION): {}", version.fieldValues().get(0));
-                        log.debug("  - Field 1 (ORIGIN): {}", version.fieldValues().get(1));
-                    }
-                }
-            }
-
             List<PublicId> descendants = primitive.descendantsOf(parentConceptId);
-            log.debug("NavigationCalculator returned {} descendants", descendants.size());
-
             List<TinkarSearchResult> results = descendants.stream()
                     .map(this::publicIdToSearchResult)
                     .toList();
@@ -1060,8 +1032,6 @@ public class TinkarServiceImpl implements TinkarService {
                     mutableDest.add(newConceptNid);
                     destinationSet = IntIds.set.of(mutableDest.toArray());
                     originSet = existingOrigin;
-
-                    log.debug("Updating existing navigation semantic {} to include new child", navSemanticUuid);
                 } else {
                     // Parent doesn't have a navigation semantic yet - create a new one
                     navSemanticUuid = dev.ikm.tinkar.common.util.uuid.UuidT5Generator.singleSemanticUuid(
@@ -1069,8 +1039,6 @@ public class TinkarServiceImpl implements TinkarService {
                             EntityService.get().getEntityFast(parentNid));
                     destinationSet = IntIds.set.of(newConceptNid);
                     originSet = IntIds.set.empty();
-
-                    log.debug("Creating new navigation semantic {} for parent with first child", navSemanticUuid);
                 }
 
                 SemanticRecord navSemantic = SemanticRecord.build(
@@ -1089,61 +1057,14 @@ public class TinkarServiceImpl implements TinkarService {
                 log.info("Created new concept {} with name '{}' as descendant of {}",
                         newConceptUuid, conceptName, parentConceptId);
 
-                // Verify the concept and navigation semantic were created
-                log.debug("Verifying concept creation - NID: {}, PublicId: {}", newConceptNid, newConceptPublicId);
-                Entity<?> verifyEntity = EntityService.get().getEntityFast(newConceptNid);
-                if (verifyEntity != null) {
-                    log.debug("Concept verified: {}", verifyEntity.publicId());
-                } else {
-                    log.warn("Could not verify concept creation immediately");
-                }
-
-                // Verify navigation semantic is attached to parent
-                int[] semanticNids = EntityService.get().semanticNidsForComponentOfPattern(
-                        parentNid, TinkarTerm.INFERRED_NAVIGATION_PATTERN.nid());
-                log.debug("Parent now has {} INFERRED navigation semantics (should have increased by 1)", semanticNids.length);
-
-                // Clear the navigation calculator cache so it picks up the new navigation semantic
-                log.debug("Clearing navigation calculator cache to refresh descendant relationships");
+                // Clear caches so the new relationship is visible immediately
                 dev.ikm.tinkar.common.service.CachingService.clearAll();
 
-                // Immediately save to ensure data is persisted
-                log.debug("Saving changes to persistent storage");
+                // Save changes to persistent storage
                 try {
                     PrimitiveData.save();
-                    log.debug("Changes saved successfully");
                 } catch (Exception saveEx) {
                     log.error("Failed to save changes after creating concept: {}", saveEx.getMessage(), saveEx);
-                }
-
-                // Debug: Test if navigation semantic is queryable and verify structure
-                log.debug("Testing if navigation semantic is queryable from parent's perspective...");
-                try {
-                    int[] verifyParentNavSemantics = PrimitiveData.get().semanticNidsForComponentOfPattern(
-                        parentNid, TinkarTerm.INFERRED_NAVIGATION_PATTERN.nid());
-                    log.debug("Parent {} has {} total INFERRED navigation semantics", parentConceptId, verifyParentNavSemantics.length);
-
-                    if (verifyParentNavSemantics.length > 0) {
-                        // Find and verify the newly created semantic
-                        for (int semanticNid : verifyParentNavSemantics) {
-                            Entity<?> semanticEntity = EntityService.get().getEntityFast(semanticNid);
-                            if (semanticEntity instanceof SemanticEntity<?> semantic) {
-                                if (!semantic.versions().isEmpty()) {
-                                    SemanticEntityVersion version = semantic.versions().get(semantic.versions().size() - 1);
-                                    Object destinationField = version.fieldValues().get(0);
-                                    // Check if this semantic contains our new child
-                                    if (destinationField instanceof IntIdSet destSet && destSet.contains(newConceptNid)) {
-                                        log.debug("Found navigation semantic linking parent to new child:");
-                                        log.debug("  - Semantic nid: {}", semanticNid);
-                                        log.debug("  - Attached to parent nid: {}", semantic.referencedComponentNid());
-                                        log.debug("  - Destination field contains child nid: {}", newConceptNid);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } catch (Exception ex) {
-                    log.error("Failed to query navigation semantics: {}", ex.getMessage(), ex);
                 }
 
                 return DescendantOperationResponse.success(
@@ -1174,39 +1095,22 @@ public class TinkarServiceImpl implements TinkarService {
             int parentNid = EntityService.get().nidForPublicId(parentPublicId);
             int descendantNid = EntityService.get().nidForPublicId(descendantPublicId);
 
+            log.debug("removeDescendant: parentNid={}, descendantNid={}", parentNid, descendantNid);
+
             // Get description for the descendant
             String descendantDescription = Calculators.View.Default()
                     .languageCalculator()
                     .getRegularDescriptionText(descendantNid)
                     .orElse("Unknown concept");
 
-            // Find the navigation semantic that links this descendant to the parent
-            int[] semanticNids = EntityService.get().semanticNidsForComponentOfPattern(
-                    descendantNid, TinkarTerm.STATED_NAVIGATION_PATTERN.nid());
+            // Find the navigation semantic attached to the PARENT using INFERRED pattern
+            int[] parentNavSemantics = EntityService.get().semanticNidsForComponentOfPattern(
+                    parentNid, TinkarTerm.INFERRED_NAVIGATION_PATTERN.nid());
 
-            UUID foundSemanticUuid = null;
-            int foundSemanticNid = 0;
+            log.debug("removeDescendant: found {} INFERRED navigation semantics for parent", parentNavSemantics.length);
 
-            for (int semanticNid : semanticNids) {
-                Entity<?> entity = EntityService.get().getEntityFast(semanticNid);
-                if (entity instanceof SemanticEntity<?> semanticEntity) {
-                    // Check if this semantic references the parent
-                    if (!semanticEntity.versions().isEmpty()) {
-                        SemanticEntityVersion version = semanticEntity.versions().get(
-                                semanticEntity.versions().size() - 1);
-                        Object[] fields = version.fieldValues().toArray();
-                        if (fields.length > 0 && fields[0] instanceof IntIdSet destinationSet) {
-                            if (destinationSet.contains(parentNid)) {
-                                foundSemanticUuid = semanticEntity.publicId().asUuidList().get(0);
-                                foundSemanticNid = semanticNid;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (foundSemanticUuid == null) {
+            if (parentNavSemantics.length == 0) {
+                log.debug("removeDescendant: No navigation semantics found for parent");
                 return DescendantOperationResponse.error(
                         parentConceptId,
                         descendantConceptId,
@@ -1214,49 +1118,94 @@ public class TinkarServiceImpl implements TinkarService {
                 );
             }
 
-            // Create a new version with INACTIVE state to "delete" the relationship
+            // Get the existing semantic
+            Entity<?> existingEntity = EntityService.get().getEntityFast(parentNavSemantics[0]);
+            log.debug("removeDescendant: existingEntity type={}", existingEntity != null ? existingEntity.getClass().getSimpleName() : "null");
+
+            if (!(existingEntity instanceof SemanticEntity<?> existingSemantic)) {
+                return DescendantOperationResponse.error(
+                        parentConceptId,
+                        descendantConceptId,
+                        "Could not retrieve navigation semantic"
+                );
+            }
+
+            // Use StampCalculator to get the actual latest version (not just last in list)
+            log.debug("removeDescendant: semantic has {} versions", existingSemantic.versions().size());
+            Latest<?> latestResult = Calculators.View.Default()
+                    .stampCalculator()
+                    .latest(existingSemantic);
+
+            if (!latestResult.isPresent()) {
+                log.debug("removeDescendant: No latest version found via StampCalculator");
+                return DescendantOperationResponse.error(
+                        parentConceptId,
+                        descendantConceptId,
+                        "Could not find latest version of navigation semantic"
+                );
+            }
+
+            SemanticEntityVersion latestVersion = (SemanticEntityVersion) latestResult.get();
+            log.debug("removeDescendant: latestVersion fieldValues count={}", latestVersion.fieldValues().size());
+            Object destField = latestVersion.fieldValues().get(0);
+            log.debug("removeDescendant: destination field type={}", destField != null ? destField.getClass().getSimpleName() : "null");
+
+            IntIdSet existingDestination = (IntIdSet) destField;
+            log.debug("removeDescendant: destination set size={}, looking for descendantNid={}", existingDestination.size(), descendantNid);
+            log.debug("removeDescendant: destination set contains descendantNid? {}", existingDestination.contains(descendantNid));
+
+            if (!existingDestination.contains(descendantNid)) {
+                log.debug("removeDescendant: descendant not found in destination set");
+                return DescendantOperationResponse.error(
+                        parentConceptId,
+                        descendantConceptId,
+                        "No navigation relationship found between parent and descendant"
+                );
+            }
+
+            // Remove the descendant from the destination set
+            MutableIntSet mutableDest = IntSets.mutable.of(existingDestination.toArray());
+            mutableDest.remove(descendantNid);
+            IntIdSet newDestinationSet = IntIds.set.of(mutableDest.toArray());
+            IntIdSet existingOrigin = (IntIdSet) latestVersion.fieldValues().get(1);
+
+            // Create a new version with the updated destination set
             long currentTime = System.currentTimeMillis();
             Transaction transaction = Transaction.make("Remove descendant " + descendantDescription + " from parent");
 
             try {
                 StampEntity<?> stamp = transaction.getStamp(
-                        dev.ikm.tinkar.terms.State.INACTIVE,  // Mark as inactive to remove
+                        dev.ikm.tinkar.terms.State.ACTIVE,
                         currentTime,
                         TinkarTerm.USER.nid(),
                         TinkarTerm.SOLOR_OVERLAY_MODULE.nid(),
                         TinkarTerm.DEVELOPMENT_PATH.nid()
                 );
 
-                // Get the existing semantic and add a new inactive version
-                Entity<?> entity = EntityService.get().getEntityFast(foundSemanticNid);
-                if (entity instanceof SemanticRecord semanticRecord) {
-                    SemanticEntityVersion latestVersion = semanticRecord.versions().get(
-                            semanticRecord.versions().size() - 1);
+                UUID navSemanticUuid = existingSemantic.publicId().asUuidArray()[0];
+                SemanticRecord navSemantic = SemanticRecord.build(
+                        navSemanticUuid,
+                        TinkarTerm.INFERRED_NAVIGATION_PATTERN.nid(),
+                        parentNid,
+                        stamp.versions().get(0),
+                        Lists.immutable.of(newDestinationSet, existingOrigin)
+                );
 
-                    // Create new version with same fields but INACTIVE state
-                    SemanticVersionRecord newVersion = new SemanticVersionRecord(
-                            semanticRecord,
-                            stamp.versions().get(0).stampNid(),
-                            latestVersion.fieldValues()
-                    );
-
-                    // Use RecordListBuilder to properly add the new version
-                    RecordListBuilder<SemanticVersionRecord> versionBuilder = RecordListBuilder.make();
-                    for (var version : semanticRecord.versions()) {
-                        versionBuilder.add((SemanticVersionRecord) version);
-                    }
-                    versionBuilder.add(newVersion);
-
-                    SemanticRecord updatedRecord = semanticRecord.withVersions(versionBuilder.build());
-
-                    EntityService.get().putEntity(updatedRecord);
-                    transaction.addComponent(updatedRecord);
-                }
-
+                EntityService.get().putEntity(navSemantic);
+                transaction.addComponent(navSemantic);
                 transaction.commit();
 
-                log.info("Removed navigation semantic {} - {} is no longer a descendant of {}",
-                        foundSemanticUuid, descendantConceptId, parentConceptId);
+                log.info("Removed {} as descendant of {}", descendantConceptId, parentConceptId);
+
+                // Clear caches so the change is visible immediately
+                dev.ikm.tinkar.common.service.CachingService.clearAll();
+
+                // Save changes to persistent storage
+                try {
+                    PrimitiveData.save();
+                } catch (Exception saveEx) {
+                    log.error("Failed to save changes after removing descendant: {}", saveEx.getMessage(), saveEx);
+                }
 
                 return DescendantOperationResponse.success(
                         parentConceptId,
