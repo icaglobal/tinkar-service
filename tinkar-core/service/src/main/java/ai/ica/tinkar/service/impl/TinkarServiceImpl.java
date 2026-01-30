@@ -133,6 +133,21 @@ public class TinkarServiceImpl implements TinkarService {
                 parentNid, TinkarTerm.STATED_NAVIGATION_PATTERN.nid());
             log.debug("Parent has {} navigation semantics attached", parentNavSemantics.length);
 
+            // Debug: Examine the first navigation semantic to understand the structure
+            if (parentNavSemantics.length > 0) {
+                Entity<?> firstSemantic = EntityService.get().getEntityFast(parentNavSemantics[0]);
+                if (firstSemantic instanceof SemanticEntity<?> semantic) {
+                    log.debug("Example navigation semantic structure:");
+                    log.debug("  - Attached to component nid: {}", semantic.referencedComponentNid());
+                    log.debug("  - Pattern nid: {}", semantic.patternNid());
+                    if (!semantic.versions().isEmpty()) {
+                        SemanticEntityVersion version = semantic.versions().get(semantic.versions().size() - 1);
+                        log.debug("  - Field 0 (DESTINATION): {}", version.fieldValues().get(0));
+                        log.debug("  - Field 1 (ORIGIN): {}", version.fieldValues().get(1));
+                    }
+                }
+            }
+
             List<PublicId> descendants = primitive.descendantsOf(parentConceptId);
             log.debug("NavigationCalculator returned {} descendants", descendants.size());
 
