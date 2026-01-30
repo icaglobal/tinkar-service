@@ -1024,6 +1024,20 @@ public class TinkarServiceImpl implements TinkarService {
                 log.info("Created new concept {} with name '{}' as descendant of {}",
                         newConceptUuid, conceptName, parentConceptId);
 
+                // Verify the concept and navigation semantic were created
+                log.debug("Verifying concept creation - NID: {}, PublicId: {}", newConceptNid, newConceptPublicId);
+                Entity<?> verifyEntity = EntityService.get().getEntityFast(newConceptNid);
+                if (verifyEntity != null) {
+                    log.debug("Concept verified: {}", verifyEntity.publicId());
+                } else {
+                    log.warn("Could not verify concept creation immediately");
+                }
+
+                // Verify navigation semantic
+                int[] semanticNids = EntityService.get().semanticNidsForComponentOfPattern(
+                        newConceptNid, TinkarTerm.STATED_NAVIGATION_PATTERN.nid());
+                log.debug("Found {} navigation semantics for new concept", semanticNids.length);
+
                 return DescendantOperationResponse.success(
                         parentConceptId,
                         newConceptUuid.toString(),
