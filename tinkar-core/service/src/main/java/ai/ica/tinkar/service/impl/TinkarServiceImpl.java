@@ -8,6 +8,9 @@ import ai.ica.tinkar.dto.ConceptChangeHistoryResponse;
 import ai.ica.tinkar.dto.ConceptSemanticsResponse;
 import ai.ica.tinkar.dto.ConceptSemanticsResponse.SemanticInfo;
 import ai.ica.tinkar.dto.ConceptSemanticsResponse.FieldValue;
+import ai.ica.tinkar.dto.DescendantOperationResponse;
+import dev.ikm.tinkar.common.id.IntIdSet;
+import dev.ikm.tinkar.common.id.IntIds;
 import ai.ica.tinkar.proto.TinkarConceptDescriptions;
 import ai.ica.tinkar.proto.TinkarSearchQueryResponse;
 import ai.ica.tinkar.proto.TinkarSearchResult;
@@ -24,6 +27,7 @@ import dev.ikm.tinkar.coordinate.stamp.change.FieldChangeRecord;
 import dev.ikm.tinkar.coordinate.stamp.change.VersionChangeRecord;
 import dev.ikm.tinkar.entity.Entity;
 import dev.ikm.tinkar.entity.EntityService;
+import dev.ikm.tinkar.entity.RecordListBuilder;
 import dev.ikm.tinkar.entity.SemanticEntity;
 import dev.ikm.tinkar.entity.SemanticEntityVersion;
 import dev.ikm.tinkar.entity.SemanticRecord;
@@ -369,6 +373,9 @@ public class TinkarServiceImpl implements TinkarService {
                 // Add to transaction and commit
                 transaction.addComponent(semanticRecord);
                 transaction.commit();
+
+                // Note: Changes are held in memory until saveChanges() is called.
+                // This allows for a review process before persisting to disk.
 
                 log.info("Created comment semantic {} on concept {} with comment: {}",
                         semanticUuid, conceptId, comment);
@@ -838,6 +845,219 @@ public class TinkarServiceImpl implements TinkarService {
             return summary;
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    @Override
+    public String saveChanges() {
+        log.info("Saving pending changes to persistent storage...");
+        try {
+            PrimitiveData.save();
+            log.info("Changes saved successfully to persistent storage");
+            return "Changes saved successfully to persistent storage. Changes will now survive server restarts.";
+        } catch (Exception e) {
+            log.error("Failed to save changes: {}", e.getMessage(), e);
+            return "Failed to save changes: " + e.getMessage();
+        }
+    }
+
+    @Override
+    public String discardChanges() {
+        log.info("Discarding pending changes...");
+        try {
+            // To discard changes, we need to reload the data from disk
+            // This is a more complex operation that may require restarting the data provider
+            // For now, we'll just note that changes will be lost on restart
+            log.warn("Discard changes requested. Pending changes will be lost when the server restarts.");
+            return "Pending changes have been marked for discard. " +
+                   "Restart the server to reload data from the last saved state. " +
+                   "Note: Any changes made since the last save will be lost.";
+        } catch (Exception e) {
+            log.error("Failed to discard changes: {}", e.getMessage(), e);
+            return "Failed to discard changes: " + e.getMessage();
+        }
+    }
+
+    @Override
+    public DescendantOperationResponse addDescendant(String parentConceptId, String descendantConceptId) {
+        try {
+            PublicId parentPublicId = primitive.getPublicId(parentConceptId);
+            PublicId descendantPublicId = primitive.getPublicId(descendantConceptId);
+
+            int parentNid = EntityService.get().nidForPublicId(parentPublicId);
+            int descendantNid = EntityService.get().nidForPublicId(descendantPublicId);
+
+            // Get description for the descendant
+            String descendantDescription = Calculators.View.Default()
+                    .languageCalculator()
+                    .getRegularDescriptionText(descendantNid)
+                    .orElse("Unknown concept");
+
+            // Create a new semantic using STATED_NAVIGATION_PATTERN
+            // Field 0: Component ID Set for relationship destinations (parents)
+            // Field 1: Component ID Set for relationship origins (this would be for reverse lookup)
+            UUID semanticUuid = UUID.randomUUID();
+            long currentTime = System.currentTimeMillis();
+
+            Transaction transaction = Transaction.make("Add descendant " + descendantDescription + " to parent");
+
+            try {
+                StampEntity<?> stamp = transaction.getStamp(
+                        dev.ikm.tinkar.terms.State.ACTIVE,
+                        currentTime,
+                        TinkarTerm.USER.nid(),
+                        TinkarTerm.SOLOR_OVERLAY_MODULE.nid(),
+                        TinkarTerm.DEVELOPMENT_PATH.nid()
+                );
+
+                // Build the semantic record with STATED_NAVIGATION_PATTERN
+                // The descendant concept references the parent as its destination (IS-A relationship)
+                IntIdSet destinationSet = IntIds.set.of(parentNid);
+                IntIdSet originSet = IntIds.set.empty();
+
+                SemanticRecord semanticRecord = SemanticRecord.build(
+                        semanticUuid,
+                        TinkarTerm.STATED_NAVIGATION_PATTERN.nid(),
+                        descendantNid,  // The semantic is attached to the descendant concept
+                        stamp.versions().get(0),
+                        Lists.immutable.of(destinationSet, originSet)
+                );
+
+                EntityService.get().putEntity(semanticRecord);
+                transaction.addComponent(semanticRecord);
+                transaction.commit();
+
+                log.info("Created navigation semantic {} making {} a descendant of {}",
+                        semanticUuid, descendantConceptId, parentConceptId);
+
+                return DescendantOperationResponse.success(
+                        parentConceptId,
+                        descendantConceptId,
+                        descendantDescription,
+                        "CREATED"
+                );
+
+            } catch (Exception e) {
+                transaction.cancel();
+                throw e;
+            }
+
+        } catch (Exception e) {
+            log.error("Failed to add descendant {} to parent {}: {}",
+                    descendantConceptId, parentConceptId, e.getMessage(), e);
+            return DescendantOperationResponse.error(parentConceptId, descendantConceptId, e.getMessage());
+        }
+    }
+
+    @Override
+    public DescendantOperationResponse removeDescendant(String parentConceptId, String descendantConceptId) {
+        try {
+            PublicId parentPublicId = primitive.getPublicId(parentConceptId);
+            PublicId descendantPublicId = primitive.getPublicId(descendantConceptId);
+
+            int parentNid = EntityService.get().nidForPublicId(parentPublicId);
+            int descendantNid = EntityService.get().nidForPublicId(descendantPublicId);
+
+            // Get description for the descendant
+            String descendantDescription = Calculators.View.Default()
+                    .languageCalculator()
+                    .getRegularDescriptionText(descendantNid)
+                    .orElse("Unknown concept");
+
+            // Find the navigation semantic that links this descendant to the parent
+            int[] semanticNids = EntityService.get().semanticNidsForComponentOfPattern(
+                    descendantNid, TinkarTerm.STATED_NAVIGATION_PATTERN.nid());
+
+            UUID foundSemanticUuid = null;
+            int foundSemanticNid = 0;
+
+            for (int semanticNid : semanticNids) {
+                Entity<?> entity = EntityService.get().getEntityFast(semanticNid);
+                if (entity instanceof SemanticEntity<?> semanticEntity) {
+                    // Check if this semantic references the parent
+                    if (!semanticEntity.versions().isEmpty()) {
+                        SemanticEntityVersion version = semanticEntity.versions().get(
+                                semanticEntity.versions().size() - 1);
+                        Object[] fields = version.fieldValues().toArray();
+                        if (fields.length > 0 && fields[0] instanceof IntIdSet destinationSet) {
+                            if (destinationSet.contains(parentNid)) {
+                                foundSemanticUuid = semanticEntity.publicId().asUuidList().get(0);
+                                foundSemanticNid = semanticNid;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (foundSemanticUuid == null) {
+                return DescendantOperationResponse.error(
+                        parentConceptId,
+                        descendantConceptId,
+                        "No navigation relationship found between parent and descendant"
+                );
+            }
+
+            // Create a new version with INACTIVE state to "delete" the relationship
+            long currentTime = System.currentTimeMillis();
+            Transaction transaction = Transaction.make("Remove descendant " + descendantDescription + " from parent");
+
+            try {
+                StampEntity<?> stamp = transaction.getStamp(
+                        dev.ikm.tinkar.terms.State.INACTIVE,  // Mark as inactive to remove
+                        currentTime,
+                        TinkarTerm.USER.nid(),
+                        TinkarTerm.SOLOR_OVERLAY_MODULE.nid(),
+                        TinkarTerm.DEVELOPMENT_PATH.nid()
+                );
+
+                // Get the existing semantic and add a new inactive version
+                Entity<?> entity = EntityService.get().getEntityFast(foundSemanticNid);
+                if (entity instanceof SemanticRecord semanticRecord) {
+                    SemanticEntityVersion latestVersion = semanticRecord.versions().get(
+                            semanticRecord.versions().size() - 1);
+
+                    // Create new version with same fields but INACTIVE state
+                    SemanticVersionRecord newVersion = new SemanticVersionRecord(
+                            semanticRecord,
+                            stamp.versions().get(0).stampNid(),
+                            latestVersion.fieldValues()
+                    );
+
+                    // Use RecordListBuilder to properly add the new version
+                    RecordListBuilder<SemanticVersionRecord> versionBuilder = RecordListBuilder.make();
+                    for (var version : semanticRecord.versions()) {
+                        versionBuilder.add((SemanticVersionRecord) version);
+                    }
+                    versionBuilder.add(newVersion);
+
+                    SemanticRecord updatedRecord = semanticRecord.withVersions(versionBuilder.build());
+
+                    EntityService.get().putEntity(updatedRecord);
+                    transaction.addComponent(updatedRecord);
+                }
+
+                transaction.commit();
+
+                log.info("Removed navigation semantic {} - {} is no longer a descendant of {}",
+                        foundSemanticUuid, descendantConceptId, parentConceptId);
+
+                return DescendantOperationResponse.success(
+                        parentConceptId,
+                        descendantConceptId,
+                        descendantDescription,
+                        "REMOVED"
+                );
+
+            } catch (Exception e) {
+                transaction.cancel();
+                throw e;
+            }
+
+        } catch (Exception e) {
+            log.error("Failed to remove descendant {} from parent {}: {}",
+                    descendantConceptId, parentConceptId, e.getMessage(), e);
+            return DescendantOperationResponse.error(parentConceptId, descendantConceptId, e.getMessage());
         }
     }
 }

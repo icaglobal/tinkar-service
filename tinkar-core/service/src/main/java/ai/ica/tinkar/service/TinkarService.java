@@ -3,6 +3,7 @@ package ai.ica.tinkar.service;
 import ai.ica.tinkar.dto.ChangeHistoryResponse;
 import ai.ica.tinkar.dto.ConceptChangeHistoryResponse;
 import ai.ica.tinkar.dto.ConceptSemanticsResponse;
+import ai.ica.tinkar.dto.DescendantOperationResponse;
 import ai.ica.tinkar.proto.TinkarSearchQueryResponse;
 
 public interface TinkarService {
@@ -66,4 +67,38 @@ public interface TinkarService {
      * @return ConceptChangeHistoryResponse containing the full change history
      */
     ConceptChangeHistoryResponse getConceptChangeHistory(String conceptId);
+
+    /**
+     * Saves all pending changes to persistent storage (disk).
+     * Changes made via createSampleChange are held in memory until this method is called.
+     * This supports a review workflow where changes can be reviewed before being committed to disk.
+     * @return A message indicating the save result
+     */
+    String saveChanges();
+
+    /**
+     * Discards all pending changes that have not been saved to disk.
+     * This effectively reverts any changes made since the last save or server start.
+     * Note: This requires a data reload to take effect.
+     * @return A message indicating the discard result
+     */
+    String discardChanges();
+
+    /**
+     * Creates a new descendant relationship between a parent concept and an existing concept.
+     * This adds an IS-A relationship making the descendant a child of the parent.
+     * @param parentConceptId The public ID (UUID) of the parent concept
+     * @param descendantConceptId The public ID (UUID) of the concept to make a descendant
+     * @return DescendantOperationResponse indicating success or failure
+     */
+    DescendantOperationResponse addDescendant(String parentConceptId, String descendantConceptId);
+
+    /**
+     * Removes a descendant relationship between a parent concept and a descendant concept.
+     * This removes the IS-A relationship making the descendant no longer a child of the parent.
+     * @param parentConceptId The public ID (UUID) of the parent concept
+     * @param descendantConceptId The public ID (UUID) of the descendant concept to remove
+     * @return DescendantOperationResponse indicating success or failure
+     */
+    DescendantOperationResponse removeDescendant(String parentConceptId, String descendantConceptId);
 }

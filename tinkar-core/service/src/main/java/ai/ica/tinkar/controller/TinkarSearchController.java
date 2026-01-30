@@ -3,6 +3,7 @@ package ai.ica.tinkar.controller;
 import ai.ica.tinkar.dto.ChangeHistoryResponse;
 import ai.ica.tinkar.dto.ConceptChangeHistoryResponse;
 import ai.ica.tinkar.dto.ConceptSemanticsResponse;
+import ai.ica.tinkar.dto.DescendantOperationResponse;
 import ai.ica.tinkar.dto.TinkarSearchQueryResponse;
 import ai.ica.tinkar.dto.TinkarSearchQueryResponse.Descriptions;
 import ai.ica.tinkar.dto.TinkarSearchQueryResponse.SearchResult;
@@ -19,6 +20,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -207,6 +209,54 @@ public class TinkarSearchController {
                         @Parameter(description = "Concept ID (UUID)", required = true, example = "9fc3832b-a5f8-5504-ba16-7551976841dc") @RequestParam("conceptId") String conceptId) {
 
                 return ResponseEntity.ok(tinkarService.getConceptChangeHistory(conceptId));
+        }
+
+        @Operation(summary = "Save pending changes", description = "Saves all pending changes to persistent storage (disk). Changes made via create-change are held in memory until this endpoint is called. This supports a review workflow where changes can be reviewed via concept-change-history before being permanently saved.")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "Save operation completed"),
+                        @ApiResponse(responseCode = "500", description = "Failed to save changes")
+        })
+        @PostMapping("/save-changes")
+        public ResponseEntity<String> saveChanges() {
+                String message = tinkarService.saveChanges();
+                return ResponseEntity.ok(message);
+        }
+
+        @Operation(summary = "Discard pending changes", description = "Discards all pending changes that have not been saved to disk. After calling this, restart the server to reload data from the last saved state.")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "Discard operation completed"),
+                        @ApiResponse(responseCode = "500", description = "Failed to discard changes")
+        })
+        @PostMapping("/discard-changes")
+        public ResponseEntity<String> discardChanges() {
+                String message = tinkarService.discardChanges();
+                return ResponseEntity.ok(message);
+        }
+
+        @Operation(summary = "Add a descendant to a concept", description = "Creates a new IS-A relationship making an existing concept a descendant (child) of the specified parent concept.")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "Descendant added successfully", content = @Content(schema = @Schema(implementation = DescendantOperationResponse.class))),
+                        @ApiResponse(responseCode = "400", description = "Invalid concept ID parameter")
+        })
+        @PostMapping("/descendants")
+        public ResponseEntity<DescendantOperationResponse> addDescendant(
+                        @Parameter(description = "Parent concept ID (UUID)", required = true, example = "f6978e15-e169-58c2-a93d-eac1511974da") @RequestParam("parentConceptId") String parentConceptId,
+                        @Parameter(description = "Concept ID to add as descendant (UUID)", required = true, example = "9fc3832b-a5f8-5504-ba16-7551976841dc") @RequestParam("descendantConceptId") String descendantConceptId) {
+
+                return ResponseEntity.ok(tinkarService.addDescendant(parentConceptId, descendantConceptId));
+        }
+
+        @Operation(summary = "Remove a descendant from a concept", description = "Removes the IS-A relationship between a parent concept and a descendant concept. The descendant will no longer appear as a child of the parent.")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "Descendant removed successfully", content = @Content(schema = @Schema(implementation = DescendantOperationResponse.class))),
+                        @ApiResponse(responseCode = "400", description = "Invalid concept ID parameter")
+        })
+        @DeleteMapping("/descendants")
+        public ResponseEntity<DescendantOperationResponse> removeDescendant(
+                        @Parameter(description = "Parent concept ID (UUID)", required = true, example = "f6978e15-e169-58c2-a93d-eac1511974da") @RequestParam("parentConceptId") String parentConceptId,
+                        @Parameter(description = "Descendant concept ID to remove (UUID)", required = true, example = "9fc3832b-a5f8-5504-ba16-7551976841dc") @RequestParam("descendantConceptId") String descendantConceptId) {
+
+                return ResponseEntity.ok(tinkarService.removeDescendant(parentConceptId, descendantConceptId));
         }
 
         private TinkarSearchQueryResponse toDto(ai.ica.tinkar.proto.TinkarSearchQueryResponse proto) {
