@@ -1038,6 +1038,10 @@ public class TinkarServiceImpl implements TinkarService {
                         newConceptNid, TinkarTerm.STATED_NAVIGATION_PATTERN.nid());
                 log.debug("Found {} navigation semantics for new concept", semanticNids.length);
 
+                // Clear the navigation calculator cache so it picks up the new navigation semantic
+                log.debug("Clearing navigation calculator cache to refresh descendant relationships");
+                dev.ikm.tinkar.common.service.CachingService.clearAll();
+
                 return DescendantOperationResponse.success(
                         parentConceptId,
                         newConceptUuid.toString(),
