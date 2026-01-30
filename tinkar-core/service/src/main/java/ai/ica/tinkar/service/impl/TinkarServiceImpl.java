@@ -38,6 +38,8 @@ import dev.ikm.tinkar.schema.StampVersion;
 import dev.ikm.tinkar.terms.TinkarTerm;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.collections.api.factory.Lists;
+import org.eclipse.collections.api.set.primitive.MutableIntSet;
+import org.eclipse.collections.impl.factory.primitive.IntSets;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -130,8 +132,8 @@ public class TinkarServiceImpl implements TinkarService {
             log.debug("Getting descendants for parent {} (nid: {})", conceptId, parentNid);
 
             int[] parentNavSemantics = PrimitiveData.get().semanticNidsForComponentOfPattern(
-                parentNid, TinkarTerm.STATED_NAVIGATION_PATTERN.nid());
-            log.debug("Parent has {} navigation semantics attached", parentNavSemantics.length);
+                parentNid, TinkarTerm.INFERRED_NAVIGATION_PATTERN.nid());
+            log.debug("Parent has {} INFERRED navigation semantics attached", parentNavSemantics.length);
 
             // Debug: Examine the first navigation semantic to understand the structure
             if (parentNavSemantics.length > 0) {
@@ -1029,16 +1031,51 @@ public class TinkarServiceImpl implements TinkarService {
                 EntityService.get().putEntity(fqnSemantic);
                 transaction.addComponent(fqnSemantic);
 
-                // Create navigation semantic to establish parent-child relationship
-                // The semantic must be attached to the PARENT with the CHILD in the destination field
-                // This allows NavigationCalculator.childrenOf(parent) to find the child
-                UUID navSemanticUuid = UUID.randomUUID();
-                IntIdSet destinationSet = IntIds.set.of(newConceptNid);  // Child in destination
-                IntIdSet originSet = IntIds.set.empty();
+                // Update the parent's navigation semantic to include the new child
+                // The semantic is attached to the PARENT with CHILDREN in the destination field
+                // This allows NavigationCalculator.childrenOf(parent) to find all children
+
+                // Find existing navigation semantic for the parent
+                int[] parentNavSemantics = EntityService.get().semanticNidsForComponentOfPattern(
+                        parentNid, TinkarTerm.INFERRED_NAVIGATION_PATTERN.nid());
+
+                IntIdSet destinationSet;
+                IntIdSet originSet;
+                UUID navSemanticUuid;
+
+                if (parentNavSemantics.length > 0) {
+                    // Parent already has a navigation semantic - update it by adding the new child
+                    Entity<?> existingEntity = EntityService.get().getEntityFast(parentNavSemantics[0]);
+                    SemanticEntity<?> existingSemantic = (SemanticEntity<?>) existingEntity;
+                    navSemanticUuid = existingSemantic.publicId().asUuidArray()[0];
+
+                    // Get the existing field values
+                    SemanticEntityVersion latestVersion = existingSemantic.versions().get(
+                            existingSemantic.versions().size() - 1);
+                    IntIdSet existingDestination = (IntIdSet) latestVersion.fieldValues().get(0);
+                    IntIdSet existingOrigin = (IntIdSet) latestVersion.fieldValues().get(1);
+
+                    // Add the new child to the destination set
+                    MutableIntSet mutableDest = IntSets.mutable.of(existingDestination.toArray());
+                    mutableDest.add(newConceptNid);
+                    destinationSet = IntIds.set.of(mutableDest.toArray());
+                    originSet = existingOrigin;
+
+                    log.debug("Updating existing navigation semantic {} to include new child", navSemanticUuid);
+                } else {
+                    // Parent doesn't have a navigation semantic yet - create a new one
+                    navSemanticUuid = dev.ikm.tinkar.common.util.uuid.UuidT5Generator.singleSemanticUuid(
+                            EntityService.get().getEntityFast(TinkarTerm.INFERRED_NAVIGATION_PATTERN.nid()),
+                            EntityService.get().getEntityFast(parentNid));
+                    destinationSet = IntIds.set.of(newConceptNid);
+                    originSet = IntIds.set.empty();
+
+                    log.debug("Creating new navigation semantic {} for parent with first child", navSemanticUuid);
+                }
 
                 SemanticRecord navSemantic = SemanticRecord.build(
                         navSemanticUuid,
-                        TinkarTerm.STATED_NAVIGATION_PATTERN.nid(),
+                        TinkarTerm.INFERRED_NAVIGATION_PATTERN.nid(),  // Use INFERRED pattern (default coordinate)
                         parentNid,  // Attached to PARENT, not child
                         stamp.versions().get(0),
                         Lists.immutable.of(destinationSet, originSet)
@@ -1063,8 +1100,8 @@ public class TinkarServiceImpl implements TinkarService {
 
                 // Verify navigation semantic is attached to parent
                 int[] semanticNids = EntityService.get().semanticNidsForComponentOfPattern(
-                        parentNid, TinkarTerm.STATED_NAVIGATION_PATTERN.nid());
-                log.debug("Parent now has {} navigation semantics (should have increased by 1)", semanticNids.length);
+                        parentNid, TinkarTerm.INFERRED_NAVIGATION_PATTERN.nid());
+                log.debug("Parent now has {} INFERRED navigation semantics (should have increased by 1)", semanticNids.length);
 
                 // Clear the navigation calculator cache so it picks up the new navigation semantic
                 log.debug("Clearing navigation calculator cache to refresh descendant relationships");
@@ -1082,13 +1119,13 @@ public class TinkarServiceImpl implements TinkarService {
                 // Debug: Test if navigation semantic is queryable and verify structure
                 log.debug("Testing if navigation semantic is queryable from parent's perspective...");
                 try {
-                    int[] parentNavSemantics = PrimitiveData.get().semanticNidsForComponentOfPattern(
-                        parentNid, TinkarTerm.STATED_NAVIGATION_PATTERN.nid());
-                    log.debug("Parent {} has {} total navigation semantics", parentConceptId, parentNavSemantics.length);
+                    int[] verifyParentNavSemantics = PrimitiveData.get().semanticNidsForComponentOfPattern(
+                        parentNid, TinkarTerm.INFERRED_NAVIGATION_PATTERN.nid());
+                    log.debug("Parent {} has {} total INFERRED navigation semantics", parentConceptId, verifyParentNavSemantics.length);
 
-                    if (parentNavSemantics.length > 0) {
+                    if (verifyParentNavSemantics.length > 0) {
                         // Find and verify the newly created semantic
-                        for (int semanticNid : parentNavSemantics) {
+                        for (int semanticNid : verifyParentNavSemantics) {
                             Entity<?> semanticEntity = EntityService.get().getEntityFast(semanticNid);
                             if (semanticEntity instanceof SemanticEntity<?> semantic) {
                                 if (!semantic.versions().isEmpty()) {
