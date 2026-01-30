@@ -2,11 +2,22 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { SearchBox } from './components/SearchBox';
 import { ResultsTable } from './components/ResultsTable';
-import { conceptSearch, getDescendants, removeDescendant, createAndAddDescendant } from './api/tinkarApi';
+import { SortedResultsTable } from './components/SortedResultsTable';
+import { conceptSearchWithSort, getDescendants, removeDescendant, createAndAddDescendant } from './api/tinkarApi';
+import type { SearchSortOption } from './api/types';
 import './App.css';
+
+const SORT_OPTIONS: { value: SearchSortOption; label: string }[] = [
+  { value: 'TOP_COMPONENT', label: 'Top Component (by score)' },
+  { value: 'TOP_COMPONENT_ALPHA', label: 'Top Component (alphabetical)' },
+  { value: 'SEMANTIC', label: 'Matched Semantic (by score)' },
+  { value: 'SEMANTIC_ALPHA', label: 'Matched Semantic (alphabetical)' },
+];
 
 function App() {
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [sortBy, setSortBy] = useState<SearchSortOption>('TOP_COMPONENT');
+  const [showInactive, setShowInactive] = useState<boolean>(false);
   const [selectedConceptId, setSelectedConceptId] = useState<string | null>(null);
   const [selectedConceptName, setSelectedConceptName] = useState<string>('');
   const [newDescendantName, setNewDescendantName] = useState<string>('');
@@ -19,8 +30,8 @@ function App() {
     isError: isSearchError,
     error: searchError,
   } = useQuery({
-    queryKey: ['conceptSearch', searchQuery],
-    queryFn: () => conceptSearch(searchQuery, 200),
+    queryKey: ['conceptSearchWithSort', searchQuery, sortBy],
+    queryFn: () => conceptSearchWithSort(searchQuery, 200, sortBy),
     enabled: !!searchQuery,
   });
 
@@ -58,9 +69,8 @@ function App() {
     setSelectedConceptName('');
   };
 
-  const handleRowClick = (conceptId: string) => {
-    const concept = searchData?.results.find(r => r.publicId[0] === conceptId);
-    setSelectedConceptName(concept?.descriptions.fullyQualifiedName || conceptId);
+  const handleRowClick = (conceptId: string, conceptName?: string) => {
+    setSelectedConceptName(conceptName || conceptId);
     setSelectedConceptId(conceptId);
   };
 
@@ -102,6 +112,31 @@ function App() {
 
       <main className="app-main">
         <SearchBox onSearch={handleSearch} isLoading={isLoading} />
+
+        {!selectedConceptId && (
+          <div className="sort-controls">
+            <label htmlFor="sort-select">Sort by:</label>
+            <select
+              id="sort-select"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as SearchSortOption)}
+              className="sort-select"
+            >
+              {SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className={`inactive-toggle ${showInactive ? 'active' : ''}`}
+              onClick={() => setShowInactive(!showInactive)}
+            >
+              {showInactive ? 'Hide Inactive' : 'Show Inactive'}
+            </button>
+          </div>
+        )}
 
         {isError && (
           <div className="error-message">
@@ -177,10 +212,10 @@ function App() {
             )}
 
             {searchData && searchData.success && (
-              <ResultsTable
-                results={searchData.results}
-                totalCount={searchData.totalCount}
+              <SortedResultsTable
+                searchData={searchData}
                 onRowClick={handleRowClick}
+                showInactive={showInactive}
               />
             )}
 

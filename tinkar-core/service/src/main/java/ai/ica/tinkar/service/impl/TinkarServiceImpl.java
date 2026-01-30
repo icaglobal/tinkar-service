@@ -5,10 +5,15 @@ import ai.ica.tinkar.dto.ChangeHistoryResponse.FieldChange;
 import ai.ica.tinkar.dto.ChangeHistoryResponse.StampInfo;
 import ai.ica.tinkar.dto.ChangeHistoryResponse.VersionChange;
 import ai.ica.tinkar.dto.ConceptChangeHistoryResponse;
+import ai.ica.tinkar.dto.ConceptSearchResponse;
+import ai.ica.tinkar.dto.ConceptSearchResponse.GroupedSearchResult;
+import ai.ica.tinkar.dto.ConceptSearchResponse.MatchingSemantic;
+import ai.ica.tinkar.dto.ConceptSearchResponse.SemanticSearchResult;
 import ai.ica.tinkar.dto.ConceptSemanticsResponse;
 import ai.ica.tinkar.dto.ConceptSemanticsResponse.SemanticInfo;
 import ai.ica.tinkar.dto.ConceptSemanticsResponse.FieldValue;
 import ai.ica.tinkar.dto.DescendantOperationResponse;
+import ai.ica.tinkar.dto.SearchSortOption;
 import dev.ikm.tinkar.common.id.IntIdSet;
 import dev.ikm.tinkar.common.id.IntIds;
 import ai.ica.tinkar.proto.TinkarConceptDescriptions;
@@ -46,7 +51,11 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -94,6 +103,218 @@ public class TinkarServiceImpl implements TinkarService {
         } catch (Exception e) {
             return buildErrorResponse(query, e.getMessage());
         }
+    }
+
+    @Override
+    public ConceptSearchResponse conceptSearchWithSort(String query, Integer maxResults, SearchSortOption sortBy) {
+        try {
+            int limit = (maxResults != null && maxResults > 0) ? maxResults : MAX_RESULTS;
+            SearchSortOption effectiveSortBy = (sortBy != null) ? sortBy : SearchSortOption.TOP_COMPONENT;
+
+            // Execute the search
+            List<LatestVersionSearchResult> searchResults = Calculators.View.Default()
+                    .search(query, limit)
+                    .toList();
+
+            log.debug("Search for '{}' returned {} raw results", query, searchResults.size());
+
+            return switch (effectiveSortBy) {
+                case TOP_COMPONENT -> buildGroupedResponse(query, searchResults, effectiveSortBy, false);
+                case TOP_COMPONENT_ALPHA -> buildGroupedResponse(query, searchResults, effectiveSortBy, true);
+                case SEMANTIC -> buildFlatResponse(query, searchResults, effectiveSortBy, false);
+                case SEMANTIC_ALPHA -> buildFlatResponse(query, searchResults, effectiveSortBy, true);
+            };
+
+        } catch (Exception e) {
+            log.error("Error in conceptSearchWithSort for query '{}': {}", query, e.getMessage(), e);
+            return ConceptSearchResponse.error(query, e.getMessage());
+        }
+    }
+
+    /**
+     * Builds a flat (semantic) response, sorted by score or alphabetically.
+     */
+    private ConceptSearchResponse buildFlatResponse(String query, List<LatestVersionSearchResult> results,
+            SearchSortOption sortBy, boolean alphabetical) {
+
+        // Sort the results
+        List<LatestVersionSearchResult> sortedResults = new ArrayList<>(results);
+        if (alphabetical) {
+            // Sort alphabetically by matched text
+            sortedResults.sort((r1, r2) -> {
+                String text1 = getPlainText(r1);
+                String text2 = getPlainText(r2);
+                return compareStringsNaturally(text1, text2);
+            });
+        } else {
+            // Sort by score (highest first)
+            sortedResults.sort((r1, r2) -> Float.compare(r2.score(), r1.score()));
+        }
+
+        // Convert to response format
+        List<SemanticSearchResult> semanticResults = sortedResults.stream()
+                .filter(r -> r.latestVersion().isPresent())
+                .map(this::toSemanticSearchResult)
+                .toList();
+
+        return ConceptSearchResponse.successFlat(query, sortBy, semanticResults);
+    }
+
+    /**
+     * Builds a grouped (top component) response, sorted by score or alphabetically.
+     */
+    private ConceptSearchResponse buildGroupedResponse(String query, List<LatestVersionSearchResult> results,
+            SearchSortOption sortBy, boolean alphabetical) {
+
+        // Group results by top-level component (concept)
+        Map<Integer, List<LatestVersionSearchResult>> groupedByTopNid;
+
+        if (alphabetical) {
+            // Use TreeMap for alphabetical ordering of concepts
+            groupedByTopNid = new TreeMap<>((nid1, nid2) -> {
+                String name1 = getConceptName(nid1);
+                String name2 = getConceptName(nid2);
+                return compareStringsNaturally(name1, name2);
+            });
+        } else {
+            // Use LinkedHashMap to preserve insertion order (by score)
+            groupedByTopNid = new LinkedHashMap<>();
+        }
+
+        // Sort initial results by score for proper grouping
+        List<LatestVersionSearchResult> sortedForGrouping = new ArrayList<>(results);
+        sortedForGrouping.sort((r1, r2) -> Float.compare(r2.score(), r1.score()));
+
+        // Group by top component nid
+        for (LatestVersionSearchResult result : sortedForGrouping) {
+            if (result.latestVersion().isPresent()) {
+                int topNid = result.latestVersion().get().chronology().topEnclosingComponentNid();
+                groupedByTopNid.computeIfAbsent(topNid, k -> new ArrayList<>()).add(result);
+            }
+        }
+
+        // Convert to response format
+        List<GroupedSearchResult> groupedResults = new ArrayList<>();
+        long totalSemanticCount = 0;
+
+        for (Map.Entry<Integer, List<LatestVersionSearchResult>> entry : groupedByTopNid.entrySet()) {
+            int topNid = entry.getKey();
+            List<LatestVersionSearchResult> conceptResults = entry.getValue();
+
+            // Sort matches within this concept
+            if (alphabetical) {
+                conceptResults.sort((r1, r2) -> compareStringsNaturally(getPlainText(r1), getPlainText(r2)));
+            } else {
+                conceptResults.sort((r1, r2) -> Float.compare(r2.score(), r1.score()));
+            }
+
+            // Get concept info
+            PublicId conceptPublicId = PrimitiveData.publicId(topNid);
+            String fqn = getConceptName(topNid);
+            boolean active = isConceptActive(topNid);
+            float topScore = conceptResults.isEmpty() ? 0f : conceptResults.get(0).score();
+
+            // Build matching semantics list
+            List<MatchingSemantic> matchingSemantics = conceptResults.stream()
+                    .map(r -> new MatchingSemantic(
+                            r.highlightedString(),
+                            getPlainText(r),
+                            r.score()))
+                    .toList();
+
+            groupedResults.add(new GroupedSearchResult(
+                    conceptPublicId.asUuidList().stream().map(UUID::toString).toList(),
+                    fqn,
+                    active,
+                    topScore,
+                    matchingSemantics));
+
+            totalSemanticCount += matchingSemantics.size();
+        }
+
+        // If not alphabetical, sort grouped results by their top score
+        if (!alphabetical) {
+            groupedResults.sort((g1, g2) -> Float.compare(g2.topScore(), g1.topScore()));
+        }
+
+        return ConceptSearchResponse.successGrouped(query, sortBy, groupedResults, totalSemanticCount);
+    }
+
+    /**
+     * Converts a LatestVersionSearchResult to a SemanticSearchResult.
+     */
+    private SemanticSearchResult toSemanticSearchResult(LatestVersionSearchResult result) {
+        var latestVersion = result.latestVersion().get();
+        int topNid = latestVersion.chronology().topEnclosingComponentNid();
+
+        PublicId conceptPublicId = PrimitiveData.publicId(topNid);
+        String fqn = getConceptName(topNid);
+        String regularName = getConceptRegularName(topNid);
+        boolean active = isConceptActive(topNid);
+
+        return new SemanticSearchResult(
+                conceptPublicId.asUuidList().stream().map(UUID::toString).toList(),
+                fqn,
+                regularName,
+                result.highlightedString(),
+                result.score(),
+                active);
+    }
+
+    /**
+     * Gets the plain text from a search result by stripping HTML tags.
+     */
+    private String getPlainText(LatestVersionSearchResult result) {
+        String highlighted = result.highlightedString();
+        if (highlighted == null) {
+            return "";
+        }
+        // Remove HTML bold tags and normalize whitespace
+        return highlighted
+                .replaceAll("<B>", "")
+                .replaceAll("</B>", "")
+                .replaceAll("<b>", "")
+                .replaceAll("</b>", "")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    /**
+     * Gets the fully qualified name for a concept by nid.
+     */
+    private String getConceptName(int nid) {
+        return Calculators.View.Default()
+                .languageCalculator()
+                .getFullyQualifiedDescriptionTextWithFallbackOrNid(nid);
+    }
+
+    /**
+     * Gets the regular/preferred name for a concept by nid.
+     */
+    private String getConceptRegularName(int nid) {
+        return Calculators.View.Default()
+                .languageCalculator()
+                .getRegularDescriptionText(nid)
+                .orElse(null);
+    }
+
+    /**
+     * Checks if a concept is active.
+     */
+    private boolean isConceptActive(int nid) {
+        var latest = Calculators.View.Default().latest(nid);
+        return latest.isPresent() && latest.get().active();
+    }
+
+    /**
+     * Natural order string comparison that handles numbers intelligently.
+     * e.g., "Item 2" comes before "Item 10".
+     */
+    private int compareStringsNaturally(String s1, String s2) {
+        if (s1 == null && s2 == null) return 0;
+        if (s1 == null) return -1;
+        if (s2 == null) return 1;
+        return s1.compareToIgnoreCase(s2);
     }
 
     @Override
