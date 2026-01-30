@@ -1030,14 +1030,16 @@ public class TinkarServiceImpl implements TinkarService {
                 transaction.addComponent(fqnSemantic);
 
                 // Create navigation semantic to establish parent-child relationship
+                // The semantic must be attached to the PARENT with the CHILD in the destination field
+                // This allows NavigationCalculator.childrenOf(parent) to find the child
                 UUID navSemanticUuid = UUID.randomUUID();
-                IntIdSet destinationSet = IntIds.set.of(parentNid);
+                IntIdSet destinationSet = IntIds.set.of(newConceptNid);  // Child in destination
                 IntIdSet originSet = IntIds.set.empty();
 
                 SemanticRecord navSemantic = SemanticRecord.build(
                         navSemanticUuid,
                         TinkarTerm.STATED_NAVIGATION_PATTERN.nid(),
-                        newConceptNid,
+                        parentNid,  // Attached to PARENT, not child
                         stamp.versions().get(0),
                         Lists.immutable.of(destinationSet, originSet)
                 );
@@ -1059,10 +1061,10 @@ public class TinkarServiceImpl implements TinkarService {
                     log.warn("Could not verify concept creation immediately");
                 }
 
-                // Verify navigation semantic
+                // Verify navigation semantic is attached to parent
                 int[] semanticNids = EntityService.get().semanticNidsForComponentOfPattern(
-                        newConceptNid, TinkarTerm.STATED_NAVIGATION_PATTERN.nid());
-                log.debug("Found {} navigation semantics for new concept", semanticNids.length);
+                        parentNid, TinkarTerm.STATED_NAVIGATION_PATTERN.nid());
+                log.debug("Parent now has {} navigation semantics (should have increased by 1)", semanticNids.length);
 
                 // Clear the navigation calculator cache so it picks up the new navigation semantic
                 log.debug("Clearing navigation calculator cache to refresh descendant relationships");
@@ -1077,26 +1079,30 @@ public class TinkarServiceImpl implements TinkarService {
                     log.error("Failed to save changes after creating concept: {}", saveEx.getMessage(), saveEx);
                 }
 
-                // Debug: Test if navigation semantic is queryable from parent's perspective
+                // Debug: Test if navigation semantic is queryable and verify structure
                 log.debug("Testing if navigation semantic is queryable from parent's perspective...");
                 try {
                     int[] parentNavSemantics = PrimitiveData.get().semanticNidsForComponentOfPattern(
                         parentNid, TinkarTerm.STATED_NAVIGATION_PATTERN.nid());
                     log.debug("Parent {} has {} total navigation semantics", parentConceptId, parentNavSemantics.length);
 
-                    // Also verify the child has its navigation semantic
-                    int[] childNavSemantics = PrimitiveData.get().semanticNidsForComponentOfPattern(
-                        newConceptNid, TinkarTerm.STATED_NAVIGATION_PATTERN.nid());
-                    log.debug("New child {} has {} navigation semantics", newConceptUuid, childNavSemantics.length);
-
-                    if (childNavSemantics.length > 0) {
-                        log.debug("Child's navigation semantic nid: {}", childNavSemantics[0]);
-                        // Try to read the semantic to verify it's actually stored
-                        Entity<?> semanticEntity = EntityService.get().getEntityFast(childNavSemantics[0]);
-                        log.debug("Successfully retrieved navigation semantic entity: {}", semanticEntity != null ? "FOUND" : "NOT FOUND");
-                        if (semanticEntity != null && semanticEntity instanceof SemanticEntity<?> semantic) {
-                            log.debug("Navigation semantic details - referencedComponent: {}, pattern: {}",
-                                semantic.referencedComponentNid(), semantic.patternNid());
+                    if (parentNavSemantics.length > 0) {
+                        // Find and verify the newly created semantic
+                        for (int semanticNid : parentNavSemantics) {
+                            Entity<?> semanticEntity = EntityService.get().getEntityFast(semanticNid);
+                            if (semanticEntity instanceof SemanticEntity<?> semantic) {
+                                if (!semantic.versions().isEmpty()) {
+                                    SemanticEntityVersion version = semantic.versions().get(semantic.versions().size() - 1);
+                                    Object destinationField = version.fieldValues().get(0);
+                                    // Check if this semantic contains our new child
+                                    if (destinationField instanceof IntIdSet destSet && destSet.contains(newConceptNid)) {
+                                        log.debug("Found navigation semantic linking parent to new child:");
+                                        log.debug("  - Semantic nid: {}", semanticNid);
+                                        log.debug("  - Attached to parent nid: {}", semantic.referencedComponentNid());
+                                        log.debug("  - Destination field contains child nid: {}", newConceptNid);
+                                    }
+                                }
+                            }
                         }
                     }
                 } catch (Exception ex) {
