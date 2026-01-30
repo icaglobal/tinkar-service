@@ -1042,6 +1042,15 @@ public class TinkarServiceImpl implements TinkarService {
                 log.debug("Clearing navigation calculator cache to refresh descendant relationships");
                 dev.ikm.tinkar.common.service.CachingService.clearAll();
 
+                // Immediately save to ensure data is persisted
+                log.debug("Saving changes to persistent storage");
+                try {
+                    PrimitiveData.save();
+                    log.debug("Changes saved successfully");
+                } catch (Exception saveEx) {
+                    log.error("Failed to save changes after creating concept: {}", saveEx.getMessage(), saveEx);
+                }
+
                 return DescendantOperationResponse.success(
                         parentConceptId,
                         newConceptUuid.toString(),
