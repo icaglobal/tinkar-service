@@ -2,8 +2,10 @@ package ai.ica.tinkar.controller;
 
 import ai.ica.tinkar.dto.ChangeHistoryResponse;
 import ai.ica.tinkar.dto.ConceptChangeHistoryResponse;
+import ai.ica.tinkar.dto.ConceptSearchResponse;
 import ai.ica.tinkar.dto.ConceptSemanticsResponse;
 import ai.ica.tinkar.dto.DescendantOperationResponse;
+import ai.ica.tinkar.dto.SearchSortOption;
 import ai.ica.tinkar.dto.TinkarSearchQueryResponse;
 import ai.ica.tinkar.dto.TinkarSearchQueryResponse.Descriptions;
 import ai.ica.tinkar.dto.TinkarSearchQueryResponse.SearchResult;
@@ -64,6 +66,24 @@ public class TinkarSearchController {
                         @Parameter(description = "Maximum number of results to return", required = false) @RequestParam(name = "maxResults", required = false) Integer maxResults) {
 
                 return ResponseEntity.ok(toDto(tinkarService.conceptSearch(query, maxResults)));
+        }
+
+        @Operation(summary = "Search for concepts with sort options", description = "Search for concepts with configurable sort options. " +
+                        "TOP_COMPONENT groups results by concept sorted by relevance score. " +
+                        "TOP_COMPONENT_ALPHA groups results by concept sorted alphabetically. " +
+                        "SEMANTIC shows individual matches sorted by relevance score. " +
+                        "SEMANTIC_ALPHA shows individual matches sorted alphabetically.")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "Search completed successfully", content = @Content(schema = @Schema(implementation = ConceptSearchResponse.class))),
+                        @ApiResponse(responseCode = "400", description = "Invalid query or sort parameter")
+        })
+        @GetMapping("/conceptSearchWithSort")
+        public ResponseEntity<ConceptSearchResponse> conceptSearchWithSort(
+                        @Parameter(description = "Search query string", required = true, example = "chronic lung") @RequestParam String query,
+                        @Parameter(description = "Maximum number of results to return", required = false) @RequestParam(name = "maxResults", required = false) Integer maxResults,
+                        @Parameter(description = "Sort option: TOP_COMPONENT (default), TOP_COMPONENT_ALPHA, SEMANTIC, or SEMANTIC_ALPHA", required = false, example = "TOP_COMPONENT") @RequestParam(name = "sortBy", required = false) SearchSortOption sortBy) {
+
+                return ResponseEntity.ok(tinkarService.conceptSearchWithSort(query, maxResults, sortBy));
         }
 
         @Operation(summary = "Get entity by concept ID", description = "Look up an entity by the tinkar concept public ID")

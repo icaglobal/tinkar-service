@@ -2,14 +2,33 @@ package ai.ica.tinkar.service;
 
 import ai.ica.tinkar.dto.ChangeHistoryResponse;
 import ai.ica.tinkar.dto.ConceptChangeHistoryResponse;
+import ai.ica.tinkar.dto.ConceptSearchResponse;
 import ai.ica.tinkar.dto.ConceptSemanticsResponse;
 import ai.ica.tinkar.dto.DescendantOperationResponse;
+import ai.ica.tinkar.dto.SearchSortOption;
 import ai.ica.tinkar.proto.TinkarSearchQueryResponse;
 
 public interface TinkarService {
     TinkarSearchQueryResponse search(String query);
 
     TinkarSearchQueryResponse conceptSearch(String query, Integer maxResults);
+
+    /**
+     * Searches for concepts with configurable sort options.
+     * Supports both grouped (by top component) and flat (by semantic match) result structures.
+     *
+     * Sort options:
+     * - TOP_COMPONENT: Groups results by concept, sorted by relevance score (highest first)
+     * - TOP_COMPONENT_ALPHA: Groups results by concept, sorted alphabetically
+     * - SEMANTIC: Flat list of semantic matches, sorted by relevance score (highest first)
+     * - SEMANTIC_ALPHA: Flat list of semantic matches, sorted alphabetically
+     *
+     * @param query The search query string
+     * @param maxResults Maximum number of results to return
+     * @param sortBy The sort option to use (defaults to TOP_COMPONENT if null)
+     * @return ConceptSearchResponse containing search results in the requested format
+     */
+    ConceptSearchResponse conceptSearchWithSort(String query, Integer maxResults, SearchSortOption sortBy);
 
     TinkarSearchQueryResponse getEntity(String conceptId);
 

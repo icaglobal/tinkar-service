@@ -1,4 +1,10 @@
-import type { ConceptSearchResponse, DescendantsResponse, DescendantOperationResponse } from './types';
+import type {
+  ConceptSearchResponse,
+  ConceptSearchWithSortResponse,
+  DescendantsResponse,
+  DescendantOperationResponse,
+  SearchSortOption,
+} from './types';
 
 const API_BASE_URL = 'http://localhost:8085/api/tinkar';
 
@@ -90,6 +96,31 @@ export async function createAndAddDescendant(
 
   const response = await fetch(`${API_BASE_URL}/descendants/create?${params}`, {
     method: 'POST',
+    headers: {
+      accept: '*/*',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function conceptSearchWithSort(
+  query: string,
+  maxResults: number = 200,
+  sortBy: SearchSortOption = 'TOP_COMPONENT'
+): Promise<ConceptSearchWithSortResponse> {
+  const params = new URLSearchParams({
+    query,
+    maxResults: maxResults.toString(),
+    sortBy,
+  });
+
+  const response = await fetch(`${API_BASE_URL}/conceptSearchWithSort?${params}`, {
+    method: 'GET',
     headers: {
       accept: '*/*',
     },
