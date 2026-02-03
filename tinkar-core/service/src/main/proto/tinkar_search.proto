@@ -83,10 +83,132 @@ message TinkarRebuildIndexResponse {
 message TinkarRebuildIndexRequest {
 }
 
+// Sort options for search results
+enum SearchSortOption {
+  TOP_COMPONENT = 0;       // Group by top component, sorted by relevance score (highest first)
+  TOP_COMPONENT_ALPHA = 1; // Group by top component, sorted alphabetically
+  SEMANTIC = 2;            // Individual semantic matches, sorted by relevance score (highest first)
+  SEMANTIC_ALPHA = 3;      // Individual semantic matches, sorted alphabetically
+}
+
+// Concept search with sort request
+message TinkarConceptSearchWithSortRequest {
+  string query = 1;
+  /*
+   * Maximum number of results to return. If not specified or <= 0, uses server default (100).
+   */
+  int32 max_results = 2;
+  /*
+   * Sort option for results. If not specified, uses TOP_COMPONENT.
+   */
+  SearchSortOption sort_by = 3;
+}
+
+// Individual semantic search result with score
+message TinkarSemanticSearchResult {
+  /*
+   * Public ID (list of UUIDs) of the concept.
+   */
+  repeated string public_id = 1;
+  /*
+   * Fully qualified name of the concept.
+   */
+  string fully_qualified_name = 2;
+  /*
+   * Regular/preferred description.
+   */
+  string regular_name = 3;
+  /*
+   * The matched text with highlighting (HTML bold tags).
+   */
+  string highlighted_text = 4;
+  /*
+   * The relevance score of this match.
+   */
+  float score = 5;
+  /*
+   * Whether the concept is active.
+   */
+  bool active = 6;
+}
+
+// A matching semantic within a grouped result
+message TinkarMatchingSemantic {
+  /*
+   * The matched text with highlighting (HTML bold tags).
+   */
+  string highlighted_text = 1;
+  /*
+   * The plain text without highlighting.
+   */
+  string plain_text = 2;
+  /*
+   * The relevance score of this match.
+   */
+  float score = 3;
+}
+
+// Grouped search result by top-level component
+message TinkarGroupedSearchResult {
+  /*
+   * Public ID (list of UUIDs) of the top-level concept.
+   */
+  repeated string public_id = 1;
+  /*
+   * Fully qualified name of the top-level concept.
+   */
+  string fully_qualified_name = 2;
+  /*
+   * Whether the concept is active.
+   */
+  bool active = 3;
+  /*
+   * The highest relevance score among matching semantics.
+   */
+  float top_score = 4;
+  /*
+   * List of matching semantics for this concept.
+   */
+  repeated TinkarMatchingSemantic matching_semantics = 5;
+}
+
+// Response for concept search with sort
+message TinkarConceptSearchWithSortResponse {
+  /*
+   * The original search query.
+   */
+  string query = 1;
+  /*
+   * Total number of matching results.
+   */
+  int64 total_count = 2;
+  /*
+   * The sort option used.
+   */
+  SearchSortOption sort_by = 3;
+  /*
+   * List of search results (flat structure for SEMANTIC modes).
+   */
+  repeated TinkarSemanticSearchResult results = 4;
+  /*
+   * List of grouped results (for TOP_COMPONENT modes).
+   */
+  repeated TinkarGroupedSearchResult grouped_results = 5;
+  /*
+   * Whether the search was successful.
+   */
+  bool success = 6;
+  /*
+   * Error message if search failed.
+   */
+  string error_message = 7;
+}
+
 // gRPC service definition
 service TinkarSearchService {
   rpc Search(TinkarSearchQueryRequest) returns (TinkarSearchQueryResponse);
   rpc ConceptSearch(TinkarConceptSearchRequest) returns (TinkarSearchQueryResponse);
+  rpc ConceptSearchWithSort(TinkarConceptSearchWithSortRequest) returns (TinkarConceptSearchWithSortResponse);
   rpc GetEntity(TinkarConceptIdRequest) returns (TinkarSearchQueryResponse);
   rpc GetChildConcepts(TinkarConceptIdRequest) returns (TinkarSearchQueryResponse);
   rpc GetDescendantConcepts(TinkarConceptIdRequest) returns (TinkarSearchQueryResponse);
