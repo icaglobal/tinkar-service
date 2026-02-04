@@ -17,8 +17,11 @@ import ai.ica.tinkar.dto.SearchSortOption;
 import dev.ikm.tinkar.common.id.IntIdSet;
 import dev.ikm.tinkar.common.id.IntIds;
 import ai.ica.tinkar.proto.TinkarConceptDescriptions;
+import ai.ica.tinkar.proto.TinkarConceptSemanticInfo;
+import ai.ica.tinkar.proto.TinkarConceptSemanticsResponse;
 import ai.ica.tinkar.proto.TinkarSearchQueryResponse;
 import ai.ica.tinkar.proto.TinkarSearchResult;
+import ai.ica.tinkar.proto.TinkarStampInfo;
 import ai.ica.tinkar.service.TinkarPrimitive;
 import ai.ica.tinkar.service.TinkarService;
 import dev.ikm.tinkar.common.id.PublicId;
@@ -911,6 +914,124 @@ public class TinkarServiceImpl implements TinkarService {
         } catch (Exception e) {
             log.warn("Failed to build STAMP info for stampNid {}: {}", stampNid, e.getMessage());
             return new ConceptSemanticsResponse.StampInfo(null, null, null, null, null, null);
+        }
+    }
+
+    @Override
+    public TinkarConceptSemanticsResponse getConceptSemanticsProto(String conceptId) {
+        try {
+            PublicId publicId = primitive.getPublicId(conceptId);
+            int conceptNid = EntityService.get().nidForPublicId(publicId);
+
+            // Get the concept description
+            String conceptDescription = Calculators.View.Default()
+                    .languageCalculator()
+                    .getRegularDescriptionText(conceptNid)
+                    .orElse("Unknown concept");
+
+            // Get all semantics for this concept (any pattern)
+            int[] semanticNids = EntityService.get().semanticNidsForComponent(conceptNid);
+
+            TinkarConceptSemanticsResponse.Builder responseBuilder = TinkarConceptSemanticsResponse.newBuilder()
+                    .setConceptPublicId(dev.ikm.tinkar.schema.PublicId.newBuilder().addUuids(conceptId).build())
+                    .setConceptDescription(conceptDescription)
+                    .setSuccess(true);
+
+            int count = 0;
+            for (int semanticNid : semanticNids) {
+                TinkarConceptSemanticInfo semanticInfo = buildSemanticInfoProto(semanticNid);
+                if (semanticInfo != null) {
+                    responseBuilder.addSemantics(semanticInfo);
+                    count++;
+                }
+            }
+            responseBuilder.setTotalCount(count);
+
+            return responseBuilder.build();
+        } catch (Exception e) {
+            log.error("Failed to get semantics proto for concept {}: {}", conceptId, e.getMessage(), e);
+            return TinkarConceptSemanticsResponse.newBuilder()
+                    .setConceptPublicId(dev.ikm.tinkar.schema.PublicId.newBuilder().addUuids(conceptId).build())
+                    .setSuccess(false)
+                    .setErrorMessage(e.getMessage())
+                    .setTotalCount(0)
+                    .build();
+        }
+    }
+
+    private TinkarConceptSemanticInfo buildSemanticInfoProto(int semanticNid) {
+        try {
+            Entity<?> entity = EntityService.get().getEntityFast(semanticNid);
+            if (!(entity instanceof SemanticEntity<?> semanticEntity)) {
+                return null;
+            }
+
+            // Get the semantic's public ID
+            String semanticId = semanticEntity.publicId().asUuidList().get(0).toString();
+
+            // Get the pattern name
+            String patternName = getDescriptionForNid(semanticEntity.patternNid());
+
+            // Get the latest version to extract fields and stamp
+            if (semanticEntity.versions().isEmpty()) {
+                return null;
+            }
+
+            SemanticEntityVersion latestVersion = semanticEntity.versions().get(
+                    semanticEntity.versions().size() - 1);
+
+            TinkarConceptSemanticInfo.Builder semanticBuilder = TinkarConceptSemanticInfo.newBuilder()
+                    .setSemanticPublicId(dev.ikm.tinkar.schema.PublicId.newBuilder().addUuids(semanticId).build())
+                    .setPatternName(patternName);
+
+            // Build field values
+            Object[] fieldValues = latestVersion.fieldValues().toArray();
+            for (Object fieldValue : fieldValues) {
+                String value = formatFieldValue(fieldValue);
+                if (value != null) {
+                    semanticBuilder.addFields(
+                            dev.ikm.tinkar.schema.Field.newBuilder()
+                                    .setStringValue(value)
+                                    .build());
+                }
+            }
+
+            // Build stamp info
+            semanticBuilder.setStamp(buildStampInfoProto(latestVersion.stampNid()));
+
+            return semanticBuilder.build();
+        } catch (Exception e) {
+            log.warn("Failed to build semantic info proto for nid {}: {}", semanticNid, e.getMessage());
+            return null;
+        }
+    }
+
+    private TinkarStampInfo buildStampInfoProto(int stampNid) {
+        TinkarStampInfo.Builder stampBuilder = TinkarStampInfo.newBuilder();
+        try {
+            StampEntity<?> stampEntity = EntityService.get().getStampFast(stampNid);
+            if (stampEntity == null) {
+                return stampBuilder.build();
+            }
+
+            String status = getDescriptionForNid(stampEntity.stateNid());
+            String author = getDescriptionForNid(stampEntity.authorNid());
+            String module = getDescriptionForNid(stampEntity.moduleNid());
+            String path = getDescriptionForNid(stampEntity.pathNid());
+            long time = stampEntity.time();
+            String formattedTime = formatTimestamp(time);
+
+            if (status != null) stampBuilder.setStatus(status);
+            if (author != null) stampBuilder.setAuthor(author);
+            if (module != null) stampBuilder.setModule(module);
+            if (path != null) stampBuilder.setPath(path);
+            stampBuilder.setTime(time);
+            if (formattedTime != null) stampBuilder.setFormattedTime(formattedTime);
+
+            return stampBuilder.build();
+        } catch (Exception e) {
+            log.warn("Failed to build STAMP info proto for stampNid {}: {}", stampNid, e.getMessage());
+            return stampBuilder.build();
         }
     }
 

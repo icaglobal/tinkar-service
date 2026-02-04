@@ -6,6 +6,7 @@ import ai.ica.tinkar.dto.ConceptSearchResponse;
 import ai.ica.tinkar.dto.ConceptSemanticsResponse;
 import ai.ica.tinkar.dto.DescendantOperationResponse;
 import ai.ica.tinkar.dto.SearchSortOption;
+import ai.ica.tinkar.proto.TinkarConceptSemanticsResponse;
 import ai.ica.tinkar.proto.TinkarSearchQueryResponse;
 
 public interface TinkarService {
@@ -78,6 +79,13 @@ public interface TinkarService {
      * @return ConceptSemanticsResponse containing all semantics for this concept
      */
     ConceptSemanticsResponse getConceptSemantics(String conceptId);
+
+    /**
+     * Gets all semantics of any pattern attached to a concept (gRPC proto response).
+     * @param conceptId The public ID (UUID) of the concept
+     * @return TinkarConceptSemanticsResponse proto containing all semantics for this concept
+     */
+    TinkarConceptSemanticsResponse getConceptSemanticsProto(String conceptId);
 
     /**
      * Gets comprehensive change history for a concept including all attached semantics.

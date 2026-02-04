@@ -210,6 +210,15 @@ public class TinkarSearchGrpcController extends TinkarSearchServiceGrpc.TinkarSe
         responseObserver.onCompleted();
     }
 
+    @Override
+    public void getConceptSemantics(TinkarConceptIdRequest request,
+            StreamObserver<TinkarConceptSemanticsResponse> responseObserver) {
+        String conceptId = extractConceptId(request.getPublicId());
+        log.info("gRPC getConceptSemantics request for conceptId: {}", conceptId);
+        responseObserver.onNext(tinkarService.getConceptSemanticsProto(conceptId));
+        responseObserver.onCompleted();
+    }
+
     private String extractConceptId(PublicId publicId) {
         if (publicId == null || publicId.getUuidsList().isEmpty()) {
             return "";

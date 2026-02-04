@@ -204,6 +204,86 @@ message TinkarConceptSearchWithSortResponse {
   string error_message = 7;
 }
 
+// Human-readable STAMP information for display purposes
+message TinkarStampInfo {
+  /*
+   * Status (e.g., Active, Inactive).
+   */
+  string status = 1;
+  /*
+   * Author name.
+   */
+  string author = 2;
+  /*
+   * Module name.
+   */
+  string module = 3;
+  /*
+   * Path name.
+   */
+  string path = 4;
+  /*
+   * Timestamp in epoch milliseconds.
+   */
+  int64 time = 5;
+  /*
+   * Human-readable timestamp.
+   */
+  string formatted_time = 6;
+}
+
+// Information about a single semantic attached to a concept
+message TinkarConceptSemanticInfo {
+  /*
+   * Semantic public ID.
+   */
+  dev.ikm.tinkar.schema.PublicId semantic_public_id = 1;
+  /*
+   * Pattern public ID.
+   */
+  dev.ikm.tinkar.schema.PublicId pattern_public_id = 2;
+  /*
+   * Pattern name (human-readable, e.g., Comment Pattern, Description Pattern).
+   */
+  string pattern_name = 3;
+  /*
+   * Field values of the semantic (using Tinkar Field type).
+   */
+  repeated dev.ikm.tinkar.schema.Field fields = 4;
+  /*
+   * Human-readable STAMP information.
+   */
+  TinkarStampInfo stamp = 5;
+}
+
+// Response for concept semantics
+message TinkarConceptSemanticsResponse {
+  /*
+   * The concept public ID.
+   */
+  dev.ikm.tinkar.schema.PublicId concept_public_id = 1;
+  /*
+   * The concept description (human-readable).
+   */
+  string concept_description = 2;
+  /*
+   * Total number of semantics found.
+   */
+  int32 total_count = 3;
+  /*
+   * List of semantics attached to this concept.
+   */
+  repeated TinkarConceptSemanticInfo semantics = 4;
+  /*
+   * Whether the query was successful.
+   */
+  bool success = 5;
+  /*
+   * Error message if query failed.
+   */
+  string error_message = 6;
+}
+
 // gRPC service definition
 service TinkarSearchService {
   rpc Search(TinkarSearchQueryRequest) returns (TinkarSearchQueryResponse);
@@ -216,4 +296,5 @@ service TinkarSearchService {
   rpc GetResultConformanceConceptsFromLIDRRecord(TinkarConceptIdRequest) returns (TinkarSearchQueryResponse);
   rpc GetAllowedResultConceptsFromResultConformance(TinkarConceptIdRequest) returns (TinkarSearchQueryResponse);
   rpc RebuildSearchIndex(TinkarRebuildIndexRequest) returns (TinkarRebuildIndexResponse);
+  rpc GetConceptSemantics(TinkarConceptIdRequest) returns (TinkarConceptSemanticsResponse);
 }
