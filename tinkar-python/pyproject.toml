@@ -1,0 +1,23 @@
+[project]
+name = "tinkar-python"
+version = "0.0.1"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "grpcio>=1.76.0",
+    "protobuf>=6.33.5",
+    "pydantic>=2.12.5",
+]
+
+[project.scripts]
+tinkar-python = "tinkar_python:main"
+
+[build-system]
+requires = ["uv_build>=0.8.23,<0.9.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "grpcio-tools>=1.76.0",
+]
