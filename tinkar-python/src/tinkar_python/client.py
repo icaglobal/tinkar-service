@@ -5,11 +5,28 @@ from __future__ import annotations
 from enum import Enum
 
 import grpc
+from pandas import DataFrame
 from pydantic import BaseModel
 
 from ._generated import tinkar_search_pb2 as pb2
 from ._generated import tinkar_search_pb2_grpc as pb2_grpc
 from ._generated import Tinkar_pb2 as schema_pb2
+
+class PandasMixin(BaseModel):
+    """Mixin for pandas dataframe types."""
+
+    def to_pandas(self) -> DataFrame:
+        """Convert results to a DataFrame."""
+        # For models with a 'results' field (list of items)
+        if hasattr(self, 'results') and self.results:
+            return DataFrame([r.model_dump() for r in self.results])
+        # For models with 'grouped_results'
+        elif hasattr(self, 'grouped_results') and self.grouped_results:
+            return DataFrame([r.model_dump() for r in self.grouped_results])
+        # For single-item models, return single-row DataFrame
+        else:
+            return DataFrame([self.model_dump()])
+
 
 
 # ============================================================================
@@ -24,7 +41,7 @@ class SearchResult(BaseModel):
     definition: str
 
 
-class SearchResponse(BaseModel):
+class SearchResponse(PandasMixin):
     """Response from a search operation."""
     query: str
     total_count: int
