@@ -85,3 +85,37 @@ export type ConceptSearchWithSortResponse = {
   success: boolean;
   errorMessage: string | null;
 };
+
+// Field value in a semantic
+export type SemanticFieldValue = {
+  fieldName: string;
+  fieldType: string;
+  value: string;
+  rawValue: unknown;
+};
+
+// Stamp info for a semantic
+export type SemanticStampInfo = {
+  status: string;
+  time: string;
+  author: string;
+  module: string;
+  path: string;
+};
+
+// Individual semantic info
+export type SemanticInfo = {
+  semanticId: string;
+  patternName: string;
+  fields: SemanticFieldValue[];
+  stamp: SemanticStampInfo;
+};
+
+// Response for getSemantics endpoint
+export type ConceptSemanticsResponse = {
+  conceptId: string;
+  conceptDescription: string;
+  semantics: SemanticInfo[];
+  success: boolean;
+  errorMessage: string | null;
+};

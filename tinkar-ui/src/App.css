@@ -451,3 +451,205 @@
   color: #999;
   text-decoration: line-through;
 }
+
+/* Action Buttons */
+.concept-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.actions-cell {
+  display: flex;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+
+.action-button {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  white-space: nowrap;
+}
+
+.semantics-button {
+  background-color: #17a2b8;
+  color: white;
+}
+
+.semantics-button:hover {
+  background-color: #138496;
+}
+
+.descendants-button {
+  background-color: #6c757d;
+  color: white;
+}
+
+.descendants-button:hover {
+  background-color: #5a6268;
+}
+
+/* Semantics View */
+.semantics-view {
+  width: 100%;
+}
+
+.semantics-header {
+  margin-bottom: 1.5rem;
+}
+
+.concept-id-display {
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: #666;
+  margin: 0.25rem 0;
+}
+
+.semantics-count {
+  color: #666;
+  font-size: 0.9rem;
+  margin: 0.5rem 0 0 0;
+}
+
+.semantics-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.semantics-pattern-group {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.pattern-group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  margin: 0;
+  background-color: #f5f5f5;
+  font-size: 1rem;
+  color: #333;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.pattern-count {
+  font-weight: normal;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.semantics-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.semantic-card {
+  padding: 1rem;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.semantic-card:last-child {
+  border-bottom: none;
+}
+
+.semantic-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.semantic-pattern-name {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #213547;
+}
+
+.semantic-id {
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: #888;
+  word-break: break-all;
+}
+
+.semantic-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.semantic-field {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background-color: #fafafa;
+  border-radius: 4px;
+}
+
+.field-name {
+  font-weight: 600;
+  color: #555;
+  font-size: 0.85rem;
+}
+
+.field-value {
+  color: #333;
+  font-size: 0.85rem;
+  word-break: break-word;
+}
+
+.empty-value {
+  color: #999;
+}
+
+.stamp-toggle {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  background-color: transparent;
+  color: #666;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.stamp-toggle:hover {
+  background-color: #f5f5f5;
+  border-color: #ccc;
+}
+
+.semantic-stamp {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background-color: #f9f9f9;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+.stamp-row {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.stamp-label {
+  font-weight: 600;
+  color: #666;
+  min-width: 60px;
+}
+
+.stamp-value {
+  color: #333;
+  word-break: break-word;
+}

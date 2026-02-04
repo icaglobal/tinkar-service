@@ -3,9 +3,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { SearchBox } from './components/SearchBox';
 import { ResultsTable } from './components/ResultsTable';
 import { SortedResultsTable } from './components/SortedResultsTable';
-import { conceptSearchWithSort, getDescendants, removeDescendant, createAndAddDescendant } from './api/tinkarApi';
+import { SemanticsView } from './components/SemanticsView';
+import { conceptSearchWithSort, getDescendants, getSemantics, removeDescendant, createAndAddDescendant } from './api/tinkarApi';
 import type { SearchSortOption } from './api/types';
 import './App.css';
+
+type ViewMode = 'search' | 'descendants' | 'semantics';
 
 const SORT_OPTIONS: { value: SearchSortOption; label: string }[] = [
   { value: 'TOP_COMPONENT', label: 'Top Component (by score)' },
@@ -18,6 +21,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<SearchSortOption>('TOP_COMPONENT');
   const [showInactive, setShowInactive] = useState<boolean>(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('search');
   const [selectedConceptId, setSelectedConceptId] = useState<string | null>(null);
   const [selectedConceptName, setSelectedConceptName] = useState<string>('');
   const [newDescendantName, setNewDescendantName] = useState<string>('');
@@ -43,7 +47,18 @@ function App() {
   } = useQuery({
     queryKey: ['descendants', selectedConceptId],
     queryFn: () => getDescendants(selectedConceptId!),
-    enabled: !!selectedConceptId,
+    enabled: viewMode === 'descendants' && !!selectedConceptId,
+  });
+
+  const {
+    data: semanticsData,
+    isLoading: isSemanticsLoading,
+    isError: isSemanticsError,
+    error: semanticsError,
+  } = useQuery({
+    queryKey: ['semantics', selectedConceptId],
+    queryFn: () => getSemantics(selectedConceptId!),
+    enabled: viewMode === 'semantics' && !!selectedConceptId,
   });
 
   const deleteMutation = useMutation({
@@ -65,16 +80,25 @@ function App() {
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
+    setViewMode('search');
     setSelectedConceptId(null);
     setSelectedConceptName('');
   };
 
-  const handleRowClick = (conceptId: string, conceptName?: string) => {
+  const handleViewSemantics = (conceptId: string, conceptName?: string) => {
     setSelectedConceptName(conceptName || conceptId);
     setSelectedConceptId(conceptId);
+    setViewMode('semantics');
+  };
+
+  const handleViewDescendants = (conceptId: string, conceptName?: string) => {
+    setSelectedConceptName(conceptName || conceptId);
+    setSelectedConceptId(conceptId);
+    setViewMode('descendants');
   };
 
   const handleBack = () => {
+    setViewMode('search');
     setSelectedConceptId(null);
     setSelectedConceptName('');
   };
@@ -100,9 +124,9 @@ function App() {
     );
   }, [descendantsData?.results]);
 
-  const isLoading = isSearchLoading || isDescendantsLoading;
-  const isError = selectedConceptId ? isDescendantsError : isSearchError;
-  const error = selectedConceptId ? descendantsError : searchError;
+  const isLoading = isSearchLoading || isDescendantsLoading || isSemanticsLoading;
+  const isError = viewMode === 'descendants' ? isDescendantsError : viewMode === 'semantics' ? isSemanticsError : isSearchError;
+  const error = viewMode === 'descendants' ? descendantsError : viewMode === 'semantics' ? semanticsError : searchError;
 
   return (
     <div className="app">
@@ -113,7 +137,7 @@ function App() {
       <main className="app-main">
         <SearchBox onSearch={handleSearch} isLoading={isLoading} />
 
-        {!selectedConceptId && (
+        {viewMode === 'search' && (
           <div className="sort-controls">
             <label htmlFor="sort-select">Sort by:</label>
             <select
@@ -144,7 +168,7 @@ function App() {
           </div>
         )}
 
-        {selectedConceptId ? (
+        {viewMode === 'descendants' && selectedConceptId && (
           <>
             <button className="back-button" onClick={handleBack}>
               &larr; Back to search results
@@ -203,7 +227,27 @@ function App() {
             )}
             {isDescendantsLoading && <p className="loading">Loading descendants...</p>}
           </>
-        ) : (
+        )}
+
+        {viewMode === 'semantics' && selectedConceptId && (
+          <>
+            {semanticsData && !semanticsData.success && (
+              <div className="error-message">
+                Error: {semanticsData.errorMessage || 'Failed to load semantics'}
+              </div>
+            )}
+            {semanticsData && semanticsData.success && (
+              <SemanticsView
+                data={semanticsData}
+                conceptName={selectedConceptName}
+                onBack={handleBack}
+              />
+            )}
+            {isSemanticsLoading && <p className="loading">Loading semantics...</p>}
+          </>
+        )}
+
+        {viewMode === 'search' && (
           <>
             {searchData && !searchData.success && (
               <div className="error-message">
@@ -214,7 +258,8 @@ function App() {
             {searchData && searchData.success && (
               <SortedResultsTable
                 searchData={searchData}
-                onRowClick={handleRowClick}
+                onViewSemantics={handleViewSemantics}
+                onViewDescendants={handleViewDescendants}
                 showInactive={showInactive}
               />
             )}

@@ -3,11 +3,12 @@ import type { ConceptSearchWithSortResponse } from '../api/types';
 
 interface SortedResultsTableProps {
   searchData: ConceptSearchWithSortResponse;
-  onRowClick?: (conceptId: string, conceptName?: string) => void;
+  onViewSemantics?: (conceptId: string, conceptName?: string) => void;
+  onViewDescendants?: (conceptId: string, conceptName?: string) => void;
   showInactive?: boolean;
 }
 
-export function SortedResultsTable({ searchData, onRowClick, showInactive = false }: SortedResultsTableProps) {
+export function SortedResultsTable({ searchData, onViewSemantics, onViewDescendants, showInactive = false }: SortedResultsTableProps) {
   const [expandedConcepts, setExpandedConcepts] = useState<Set<string>>(new Set());
 
   const isGroupedMode = searchData.sortBy === 'TOP_COMPONENT' || searchData.sortBy === 'TOP_COMPONENT_ALPHA';
@@ -71,10 +72,7 @@ export function SortedResultsTable({ searchData, onRowClick, showInactive = fals
 
             return (
               <div key={conceptId} className="concept-group">
-                <div
-                  className={`concept-header ${onRowClick ? 'clickable' : ''}`}
-                  onClick={() => onRowClick?.(conceptId, group.fullyQualifiedName)}
-                >
+                <div className="concept-header">
                   <div className="concept-info">
                     <span className={`concept-name ${!group.active ? 'inactive' : ''}`}>
                       {group.fullyQualifiedName}
@@ -82,17 +80,32 @@ export function SortedResultsTable({ searchData, onRowClick, showInactive = fals
                     <span className="concept-id-small">{conceptId}</span>
                     <span className="concept-score">Score: {group.topScore.toFixed(2)}</span>
                   </div>
-                  {hasMultipleMatches && (
-                    <button
-                      className="expand-button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleExpanded(conceptId);
-                      }}
-                    >
-                      {isExpanded ? '▼' : '▶'} {group.matchingSemantics.length} matches
-                    </button>
-                  )}
+                  <div className="concept-actions">
+                    {hasMultipleMatches && (
+                      <button
+                        className="expand-button"
+                        onClick={() => toggleExpanded(conceptId)}
+                      >
+                        {isExpanded ? '▼' : '▶'} {group.matchingSemantics.length} matches
+                      </button>
+                    )}
+                    {onViewSemantics && (
+                      <button
+                        className="action-button semantics-button"
+                        onClick={() => onViewSemantics(conceptId, group.fullyQualifiedName)}
+                      >
+                        Semantics
+                      </button>
+                    )}
+                    {onViewDescendants && (
+                      <button
+                        className="action-button descendants-button"
+                        onClick={() => onViewDescendants(conceptId, group.fullyQualifiedName)}
+                      >
+                        Descendants
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Show first match always, others when expanded */}
@@ -143,15 +156,12 @@ export function SortedResultsTable({ searchData, onRowClick, showInactive = fals
               <th>Concept Name</th>
               <th>Concept ID</th>
               <th>Score</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {results.map((result, index) => (
-              <tr
-                key={`${result.publicId[0]}-${index}`}
-                onClick={() => onRowClick?.(result.publicId[0], result.fullyQualifiedName)}
-                className={onRowClick ? 'clickable' : ''}
-              >
+              <tr key={`${result.publicId[0]}-${index}`}>
                 <td className="highlighted-text">
                   {renderHighlightedText(result.highlightedText)}
                 </td>
@@ -160,6 +170,24 @@ export function SortedResultsTable({ searchData, onRowClick, showInactive = fals
                 </td>
                 <td className="concept-id">{result.publicId[0]}</td>
                 <td className="score-cell">{result.score.toFixed(2)}</td>
+                <td className="actions-cell">
+                  {onViewSemantics && (
+                    <button
+                      className="action-button semantics-button"
+                      onClick={() => onViewSemantics(result.publicId[0], result.fullyQualifiedName)}
+                    >
+                      Semantics
+                    </button>
+                  )}
+                  {onViewDescendants && (
+                    <button
+                      className="action-button descendants-button"
+                      onClick={() => onViewDescendants(result.publicId[0], result.fullyQualifiedName)}
+                    >
+                      Descendants
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

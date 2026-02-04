@@ -1,6 +1,7 @@
 import type {
   ConceptSearchResponse,
   ConceptSearchWithSortResponse,
+  ConceptSemanticsResponse,
   DescendantsResponse,
   DescendantOperationResponse,
   SearchSortOption,
@@ -120,6 +121,23 @@ export async function conceptSearchWithSort(
   });
 
   const response = await fetch(`${API_BASE_URL}/conceptSearchWithSort?${params}`, {
+    method: 'GET',
+    headers: {
+      accept: '*/*',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function getSemantics(conceptId: string): Promise<ConceptSemanticsResponse> {
+  const params = new URLSearchParams({ conceptId });
+
+  const response = await fetch(`${API_BASE_URL}/semantics?${params}`, {
     method: 'GET',
     headers: {
       accept: '*/*',
