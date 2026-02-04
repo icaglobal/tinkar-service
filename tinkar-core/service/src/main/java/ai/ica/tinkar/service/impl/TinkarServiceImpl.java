@@ -814,9 +814,9 @@ public class TinkarServiceImpl implements TinkarService {
 
             List<SemanticInfo> semantics = new ArrayList<>();
             for (int semanticNid : semanticNids) {
-                SemanticInfo semanticInfo = buildSemanticInfo(semanticNid);
-                if (semanticInfo != null) {
-                    semantics.add(semanticInfo);
+                TinkarConceptSemanticInfo protoSemantic = buildSemanticInfoProto(semanticNid);
+                if (protoSemantic != null) {
+                    semantics.add(convertProtoSemanticToDto(protoSemantic));
                 }
             }
 
@@ -829,92 +829,50 @@ public class TinkarServiceImpl implements TinkarService {
 
     @Override
     public ConceptSemanticsResponse getConceptSemantics(String conceptId) {
-        try {
-            PublicId publicId = primitive.getPublicId(conceptId);
-            int conceptNid = EntityService.get().nidForPublicId(publicId);
-
-            // Get the concept description
-            String conceptDescription = Calculators.View.Default()
-                    .languageCalculator()
-                    .getRegularDescriptionText(conceptNid)
-                    .orElse("Unknown concept");
-
-            // Get all semantics for this concept (any pattern)
-            int[] semanticNids = EntityService.get().semanticNidsForComponent(conceptNid);
-
-            List<SemanticInfo> semantics = new ArrayList<>();
-            for (int semanticNid : semanticNids) {
-                SemanticInfo semanticInfo = buildSemanticInfo(semanticNid);
-                if (semanticInfo != null) {
-                    semantics.add(semanticInfo);
-                }
-            }
-
-            return ConceptSemanticsResponse.success(conceptId, conceptDescription, semantics);
-        } catch (Exception e) {
-            log.error("Failed to get semantics for concept {}: {}", conceptId, e.getMessage(), e);
-            return ConceptSemanticsResponse.error(conceptId, e.getMessage());
-        }
+        // Delegate to proto implementation and convert to DTO
+        TinkarConceptSemanticsResponse protoResponse = getConceptSemanticsProto(conceptId);
+        return convertProtoToDto(protoResponse);
     }
 
-    private SemanticInfo buildSemanticInfo(int semanticNid) {
-        try {
-            Entity<?> entity = EntityService.get().getEntityFast(semanticNid);
-            if (!(entity instanceof SemanticEntity<?> semanticEntity)) {
-                return null;
-            }
-
-            // Get the semantic's public ID
-            String semanticId = semanticEntity.publicId().asUuidList().get(0).toString();
-
-            // Get the pattern name
-            String patternName = getDescriptionForNid(semanticEntity.patternNid());
-
-            // Get the latest version to extract fields and stamp
-            if (semanticEntity.versions().isEmpty()) {
-                return null;
-            }
-
-            SemanticEntityVersion latestVersion = semanticEntity.versions().get(
-                    semanticEntity.versions().size() - 1);
-
-            // Build field values
-            List<FieldValue> fields = new ArrayList<>();
-            Object[] fieldValues = latestVersion.fieldValues().toArray();
-            for (int i = 0; i < fieldValues.length; i++) {
-                String value = formatFieldValue(fieldValues[i]);
-                fields.add(new FieldValue(i, value));
-            }
-
-            // Build stamp info
-            ConceptSemanticsResponse.StampInfo stampInfo = buildSemanticStampInfo(latestVersion.stampNid());
-
-            return new SemanticInfo(semanticId, patternName, fields, stampInfo);
-        } catch (Exception e) {
-            log.warn("Failed to build semantic info for nid {}: {}", semanticNid, e.getMessage());
-            return null;
+    private ConceptSemanticsResponse convertProtoToDto(TinkarConceptSemanticsResponse proto) {
+        if (!proto.getSuccess()) {
+            String conceptId = proto.getConceptPublicId().getUuidsCount() > 0
+                    ? proto.getConceptPublicId().getUuids(0) : null;
+            return ConceptSemanticsResponse.error(conceptId, proto.getErrorMessage());
         }
+
+        String conceptId = proto.getConceptPublicId().getUuidsCount() > 0
+                ? proto.getConceptPublicId().getUuids(0) : null;
+
+        List<SemanticInfo> semantics = new ArrayList<>();
+        for (TinkarConceptSemanticInfo protoSemantic : proto.getSemanticsList()) {
+            semantics.add(convertProtoSemanticToDto(protoSemantic));
+        }
+
+        return ConceptSemanticsResponse.success(conceptId, proto.getConceptDescription(), semantics);
     }
 
-    private ConceptSemanticsResponse.StampInfo buildSemanticStampInfo(int stampNid) {
-        try {
-            StampEntity<?> stampEntity = EntityService.get().getStampFast(stampNid);
-            if (stampEntity == null) {
-                return new ConceptSemanticsResponse.StampInfo(null, null, null, null, null, null);
-            }
+    private SemanticInfo convertProtoSemanticToDto(TinkarConceptSemanticInfo protoSemantic) {
+        String semanticId = protoSemantic.getSemanticPublicId().getUuidsCount() > 0
+                ? protoSemantic.getSemanticPublicId().getUuids(0) : null;
 
-            String status = getDescriptionForNid(stampEntity.stateNid());
-            String author = getDescriptionForNid(stampEntity.authorNid());
-            String module = getDescriptionForNid(stampEntity.moduleNid());
-            String path = getDescriptionForNid(stampEntity.pathNid());
-            long time = stampEntity.time();
-            String formattedTime = formatTimestamp(time);
-
-            return new ConceptSemanticsResponse.StampInfo(status, author, module, path, time, formattedTime);
-        } catch (Exception e) {
-            log.warn("Failed to build STAMP info for stampNid {}: {}", stampNid, e.getMessage());
-            return new ConceptSemanticsResponse.StampInfo(null, null, null, null, null, null);
+        List<FieldValue> fields = new ArrayList<>();
+        for (int i = 0; i < protoSemantic.getFieldsCount(); i++) {
+            dev.ikm.tinkar.schema.Field field = protoSemantic.getFields(i);
+            fields.add(new FieldValue(i, field.getStringValue()));
         }
+
+        TinkarStampInfo protoStamp = protoSemantic.getStamp();
+        ConceptSemanticsResponse.StampInfo stampInfo = new ConceptSemanticsResponse.StampInfo(
+                protoStamp.getStatus().isEmpty() ? null : protoStamp.getStatus(),
+                protoStamp.getAuthor().isEmpty() ? null : protoStamp.getAuthor(),
+                protoStamp.getModule().isEmpty() ? null : protoStamp.getModule(),
+                protoStamp.getPath().isEmpty() ? null : protoStamp.getPath(),
+                protoStamp.getTime(),
+                protoStamp.getFormattedTime().isEmpty() ? null : protoStamp.getFormattedTime()
+        );
+
+        return new SemanticInfo(semanticId, protoSemantic.getPatternName(), fields, stampInfo);
     }
 
     @Override
