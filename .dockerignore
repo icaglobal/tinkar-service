@@ -1,0 +1,35 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.cursor/
+
+# Build artifacts (we build fresh in Docker)
+**/target/
+**/build/
+
+# Data directories (mounted as volumes instead)
+data/
+**/data/
+
+# Documentation
+*.md
+!README.md
+doc/
+docs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test data
+**/test-data/
+**/testdata/
