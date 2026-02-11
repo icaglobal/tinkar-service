@@ -115,7 +115,46 @@ export type SemanticInfo = {
 export type ConceptSemanticsResponse = {
   conceptId: string;
   conceptDescription: string;
+  totalCount?: number;
   semantics: SemanticInfo[];
   success: boolean;
   errorMessage: string | null;
+};
+
+// Response for /change-history endpoint
+export type ChangeHistoryResponse = {
+  entityId: string;
+  entityDescription: string | null;
+  totalVersions: number;
+  versionChanges: unknown[];
+  success: boolean;
+  errorMessage: string | null;
+};
+
+// ── Test Runner Types ────────────────────────────────────────────────
+
+export type TestStatus = 'pending' | 'running' | 'pass' | 'fail' | 'skip';
+
+export type TestResult = {
+  id: string;
+  name: string;
+  status: TestStatus;
+  detail?: string;
+  responseData?: unknown;
+  durationMs?: number;
+};
+
+export type TestGroup = {
+  id: string;
+  name: string;
+  description?: string;
+  tests: TestResult[];
+};
+
+export type TestRunSummary = {
+  pass: number;
+  fail: number;
+  skip: number;
+  total: number;
+  isRunning: boolean;
 };

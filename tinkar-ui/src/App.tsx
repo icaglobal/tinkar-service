@@ -4,11 +4,12 @@ import { SearchBox } from './components/SearchBox';
 import { ResultsTable } from './components/ResultsTable';
 import { SortedResultsTable } from './components/SortedResultsTable';
 import { SemanticsView } from './components/SemanticsView';
+import { TestRunner } from './components/TestRunner/TestRunner';
 import { conceptSearchWithSort, getDescendants, getSemantics, removeDescendant, createAndAddDescendant } from './api/tinkarApi';
 import type { SearchSortOption } from './api/types';
 import './App.css';
 
-type ViewMode = 'search' | 'descendants' | 'semantics';
+type ViewMode = 'search' | 'descendants' | 'semantics' | 'test-runner';
 
 const SORT_OPTIONS: { value: SearchSortOption; label: string }[] = [
   { value: 'TOP_COMPONENT', label: 'Top Component (by score)' },
@@ -131,11 +132,21 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Tinkar Concept Search</h1>
+        <div className="header-row">
+          <h1>Tinkar Search</h1>
+          <button
+            className={`test-runner-button ${viewMode === 'test-runner' ? 'active' : ''}`}
+            onClick={() => setViewMode('test-runner')}
+          >
+            Run DeX Tests
+          </button>
+        </div>
       </header>
 
       <main className="app-main">
-        <SearchBox onSearch={handleSearch} isLoading={isLoading} />
+        {viewMode !== 'test-runner' && (
+          <SearchBox onSearch={handleSearch} isLoading={isLoading} />
+        )}
 
         {viewMode === 'search' && (
           <div className="sort-controls">
@@ -268,6 +279,10 @@ function App() {
               <p className="instructions">Enter a search term to find Tinkar concepts</p>
             )}
           </>
+        )}
+
+        {viewMode === 'test-runner' && (
+          <TestRunner onBack={handleBack} />
         )}
       </main>
     </div>
