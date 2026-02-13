@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package ai.ica.tinkar;
+
+import "tinkar_search.proto";
+
+option java_multiple_files = true;
+option java_package = "ai.ica.tinkar.proto";
+option java_outer_classname = "IkeKnowledgeGraphProto";
+
+/*
+ * Tier 2: Concept-Aware (Knowledge Graph)
+ *
+ * Exposes the concept-oriented structure with optional coordinate overrides.
+ * Responses include PublicIds and pre-resolved labels (dual-return pattern).
+ * Target audience: analytics engineers, knowledge graph practitioners.
+ */
+service IkeKnowledgeGraph {
+  // Get all semantics attached to a concept (patterns, fields, STAMP info)
+  rpc GetConceptSemantics(TinkarConceptIdRequest) returns (TinkarConceptSemanticsResponse);
+
+  // Future Tier 2 RPCs:
+  // rpc GetVersionHistory(...) returns (...);
+  // rpc CompareVersions(...) returns (...);
+  // rpc ResolveToText(...) returns (...);
+  // rpc GetSemanticsByPattern(...) returns (...);
+  // rpc QueryWithCoordinates(...) returns (...);
+}
