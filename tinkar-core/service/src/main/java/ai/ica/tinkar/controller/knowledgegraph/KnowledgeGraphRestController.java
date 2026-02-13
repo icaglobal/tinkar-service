@@ -3,8 +3,12 @@ package ai.ica.tinkar.controller.knowledgegraph;
 import ai.ica.tinkar.dto.ChangeHistoryResponse;
 import ai.ica.tinkar.dto.ConceptChangeHistoryResponse;
 import ai.ica.tinkar.dto.ConceptSemanticsResponse;
+import ai.ica.tinkar.dto.CoordinateOverride;
 import ai.ica.tinkar.dto.DescendantOperationResponse;
+import ai.ica.tinkar.dto.PremiseType;
+import ai.ica.tinkar.service.CoordinateFactory;
 import ai.ica.tinkar.service.TinkarService;
+import dev.ikm.tinkar.coordinate.view.calculator.ViewCalculatorWithCache;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -20,12 +24,17 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 /**
  * Tier 2: Concept-Aware (Knowledge Graph) — REST controller.
  *
  * Exposes the concept-oriented structure with semantic patterns, STAMP info,
  * version history, and write operations. Target audience: analytics engineers,
  * knowledge graph practitioners.
+ *
+ * Read endpoints accept optional coordinate override parameters to control
+ * STAMP filtering and navigation mode. Omitted parameters use server defaults.
  */
 @RestController
 @RequestMapping("/api/ike/knowledgegraph")
@@ -38,48 +47,80 @@ public class KnowledgeGraphRestController {
         this.tinkarService = tinkarService;
     }
 
-    @Operation(summary = "Get all semantics for a concept", description = "Retrieves all semantics (comments, descriptions, axioms, etc.) attached to a concept.")
+    @Operation(summary = "Get all semantics for a concept",
+            description = "Retrieves all semantics (comments, descriptions, axioms, etc.) attached to a concept. " +
+                    "Supports optional coordinate overrides for STAMP filtering and navigation mode.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Semantics retrieved successfully", content = @Content(schema = @Schema(implementation = ConceptSemanticsResponse.class))),
             @ApiResponse(responseCode = "400", description = "Invalid concept ID parameter")
     })
     @GetMapping("/semantics")
     public ResponseEntity<ConceptSemanticsResponse> getConceptSemantics(
-            @Parameter(description = "Concept ID (UUID)", required = true, example = "9fc3832b-a5f8-5504-ba16-7551976841dc") @RequestParam("conceptId") String conceptId) {
-        return ResponseEntity.ok(tinkarService.getConceptSemantics(conceptId));
+            @Parameter(description = "Concept ID (UUID)", required = true, example = "9fc3832b-a5f8-5504-ba16-7551976841dc") @RequestParam("conceptId") String conceptId,
+            @Parameter(description = "Allowed states: ACTIVE, INACTIVE, or ACTIVE_AND_INACTIVE") @RequestParam(required = false) String allowedStates,
+            @Parameter(description = "Position time as epoch milliseconds (null = latest)") @RequestParam(required = false) Long positionTime,
+            @Parameter(description = "UUID of the path concept") @RequestParam(required = false) String positionPath,
+            @Parameter(description = "UUIDs of module concepts to include") @RequestParam(required = false) List<String> modules,
+            @Parameter(description = "Navigation premise type: STATED or INFERRED") @RequestParam(required = false) PremiseType premiseType) {
+        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, premiseType);
+        return ResponseEntity.ok(tinkarService.getConceptSemantics(conceptId, calc));
     }
 
-    @Operation(summary = "Get comments for a concept", description = "Retrieves all comment semantics attached to a concept.")
+    @Operation(summary = "Get comments for a concept",
+            description = "Retrieves all comment semantics attached to a concept. " +
+                    "Supports optional coordinate overrides for STAMP filtering and navigation mode.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Comments retrieved successfully", content = @Content(schema = @Schema(implementation = ConceptSemanticsResponse.class))),
             @ApiResponse(responseCode = "400", description = "Invalid concept ID parameter")
     })
     @GetMapping("/comments")
     public ResponseEntity<ConceptSemanticsResponse> getConceptComments(
-            @Parameter(description = "Concept ID (UUID)", required = true, example = "9fc3832b-a5f8-5504-ba16-7551976841dc") @RequestParam("conceptId") String conceptId) {
-        return ResponseEntity.ok(tinkarService.getConceptComments(conceptId));
+            @Parameter(description = "Concept ID (UUID)", required = true, example = "9fc3832b-a5f8-5504-ba16-7551976841dc") @RequestParam("conceptId") String conceptId,
+            @Parameter(description = "Allowed states: ACTIVE, INACTIVE, or ACTIVE_AND_INACTIVE") @RequestParam(required = false) String allowedStates,
+            @Parameter(description = "Position time as epoch milliseconds (null = latest)") @RequestParam(required = false) Long positionTime,
+            @Parameter(description = "UUID of the path concept") @RequestParam(required = false) String positionPath,
+            @Parameter(description = "UUIDs of module concepts to include") @RequestParam(required = false) List<String> modules,
+            @Parameter(description = "Navigation premise type: STATED or INFERRED") @RequestParam(required = false) PremiseType premiseType) {
+        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, premiseType);
+        return ResponseEntity.ok(tinkarService.getConceptComments(conceptId, calc));
     }
 
-    @Operation(summary = "Get change history for an entity", description = "Retrieves the complete change history for an entity, showing all STAMP versions and field modifications.")
+    @Operation(summary = "Get change history for an entity",
+            description = "Retrieves the complete change history for an entity, showing all STAMP versions and field modifications. " +
+                    "Supports optional coordinate overrides for STAMP filtering.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Change history retrieved successfully", content = @Content(schema = @Schema(implementation = ChangeHistoryResponse.class))),
             @ApiResponse(responseCode = "400", description = "Invalid entity ID parameter")
     })
     @GetMapping("/change-history")
     public ResponseEntity<ChangeHistoryResponse> getChangeHistory(
-            @Parameter(description = "Entity ID (UUID)", required = true, example = "f5c39ec3-7256-3a03-b651-d17b623a30ec") @RequestParam("entityId") String entityId) {
-        return ResponseEntity.ok(tinkarService.getChangeHistory(entityId));
+            @Parameter(description = "Entity ID (UUID)", required = true, example = "f5c39ec3-7256-3a03-b651-d17b623a30ec") @RequestParam("entityId") String entityId,
+            @Parameter(description = "Allowed states: ACTIVE, INACTIVE, or ACTIVE_AND_INACTIVE") @RequestParam(required = false) String allowedStates,
+            @Parameter(description = "Position time as epoch milliseconds (null = latest)") @RequestParam(required = false) Long positionTime,
+            @Parameter(description = "UUID of the path concept") @RequestParam(required = false) String positionPath,
+            @Parameter(description = "UUIDs of module concepts to include") @RequestParam(required = false) List<String> modules,
+            @Parameter(description = "Navigation premise type: STATED or INFERRED") @RequestParam(required = false) PremiseType premiseType) {
+        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, premiseType);
+        return ResponseEntity.ok(tinkarService.getChangeHistory(entityId, calc));
     }
 
-    @Operation(summary = "Get comprehensive change history for a concept", description = "Retrieves the full change history for a concept INCLUDING all attached semantics.")
+    @Operation(summary = "Get comprehensive change history for a concept",
+            description = "Retrieves the full change history for a concept INCLUDING all attached semantics. " +
+                    "Supports optional coordinate overrides for STAMP filtering.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Change history retrieved successfully", content = @Content(schema = @Schema(implementation = ConceptChangeHistoryResponse.class))),
             @ApiResponse(responseCode = "400", description = "Invalid concept ID parameter")
     })
     @GetMapping("/concept-change-history")
     public ResponseEntity<ConceptChangeHistoryResponse> getConceptChangeHistory(
-            @Parameter(description = "Concept ID (UUID)", required = true, example = "9fc3832b-a5f8-5504-ba16-7551976841dc") @RequestParam("conceptId") String conceptId) {
-        return ResponseEntity.ok(tinkarService.getConceptChangeHistory(conceptId));
+            @Parameter(description = "Concept ID (UUID)", required = true, example = "9fc3832b-a5f8-5504-ba16-7551976841dc") @RequestParam("conceptId") String conceptId,
+            @Parameter(description = "Allowed states: ACTIVE, INACTIVE, or ACTIVE_AND_INACTIVE") @RequestParam(required = false) String allowedStates,
+            @Parameter(description = "Position time as epoch milliseconds (null = latest)") @RequestParam(required = false) Long positionTime,
+            @Parameter(description = "UUID of the path concept") @RequestParam(required = false) String positionPath,
+            @Parameter(description = "UUIDs of module concepts to include") @RequestParam(required = false) List<String> modules,
+            @Parameter(description = "Navigation premise type: STATED or INFERRED") @RequestParam(required = false) PremiseType premiseType) {
+        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, premiseType);
+        return ResponseEntity.ok(tinkarService.getConceptChangeHistory(conceptId, calc));
     }
 
     @Operation(summary = "Create a sample change (comment)", description = "Creates a new comment semantic attached to the specified concept.")
@@ -148,5 +189,16 @@ public class KnowledgeGraphRestController {
             @Parameter(description = "Parent concept ID (UUID)", required = true, example = "f6978e15-e169-58c2-a93d-eac1511974da") @RequestParam("parentConceptId") String parentConceptId,
             @Parameter(description = "Descendant concept ID to remove (UUID)", required = true, example = "9fc3832b-a5f8-5504-ba16-7551976841dc") @RequestParam("descendantConceptId") String descendantConceptId) {
         return ResponseEntity.ok(tinkarService.removeDescendant(parentConceptId, descendantConceptId));
+    }
+
+    private ViewCalculatorWithCache buildCalculator(String allowedStates, Long positionTime,
+            String positionPath, List<String> modules, PremiseType premiseType) {
+        if (allowedStates == null && positionTime == null && positionPath == null
+                && (modules == null || modules.isEmpty()) && premiseType == null) {
+            return CoordinateFactory.defaultCalculator();
+        }
+        CoordinateOverride override = new CoordinateOverride(
+                allowedStates, positionTime, positionPath, modules, null, premiseType);
+        return CoordinateFactory.buildCalculator(override);
     }
 }

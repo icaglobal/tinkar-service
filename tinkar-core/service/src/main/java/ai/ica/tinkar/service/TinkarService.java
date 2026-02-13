@@ -8,6 +8,7 @@ import ai.ica.tinkar.dto.DescendantOperationResponse;
 import ai.ica.tinkar.dto.SearchSortOption;
 import ai.ica.tinkar.proto.TinkarConceptSemanticsResponse;
 import ai.ica.tinkar.proto.TinkarSearchQueryResponse;
+import dev.ikm.tinkar.coordinate.view.calculator.ViewCalculatorWithCache;
 
 public interface TinkarService {
     TinkarSearchQueryResponse search(String query);
@@ -58,6 +59,14 @@ public interface TinkarService {
     ChangeHistoryResponse getChangeHistory(String entityId);
 
     /**
+     * Gets the change history for an entity using the specified view calculator for coordinate resolution.
+     * @param entityId The public ID (UUID) of the entity
+     * @param viewCalculator The view calculator with coordinate overrides
+     * @return ChangeHistoryResponse containing the chronology of changes
+     */
+    ChangeHistoryResponse getChangeHistory(String entityId, ViewCalculatorWithCache viewCalculator);
+
+    /**
      * Creates a sample semantic modification on an existing concept to demonstrate change tracking.
      * This creates a new comment/annotation semantic on the specified concept.
      * @param conceptId The public ID (UUID) of the concept to annotate
@@ -74,11 +83,27 @@ public interface TinkarService {
     ConceptSemanticsResponse getConceptComments(String conceptId);
 
     /**
+     * Gets all comment semantics attached to a concept using the specified view calculator.
+     * @param conceptId The public ID (UUID) of the concept
+     * @param viewCalculator The view calculator with coordinate overrides
+     * @return ConceptSemanticsResponse containing all comments for this concept
+     */
+    ConceptSemanticsResponse getConceptComments(String conceptId, ViewCalculatorWithCache viewCalculator);
+
+    /**
      * Gets all semantics of any pattern attached to a concept.
      * @param conceptId The public ID (UUID) of the concept
      * @return ConceptSemanticsResponse containing all semantics for this concept
      */
     ConceptSemanticsResponse getConceptSemantics(String conceptId);
+
+    /**
+     * Gets all semantics of any pattern attached to a concept using the specified view calculator.
+     * @param conceptId The public ID (UUID) of the concept
+     * @param viewCalculator The view calculator with coordinate overrides
+     * @return ConceptSemanticsResponse containing all semantics for this concept
+     */
+    ConceptSemanticsResponse getConceptSemantics(String conceptId, ViewCalculatorWithCache viewCalculator);
 
     /**
      * Gets all semantics of any pattern attached to a concept (gRPC proto response).
@@ -88,12 +113,29 @@ public interface TinkarService {
     TinkarConceptSemanticsResponse getConceptSemanticsProto(String conceptId);
 
     /**
+     * Gets all semantics of any pattern attached to a concept (gRPC proto response) using the specified view calculator.
+     * @param conceptId The public ID (UUID) of the concept
+     * @param viewCalculator The view calculator with coordinate overrides
+     * @return TinkarConceptSemanticsResponse proto containing all semantics for this concept
+     */
+    TinkarConceptSemanticsResponse getConceptSemanticsProto(String conceptId, ViewCalculatorWithCache viewCalculator);
+
+    /**
      * Gets comprehensive change history for a concept including all attached semantics.
      * This shows changes to the concept itself AND changes to all comments, descriptions, etc.
      * @param conceptId The public ID (UUID) of the concept
      * @return ConceptChangeHistoryResponse containing the full change history
      */
     ConceptChangeHistoryResponse getConceptChangeHistory(String conceptId);
+
+    /**
+     * Gets comprehensive change history for a concept including all attached semantics,
+     * using the specified view calculator for coordinate resolution.
+     * @param conceptId The public ID (UUID) of the concept
+     * @param viewCalculator The view calculator with coordinate overrides
+     * @return ConceptChangeHistoryResponse containing the full change history
+     */
+    ConceptChangeHistoryResponse getConceptChangeHistory(String conceptId, ViewCalculatorWithCache viewCalculator);
 
     /**
      * Saves all pending changes to persistent storage (disk).
