@@ -14,6 +14,7 @@ set -euo pipefail
 
 BASE_URL="${1:-http://localhost:8085}"
 API="$BASE_URL/api/tinkar"
+KG_API="$BASE_URL/api/ike/knowledgegraph"
 
 # ── Counters ──────────────────────────────────────────────────────────
 PASS=0
@@ -54,6 +55,63 @@ api_get() {
   HTTP_CODE=$(curl -s -o "$tmpfile" -w "%{http_code}" "$url" 2>/dev/null) || HTTP_CODE="000"
   RESPONSE=$(cat "$tmpfile")
   rm -f "$tmpfile"
+}
+
+# Run a curl request against the Tier 2 Knowledge Graph API.
+# Usage: kg_api_get <path>
+#   Sets: RESPONSE (body), HTTP_CODE
+kg_api_get() {
+  local path="$1"
+  local url="$KG_API/$path"
+  local tmpfile
+  tmpfile=$(mktemp)
+  HTTP_CODE=$(curl -s -o "$tmpfile" -w "%{http_code}" "$url" 2>/dev/null) || HTTP_CODE="000"
+  RESPONSE=$(cat "$tmpfile")
+  rm -f "$tmpfile"
+}
+
+# Extract totalCount from a Tier 2 semantics-style JSON response.
+# Usage: json_total_count
+#   Reads from: $RESPONSE
+json_total_count() {
+  echo "$RESPONSE" | python3 -c "
+import sys, json
+data = json.loads(sys.stdin.read(), strict=False)
+print(data.get('totalCount', 0))
+" 2>/dev/null || echo "0"
+}
+
+# Assert that the response totalCount matches an expected condition.
+# Usage: assert_count_eq <test_name> <expected_count>
+assert_count_eq() {
+  local name="$1"
+  local expected="$2"
+  local actual
+  actual=$(json_total_count)
+  TOTAL=$((TOTAL + 1))
+  if [ "$actual" = "$expected" ]; then
+    echo -e "  ${GREEN}PASS${NC}  $name (count=$actual)"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  $name  (expected count=$expected, got count=$actual)"
+    FAIL=$((FAIL + 1))
+  fi
+}
+
+# Assert that the response totalCount is > 0.
+# Usage: assert_count_gt0 <test_name>
+assert_count_gt0() {
+  local name="$1"
+  local actual
+  actual=$(json_total_count)
+  TOTAL=$((TOTAL + 1))
+  if [ "$actual" -gt 0 ] 2>/dev/null; then
+    echo -e "  ${GREEN}PASS${NC}  $name (count=$actual)"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  $name  (count=0)"
+    FAIL=$((FAIL + 1))
+  fi
 }
 
 # Assert that the response contains a string.
@@ -419,11 +477,289 @@ echo "         for all 12 devices in a single tabular format)"
 FAIL=$((FAIL + 1))
 
 # ══════════════════════════════════════════════════════════════════════
+#  TIER 2: COORDINATE OVERRIDE SCENARIOS
+# ══════════════════════════════════════════════════════════════════════
+header "Tier 2: Coordinate Override Scenarios"
+
+# "Diabetes insipidus, NOS" — has many inactive semantics (9 of 14), ideal for allowedStates testing
+# Stamp times: 2002-01-30 (1012435200000), 2017-07-30 (1501459200000), 2024-01-31 (1706745600000)
+COORD_TEST_ID="52d02a6d-eaad-57ff-9cd4-82fae97fb044"
+
+# "Albumin (substance)" — has 2 different modules (6 SNOMED CT core + 2 SOLOR overlay)
+MODULE_TEST_ID="02afcfce-19f6-536c-b331-9f17107e0858"
+SNOMED_CT_CORE_MODULE="6b341bca-9c47-5e9e-83fb-9782c8fea56e"
+SOLOR_OVERLAY_MODULE="9ecc154c-e490-5cf8-805d-d2865d62aef3"
+
+# Path UUIDs
+DEVELOPMENT_PATH="1f200ca6-960e-11e5-8994-feff819cdc9f"
+SANDBOX_PATH="80710ea6-983c-5fa0-8908-e479f1f03ea9"
+
+# Timestamp cutoffs for positionTime tests
+TIME_BEFORE_ALL=946684800000       # 2000-01-01 — before any data
+TIME_BEFORE_2017=1501459199999     # just before 2017-07-30 stamp
+TIME_AT_2017=1501459200000         # exactly at 2017-07-30 stamp
+
+  # ── allowedStates filtering ────────────────────────────────────────
+
+  subheader "GET /semantics — allowedStates filtering"
+
+  kg_api_get "semantics?conceptId=$COORD_TEST_ID"
+  assert_status "semantics (default coordinates)" "200"
+  assert_count_gt0 "semantics (default) returns results"
+  DEFAULT_SEM_COUNT=$(json_total_count)
+
+  kg_api_get "semantics?conceptId=$COORD_TEST_ID&allowedStates=ACTIVE"
+  assert_status "semantics (allowedStates=ACTIVE)" "200"
+  ACTIVE_SEM_COUNT=$(json_total_count)
+
+  # ACTIVE count must be less than DEFAULT (concept has inactive semantics)
+  TOTAL=$((TOTAL + 1))
+  if [ "$ACTIVE_SEM_COUNT" -lt "$DEFAULT_SEM_COUNT" ]; then
+    echo -e "  ${GREEN}PASS${NC}  ACTIVE ($ACTIVE_SEM_COUNT) < DEFAULT ($DEFAULT_SEM_COUNT) — inactive semantics filtered"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  ACTIVE ($ACTIVE_SEM_COUNT) should be less than DEFAULT ($DEFAULT_SEM_COUNT)"
+    FAIL=$((FAIL + 1))
+  fi
+
+  # All results from ACTIVE query should have Active status
+  TOTAL=$((TOTAL + 1))
+  INACTIVE_IN_ACTIVE=$(echo "$RESPONSE" | python3 -c "import json,sys; data=json.loads(sys.stdin.read(),strict=False); print(sum(1 for s in data.get('semantics',[]) if s.get('stamp',{}).get('status') != 'Active'))" 2>/dev/null || echo "-1")
+  if [ "$INACTIVE_IN_ACTIVE" = "0" ]; then
+    echo -e "  ${GREEN}PASS${NC}  All $ACTIVE_SEM_COUNT results have Active status"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  Found $INACTIVE_IN_ACTIVE non-Active semantics in ACTIVE query"
+    FAIL=$((FAIL + 1))
+  fi
+
+  kg_api_get "semantics?conceptId=$COORD_TEST_ID&allowedStates=INACTIVE"
+  assert_status "semantics (allowedStates=INACTIVE)" "200"
+  INACTIVE_SEM_COUNT=$(json_total_count)
+
+  # ACTIVE + INACTIVE should add up to DEFAULT
+  TOTAL=$((TOTAL + 1))
+  SUM=$((ACTIVE_SEM_COUNT + INACTIVE_SEM_COUNT))
+  if [ "$SUM" = "$DEFAULT_SEM_COUNT" ]; then
+    echo -e "  ${GREEN}PASS${NC}  ACTIVE ($ACTIVE_SEM_COUNT) + INACTIVE ($INACTIVE_SEM_COUNT) = DEFAULT ($DEFAULT_SEM_COUNT)"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  ACTIVE ($ACTIVE_SEM_COUNT) + INACTIVE ($INACTIVE_SEM_COUNT) = $SUM, expected $DEFAULT_SEM_COUNT"
+    FAIL=$((FAIL + 1))
+  fi
+
+  # ── premiseType overrides ──────────────────────────────────────────
+
+  subheader "GET /semantics — premiseType overrides"
+
+  kg_api_get "semantics?conceptId=$ALBUMIN_ID&premiseType=STATED"
+  assert_status "semantics (premiseType=STATED)" "200"
+  assert_count_gt0 "semantics (STATED) returns results"
+  assert_contains "semantics (STATED) has Stated definition" "Stated definition"
+
+  kg_api_get "semantics?conceptId=$ALBUMIN_ID&premiseType=INFERRED"
+  assert_status "semantics (premiseType=INFERRED)" "200"
+  assert_count_gt0 "semantics (INFERRED) returns results"
+  assert_contains "semantics (INFERRED) has Inferred definition" "Inferred definition"
+
+  # ── Combined overrides ─────────────────────────────────────────────
+
+  subheader "GET /semantics — combined overrides"
+
+  kg_api_get "semantics?conceptId=$COORD_TEST_ID&allowedStates=ACTIVE&premiseType=STATED"
+  assert_status "semantics (ACTIVE + STATED)" "200"
+  COMBINED_COUNT=$(json_total_count)
+  assert_count_gt0 "semantics (ACTIVE + STATED) returns results"
+
+  TOTAL=$((TOTAL + 1))
+  if [ "$COMBINED_COUNT" = "$ACTIVE_SEM_COUNT" ]; then
+    echo -e "  ${GREEN}PASS${NC}  ACTIVE+STATED ($COMBINED_COUNT) matches ACTIVE ($ACTIVE_SEM_COUNT)"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  ACTIVE+STATED ($COMBINED_COUNT) differs from ACTIVE ($ACTIVE_SEM_COUNT)"
+    FAIL=$((FAIL + 1))
+  fi
+
+  # ── positionTime overrides ────────────────────────────────────────
+
+  subheader "GET /semantics — positionTime (STAMP Coordinate)"
+
+  kg_api_get "semantics?conceptId=$COORD_TEST_ID"
+  TIME_DEFAULT_COUNT=$(json_total_count)
+
+  kg_api_get "semantics?conceptId=$COORD_TEST_ID&positionTime=$TIME_BEFORE_ALL"
+  assert_status "semantics (positionTime before 2002)" "200"
+  assert_count_eq "positionTime before all data — 0 semantics" "0"
+
+  kg_api_get "semantics?conceptId=$COORD_TEST_ID&positionTime=$TIME_BEFORE_2017"
+  assert_status "semantics (positionTime before 2017)" "200"
+  TIME_PRE2017_COUNT=$(json_total_count)
+
+  TOTAL=$((TOTAL + 1))
+  if [ "$TIME_PRE2017_COUNT" -lt "$TIME_DEFAULT_COUNT" ] && [ "$TIME_PRE2017_COUNT" -gt 0 ]; then
+    echo -e "  ${GREEN}PASS${NC}  positionTime pre-2017 ($TIME_PRE2017_COUNT) < latest ($TIME_DEFAULT_COUNT)"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  positionTime pre-2017 ($TIME_PRE2017_COUNT) should be between 1 and $TIME_DEFAULT_COUNT"
+    FAIL=$((FAIL + 1))
+  fi
+
+  kg_api_get "semantics?conceptId=$COORD_TEST_ID&positionTime=$TIME_AT_2017"
+  assert_status "semantics (positionTime at 2017)" "200"
+  TIME_AT2017_COUNT=$(json_total_count)
+
+  TOTAL=$((TOTAL + 1))
+  if [ "$TIME_AT2017_COUNT" -ge "$TIME_PRE2017_COUNT" ]; then
+    echo -e "  ${GREEN}PASS${NC}  positionTime at-2017 ($TIME_AT2017_COUNT) >= pre-2017 ($TIME_PRE2017_COUNT)"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  positionTime at-2017 ($TIME_AT2017_COUNT) should be >= pre-2017 ($TIME_PRE2017_COUNT)"
+    FAIL=$((FAIL + 1))
+  fi
+
+  # ── modules overrides ──────────────────────────────────────────────
+
+  subheader "GET /semantics — modules (STAMP Coordinate)"
+
+  kg_api_get "semantics?conceptId=$MODULE_TEST_ID"
+  assert_status "semantics for module test concept (default)" "200"
+  MOD_DEFAULT_COUNT=$(json_total_count)
+
+  # Count distinct modules in default response
+  MOD_DISTINCT=$(echo "$RESPONSE" | python3 -c "
+import json, sys
+data = json.loads(sys.stdin.read(), strict=False)
+modules = set(s.get('stamp',{}).get('module','') for s in data.get('semantics',[]) if s.get('stamp',{}).get('module'))
+print(len(modules))
+" 2>/dev/null || echo "0")
+
+  TOTAL=$((TOTAL + 1))
+  if [ "$MOD_DISTINCT" -ge 2 ]; then
+    echo -e "  ${GREEN}PASS${NC}  Module test concept has $MOD_DISTINCT distinct modules"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  Expected >=2 distinct modules, found $MOD_DISTINCT"
+    FAIL=$((FAIL + 1))
+  fi
+
+  kg_api_get "semantics?conceptId=$MODULE_TEST_ID&modules=$SNOMED_CT_CORE_MODULE"
+  assert_status "semantics (modules=SNOMED CT core)" "200"
+  MOD_SNOMED_COUNT=$(json_total_count)
+
+  TOTAL=$((TOTAL + 1))
+  if [ "$MOD_SNOMED_COUNT" -lt "$MOD_DEFAULT_COUNT" ] && [ "$MOD_SNOMED_COUNT" -gt 0 ]; then
+    echo -e "  ${GREEN}PASS${NC}  SNOMED-only ($MOD_SNOMED_COUNT) < default ($MOD_DEFAULT_COUNT)"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  SNOMED-only ($MOD_SNOMED_COUNT) should be between 1 and $MOD_DEFAULT_COUNT"
+    FAIL=$((FAIL + 1))
+  fi
+
+  kg_api_get "semantics?conceptId=$MODULE_TEST_ID&modules=$SOLOR_OVERLAY_MODULE"
+  assert_status "semantics (modules=SOLOR overlay)" "200"
+  MOD_SOLOR_COUNT=$(json_total_count)
+
+  TOTAL=$((TOTAL + 1))
+  if [ "$MOD_SOLOR_COUNT" -lt "$MOD_DEFAULT_COUNT" ] && [ "$MOD_SOLOR_COUNT" -gt 0 ]; then
+    echo -e "  ${GREEN}PASS${NC}  SOLOR-only ($MOD_SOLOR_COUNT) < default ($MOD_DEFAULT_COUNT)"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  SOLOR-only ($MOD_SOLOR_COUNT) should be between 1 and $MOD_DEFAULT_COUNT"
+    FAIL=$((FAIL + 1))
+  fi
+
+  MOD_SUM=$((MOD_SNOMED_COUNT + MOD_SOLOR_COUNT))
+  TOTAL=$((TOTAL + 1))
+  if [ "$MOD_SUM" = "$MOD_DEFAULT_COUNT" ]; then
+    echo -e "  ${GREEN}PASS${NC}  SNOMED ($MOD_SNOMED_COUNT) + SOLOR ($MOD_SOLOR_COUNT) = default ($MOD_DEFAULT_COUNT)"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  SNOMED ($MOD_SNOMED_COUNT) + SOLOR ($MOD_SOLOR_COUNT) = $MOD_SUM, expected $MOD_DEFAULT_COUNT"
+    FAIL=$((FAIL + 1))
+  fi
+
+  # ── positionPath overrides ─────────────────────────────────────────
+
+  subheader "GET /semantics — positionPath (STAMP Coordinate)"
+
+  kg_api_get "semantics?conceptId=$COORD_TEST_ID&positionPath=$DEVELOPMENT_PATH"
+  assert_status "semantics (positionPath=Development)" "200"
+  PATH_DEV_COUNT=$(json_total_count)
+
+  TOTAL=$((TOTAL + 1))
+  if [ "$PATH_DEV_COUNT" = "$TIME_DEFAULT_COUNT" ]; then
+    echo -e "  ${GREEN}PASS${NC}  Explicit Development path ($PATH_DEV_COUNT) = default ($TIME_DEFAULT_COUNT)"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  Explicit Development path ($PATH_DEV_COUNT) should match default ($TIME_DEFAULT_COUNT)"
+    FAIL=$((FAIL + 1))
+  fi
+
+  kg_api_get "semantics?conceptId=$COORD_TEST_ID&positionPath=$SANDBOX_PATH"
+  assert_status "semantics (positionPath=Sandbox)" "200"
+  assert_count_eq "Sandbox path — 0 semantics (no data on this path)" "0"
+
+  # ── Comments Endpoint ─────────────────────────────────────────────
+
+  subheader "GET /comments — Coordinate Overrides"
+
+  kg_api_get "comments?conceptId=$ALBUMIN_ID"
+  assert_status "comments (default coordinates)" "200"
+
+  kg_api_get "comments?conceptId=$ALBUMIN_ID&allowedStates=ACTIVE"
+  assert_status "comments (allowedStates=ACTIVE)" "200"
+
+  # ── Change History Endpoint ───────────────────────────────────────
+
+  subheader "GET /change-history — Coordinate Overrides"
+
+  kg_api_get "change-history?entityId=$ALBUMIN_ID"
+  assert_status "change-history (default coordinates)" "200"
+
+  kg_api_get "change-history?entityId=$ALBUMIN_ID&allowedStates=ACTIVE"
+  assert_status "change-history (allowedStates=ACTIVE)" "200"
+
+  # ── Concept Change History Endpoint ───────────────────────────────
+
+  subheader "GET /concept-change-history — Coordinate Overrides"
+
+  kg_api_get "concept-change-history?conceptId=$ALBUMIN_ID"
+  assert_status "concept-change-history (default coordinates)" "200"
+
+  kg_api_get "concept-change-history?conceptId=$ALBUMIN_ID&allowedStates=ACTIVE"
+  assert_status "concept-change-history (allowedStates=ACTIVE)" "200"
+
+  # ── Backward Compatibility ────────────────────────────────────────
+
+  subheader "Backward Compatibility"
+
+  # Verify that the Tier 1 endpoints still work without coordinates
+  api_get "semantics?conceptId=$ALBUMIN_ID"
+  assert_status "Tier 1 semantics (no coordinates) still works" "200"
+  assert_contains "Tier 1 semantics returns same data" "Identifier Pattern"
+
+  # Verify Tier 2 without coordinates = explicit ACTIVE_AND_INACTIVE
+  kg_api_get "semantics?conceptId=$COORD_TEST_ID"
+  T2_NO_PARAMS=$(json_total_count)
+
+  kg_api_get "semantics?conceptId=$COORD_TEST_ID&allowedStates=ACTIVE_AND_INACTIVE"
+  T2_EXPLICIT=$(json_total_count)
+
+  TOTAL=$((TOTAL + 1))
+  if [ "$T2_NO_PARAMS" = "$T2_EXPLICIT" ]; then
+    echo -e "  ${GREEN}PASS${NC}  No params ($T2_NO_PARAMS) = explicit ACTIVE_AND_INACTIVE ($T2_EXPLICIT)"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  No params ($T2_NO_PARAMS) differs from explicit ACTIVE_AND_INACTIVE ($T2_EXPLICIT)"
+    FAIL=$((FAIL + 1))
+  fi
+
+# ══════════════════════════════════════════════════════════════════════
 #  ENDPOINT COVERAGE
 # ══════════════════════════════════════════════════════════════════════
 header "Endpoint Coverage"
 
-subheader "Additional Endpoints"
+subheader "Tier 1 (Legacy) Endpoints"
 
 api_get "search?query=albumin"
 assert_status "GET /search" "200"
@@ -452,6 +788,22 @@ if [ -n "$ALBUMIN_ID" ]; then
 
   api_get "semantics?conceptId=$ALBUMIN_ID"
   assert_status "GET /semantics" "200"
+fi
+
+subheader "Tier 2 (Knowledge Graph) Endpoints"
+
+if [ -n "$ALBUMIN_ID" ]; then
+  kg_api_get "semantics?conceptId=$ALBUMIN_ID"
+  assert_status "GET /knowledgegraph/semantics" "200"
+
+  kg_api_get "comments?conceptId=$ALBUMIN_ID"
+  assert_status "GET /knowledgegraph/comments" "200"
+
+  kg_api_get "change-history?entityId=$ALBUMIN_ID"
+  assert_status "GET /knowledgegraph/change-history" "200"
+
+  kg_api_get "concept-change-history?conceptId=$ALBUMIN_ID"
+  assert_status "GET /knowledgegraph/concept-change-history" "200"
 fi
 
 # ══════════════════════════════════════════════════════════════════════
