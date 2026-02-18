@@ -1,0 +1,21 @@
+type: grpc_request
+model: grpc_request
+id: gr_wZ7FSJtdxY
+createdAt: 2026-01-08T19:23:48.011713
+updatedAt: 2026-02-13T19:29:27.338810
+workspaceId: wk_F4TtaH4LNi
+folderId: fl_Axp2hqReeA
+authenticationType: null
+authentication: {}
+description: ''
+message: |-
+  {
+    "query": "chronic lung",
+    "max_results": 200
+  }
+metadata: []
+method: ConceptSearch
+name: ConceptSearch
+service: ai.ica.tinkar.TinkarSearchService
+sortPriority: 1000.0
+url: localhost:9095

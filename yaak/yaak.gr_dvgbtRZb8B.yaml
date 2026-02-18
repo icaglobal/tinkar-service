@@ -1,0 +1,20 @@
+type: grpc_request
+model: grpc_request
+id: gr_dvgbtRZb8B
+createdAt: 2026-01-08T19:33:04.306101
+updatedAt: 2026-02-13T19:29:27.341958
+workspaceId: wk_F4TtaH4LNi
+folderId: fl_Axp2hqReeA
+authenticationType: null
+authentication: {}
+description: ''
+message: |-
+  {
+    "public_id": {"uuids": ["4d713cb2-df52-4ae6-b624-0b8ef0d9c41a"]}
+  }
+metadata: []
+method: GetEntity
+name: GetEntity
+service: ai.ica.tinkar.TinkarSearchService
+sortPriority: 3000.0
+url: localhost:9095

@@ -1,0 +1,17 @@
+type: grpc_request
+model: grpc_request
+id: gr_9CQMZ9s4RY
+createdAt: 2026-01-09T19:34:19.777533
+updatedAt: 2026-02-13T19:29:27.345505
+workspaceId: wk_F4TtaH4LNi
+folderId: fl_Axp2hqReeA
+authenticationType: null
+authentication: {}
+description: ''
+message: ''
+metadata: []
+method: RebuildSearchIndex
+name: Rebuild
+service: ai.ica.tinkar.TinkarSearchService
+sortPriority: 6000.0
+url: localhost:9095
