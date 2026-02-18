@@ -1,8 +1,8 @@
 type: grpc_request
 model: grpc_request
-id: gr_xA8S5oALtj
-createdAt: 2026-02-13T19:31:00.090324
-updatedAt: 2026-02-18T14:40:11.190821
+id: gr_vAQc6qU2TF
+createdAt: 2026-02-18T14:40:30.033943
+updatedAt: 2026-02-18T14:40:36.626573
 workspaceId: wk_F4TtaH4LNi
 folderId: fl_S6LmWLxfJ7
 authenticationType: null
@@ -10,11 +10,15 @@ authentication: {}
 description: ''
 message: |-
   {
-    "public_id": {"uuids": ["33f1bc3a-904e-5417-a3a6-43e19ede6ed9"]}
+    "public_id": {
+      "uuids": [
+        "52d02a6d-eaad-57ff-9cd4-82fae97fb044"
+      ]
+    }
   }
 metadata: []
 method: GetConceptSemantics
-name: GetConceptSemantics
+name: Diabetes
 service: ai.ica.tinkar.IkeKnowledgeGraph
-sortPriority: 2000.0
+sortPriority: 2333.3333333333335
 url: localhost:9095

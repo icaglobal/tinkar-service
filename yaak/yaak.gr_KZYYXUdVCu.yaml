@@ -1,8 +1,8 @@
 type: grpc_request
 model: grpc_request
-id: gr_2njcA6uQeb
-createdAt: 2026-02-13T20:58:05.003312
-updatedAt: 2026-02-18T14:40:11.191554
+id: gr_KZYYXUdVCu
+createdAt: 2026-02-18T19:32:02.749586
+updatedAt: 2026-02-18T19:32:19.311032
 workspaceId: wk_F4TtaH4LNi
 folderId: fl_S6LmWLxfJ7
 authenticationType: null
@@ -12,16 +12,16 @@ message: |-
   {
     "public_id": {
       "uuids": [
-        "52d02a6d-eaad-57ff-9cd4-82fae97fb044"
+        "02afcfce-19f6-536c-b331-9f17107e0858"
       ]
     },
     "coordinate_override": {
-      "allowed_states": "ACTIVE_ONLY"
+      "module_ids": ["9ecc154c-e490-5cf8-805d-d2865d62aef3"]
     }
   }
 metadata: []
 method: GetConceptSemantics
-name: Diabetes ACTIVE
+name: Albumin SOLAR
 service: ai.ica.tinkar.IkeKnowledgeGraph
-sortPriority: 3000.0
+sortPriority: 4000.002
 url: localhost:9095
