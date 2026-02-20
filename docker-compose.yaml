@@ -1,0 +1,28 @@
+# Modern Docker Compose file (Compose Specification - no version field needed)
+# Usage: docker compose up --build
+
+services:
+  tinkar:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      network: host
+    image: tinkar/service:latest
+    container_name: tinkar-service
+    ports:
+      - "8085:8085"  # REST API / Swagger UI
+      - "9095:9095"  # gRPC
+    volumes:
+      # Mount your SNOMED RocksDB data (read-write for RocksDB logs)
+      - ./data/rockskb:/app/data/rockskb
+    environment:
+      # Override data path if needed
+      - DATA_PATH_PARENT=/app/data
+      - DATA_PATH_CHILD=rockskb
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
