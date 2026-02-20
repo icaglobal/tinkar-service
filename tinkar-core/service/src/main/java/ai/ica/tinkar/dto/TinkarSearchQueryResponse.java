@@ -23,24 +23,46 @@ public record TinkarSearchQueryResponse(
                 @Schema(description = "Error message if search failed", example = "null") String errorMessage) {
 
         /**
-         * Individual search result item.
+         * Descriptions associated with a concept.
+         */
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        @Schema(description = "Concept descriptions")
+        public record Descriptions(
+                        @Schema(description = "Fully qualified name of the concept") String fullyQualifiedName,
+
+                        @Schema(description = "Regular/preferred description text") String regularName,
+
+                        @Schema(description = "Additional definition or description text") String definition) {
+        }
+
+        /**
+         * STAMP version info for a concept.
+         */
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        @Schema(description = "STAMP version information")
+        public record Stamp(
+                        @Schema(description = "Status concept public ID (UUID)") String statusPublicId,
+
+                        @Schema(description = "Author concept public ID (UUID)") String authorPublicId,
+
+                        @Schema(description = "Module concept public ID (UUID)") String modulePublicId,
+
+                        @Schema(description = "Path concept public ID (UUID)") String pathPublicId,
+
+                        @Schema(description = "Timestamp in epoch milliseconds") Long time) {
+        }
+
+        /**
+         * Individual search result item matching TinkarSearchResult proto.
          */
         @JsonInclude(JsonInclude.Include.NON_NULL)
         @Schema(description = "A single search result")
         public record SearchResult(
-                        @Schema(description = "Concept ID") String conceptId,
+                        @Schema(description = "Public ID (list of UUIDs)") List<String> publicId,
 
-                        @Schema(description = "Name of the concept") String name,
+                        @Schema(description = "Descriptions associated with this concept") Descriptions descriptions,
 
-                        @Schema(description = "Description of the concept") String description,
-
-                        @Schema(description = "Fully qualified name of the concept") String fullyQualifiedName,
-
-                        @Schema(description = "Regular description text") String regularName,
-
-                        @Schema(description = "Status of the concept (e.g., ACTIVE, INACTIVE)") String status,
-
-                        @Schema(description = "Last modified timestamp in epoch milliseconds") Long lastModifiedTime) {
+                        @Schema(description = "STAMP version info") Stamp stamp) {
         }
 
         /**

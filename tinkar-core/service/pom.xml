@@ -53,6 +53,13 @@
             <groupId>io.grpc</groupId>
             <artifactId>grpc-protobuf</artifactId>
             <version>${grpc.version}</version>
+            <exclusions>
+                <!-- Exclude protobuf 3.x to use protobuf 4.x from tinkar-jpms-deps -->
+                <exclusion>
+                    <groupId>com.google.protobuf</groupId>
+                    <artifactId>protobuf-java</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>io.grpc</groupId>
@@ -63,6 +70,20 @@
             <groupId>net.devh</groupId>
             <artifactId>grpc-server-spring-boot-starter</artifactId>
             <version>${grpc-spring-boot-starter.version}</version>
+            <exclusions>
+                <!-- Exclude protobuf 3.x to use protobuf 4.x from tinkar-jpms-deps -->
+                <exclusion>
+                    <groupId>com.google.protobuf</groupId>
+                    <artifactId>protobuf-java</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <!-- Protobuf - use official version to match protoc 4.30.2 generated code -->
+        <dependency>
+            <groupId>com.google.protobuf</groupId>
+            <artifactId>protobuf-java</artifactId>
+            <version>4.30.2</version>
         </dependency>
 
         <!-- Annotations -->
@@ -107,7 +128,7 @@
             <groupId>dev.ikm.jpms</groupId>
             <artifactId>rocksdbjni-jpms</artifactId>
             <version>10.4.2-r1-SNAPSHOT</version>
-            <classifier>osx</classifier>
+            <classifier>${rocksdbjni.classifier}</classifier>
         </dependency>
         <dependency>
             <groupId>dev.ikm.tinkar</groupId>
@@ -123,6 +144,32 @@
         </dependency>
     </dependencies>
 
+    <profiles>
+        <profile>
+            <id>macos</id>
+            <activation>
+                <os>
+                    <family>mac</family>
+                </os>
+            </activation>
+            <properties>
+                <rocksdbjni.classifier>osx</rocksdbjni.classifier>
+            </properties>
+        </profile>
+        <profile>
+            <id>linux</id>
+            <activation>
+                <os>
+                    <family>unix</family>
+                    <name>Linux</name>
+                </os>
+            </activation>
+            <properties>
+                <rocksdbjni.classifier>linux64</rocksdbjni.classifier>
+            </properties>
+        </profile>
+    </profiles>
+
     <build>
         <extensions>
             <extension>
@@ -137,9 +184,13 @@
                 <artifactId>protobuf-maven-plugin</artifactId>
                 <version>0.6.1</version>
                 <configuration>
-                    <protocArtifact>com.google.protobuf:protoc:3.25.5:exe:${os.detected.classifier}</protocArtifact>
+                    <protocArtifact>com.google.protobuf:protoc:4.30.2:exe:${os.detected.classifier}</protocArtifact>
                     <pluginId>grpc-java</pluginId>
                     <pluginArtifact>io.grpc:protoc-gen-grpc-java:${grpc.version}:exe:${os.detected.classifier}</pluginArtifact>
+                    <!-- Include tinkar-schema directory for Tinkar.proto import -->
+                    <additionalProtoPathElements>
+                        <additionalProtoPathElement>${project.basedir}/../../tinkar-schema</additionalProtoPathElement>
+                    </additionalProtoPathElements>
                 </configuration>
                 <executions>
                     <execution>
