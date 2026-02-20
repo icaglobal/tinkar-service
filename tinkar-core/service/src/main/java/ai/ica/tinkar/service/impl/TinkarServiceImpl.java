@@ -30,6 +30,7 @@ import dev.ikm.tinkar.common.service.PrimitiveData;
 import dev.ikm.tinkar.coordinate.Calculators;
 import dev.ikm.tinkar.coordinate.stamp.calculator.Latest;
 import dev.ikm.tinkar.coordinate.stamp.calculator.LatestVersionSearchResult;
+import dev.ikm.tinkar.coordinate.view.calculator.ViewCalculatorWithCache;
 import dev.ikm.tinkar.coordinate.stamp.change.ChangeChronology;
 import dev.ikm.tinkar.coordinate.stamp.change.FieldChangeRecord;
 import dev.ikm.tinkar.coordinate.stamp.change.VersionChangeRecord;
@@ -41,6 +42,7 @@ import dev.ikm.tinkar.entity.SemanticRecord;
 import dev.ikm.tinkar.entity.StampEntity;
 import dev.ikm.tinkar.entity.transaction.Transaction;
 import dev.ikm.tinkar.schema.StampVersion;
+import dev.ikm.tinkar.terms.EntityProxy;
 import dev.ikm.tinkar.terms.TinkarTerm;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.collections.api.factory.Lists;
@@ -70,6 +72,13 @@ public class TinkarServiceImpl implements TinkarService {
 
     public TinkarServiceImpl(TinkarPrimitive primitive) {
         this.primitive = primitive;
+    }
+
+    /**
+     * Returns the provided calculator if non-null, otherwise the server default.
+     */
+    private ViewCalculatorWithCache resolveCalculator(ViewCalculatorWithCache provided) {
+        return provided != null ? provided : Calculators.View.Default();
     }
 
     @Override
@@ -284,8 +293,11 @@ public class TinkarServiceImpl implements TinkarService {
      * Gets the fully qualified name for a concept by nid.
      */
     private String getConceptName(int nid) {
-        return Calculators.View.Default()
-                .languageCalculator()
+        return getConceptName(nid, Calculators.View.Default());
+    }
+
+    private String getConceptName(int nid, ViewCalculatorWithCache calc) {
+        return calc.languageCalculator()
                 .getFullyQualifiedDescriptionTextWithFallbackOrNid(nid);
     }
 
@@ -293,8 +305,11 @@ public class TinkarServiceImpl implements TinkarService {
      * Gets the regular/preferred name for a concept by nid.
      */
     private String getConceptRegularName(int nid) {
-        return Calculators.View.Default()
-                .languageCalculator()
+        return getConceptRegularName(nid, Calculators.View.Default());
+    }
+
+    private String getConceptRegularName(int nid, ViewCalculatorWithCache calc) {
+        return calc.languageCalculator()
                 .getRegularDescriptionText(nid)
                 .orElse(null);
     }
@@ -303,7 +318,11 @@ public class TinkarServiceImpl implements TinkarService {
      * Checks if a concept is active.
      */
     private boolean isConceptActive(int nid) {
-        var latest = Calculators.View.Default().latest(nid);
+        return isConceptActive(nid, Calculators.View.Default());
+    }
+
+    private boolean isConceptActive(int nid, ViewCalculatorWithCache calc) {
+        var latest = calc.latest(nid);
         return latest.isPresent() && latest.get().active();
     }
 
@@ -353,6 +372,36 @@ public class TinkarServiceImpl implements TinkarService {
                     .map(this::publicIdToSearchResult)
                     .toList();
 
+            return buildSuccessResponse(conceptId, results);
+        } catch (Exception e) {
+            return buildErrorResponse(conceptId, e.getMessage());
+        }
+    }
+
+    @Override
+    public TinkarSearchQueryResponse getChildConcepts(String conceptId, ViewCalculatorWithCache viewCalculator) {
+        ViewCalculatorWithCache calc = resolveCalculator(viewCalculator);
+        try {
+            PublicId parentConceptId = primitive.getPublicId(conceptId);
+            EntityProxy.Concept concept = EntityProxy.Concept.make(parentConceptId);
+            List<TinkarSearchResult> results = new ArrayList<>();
+            calc.navigationCalculator().childrenOf(concept)
+                    .forEach(childNid -> results.add(publicIdToSearchResult(PrimitiveData.publicId(childNid), calc)));
+            return buildSuccessResponse(conceptId, results);
+        } catch (Exception e) {
+            return buildErrorResponse(conceptId, e.getMessage());
+        }
+    }
+
+    @Override
+    public TinkarSearchQueryResponse getDescendantConcepts(String conceptId, ViewCalculatorWithCache viewCalculator) {
+        ViewCalculatorWithCache calc = resolveCalculator(viewCalculator);
+        try {
+            PublicId parentConceptId = primitive.getPublicId(conceptId);
+            EntityProxy.Concept concept = EntityProxy.Concept.make(parentConceptId);
+            List<TinkarSearchResult> results = new ArrayList<>();
+            calc.navigationCalculator().descendentsOf(concept)
+                    .forEach(descNid -> results.add(publicIdToSearchResult(PrimitiveData.publicId(descNid), calc)));
             return buildSuccessResponse(conceptId, results);
         } catch (Exception e) {
             return buildErrorResponse(conceptId, e.getMessage());
@@ -446,6 +495,10 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     private TinkarSearchResult publicIdToSearchResult(PublicId publicId) {
+        return publicIdToSearchResult(publicId, Calculators.View.Default());
+    }
+
+    private TinkarSearchResult publicIdToSearchResult(PublicId publicId, ViewCalculatorWithCache calc) {
         int nid = EntityService.get().nidForPublicId(publicId);
 
         // Build PublicId proto
@@ -456,13 +509,11 @@ public class TinkarServiceImpl implements TinkarService {
                 .build();
 
         // Build descriptions
-        String fullyQualifiedName = Calculators.View.Default()
-                .languageCalculator()
+        String fullyQualifiedName = calc.languageCalculator()
                 .getFullyQualifiedNameText(nid)
                 .orElse("");
 
-        String regularName = Calculators.View.Default()
-                .languageCalculator()
+        String regularName = calc.languageCalculator()
                 .getRegularDescriptionText(nid)
                 .orElse("");
 
@@ -527,23 +578,25 @@ public class TinkarServiceImpl implements TinkarService {
 
     @Override
     public ChangeHistoryResponse getChangeHistory(String entityId) {
+        return getChangeHistory(entityId, null);
+    }
+
+    @Override
+    public ChangeHistoryResponse getChangeHistory(String entityId, ViewCalculatorWithCache viewCalculator) {
+        ViewCalculatorWithCache calc = resolveCalculator(viewCalculator);
         try {
             PublicId publicId = primitive.getPublicId(entityId);
             int nid = EntityService.get().nidForPublicId(publicId);
 
-            // Get the entity description
-            String entityDescription = Calculators.View.Default()
-                    .languageCalculator()
-                    .getRegularDescriptionText(nid)
-                    .orElse("Unknown entity");
+            // Get the entity description — use safe helper that handles restricted states
+            String entityDescription = getDescriptionForNid(nid, calc);
 
             // Get change chronology using the stamp calculator
-            ChangeChronology changeChronology = Calculators.View.Default()
-                    .stampCalculator()
+            ChangeChronology changeChronology = calc.stampCalculator()
                     .changeChronology(nid);
 
             // Convert to DTO
-            List<VersionChange> versionChanges = convertChangeChronologyToDto(changeChronology);
+            List<VersionChange> versionChanges = convertChangeChronologyToDto(changeChronology, calc);
 
             return ChangeHistoryResponse.success(entityId, entityDescription, versionChanges);
         } catch (Exception e) {
@@ -666,11 +719,15 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     private List<VersionChange> convertChangeChronologyToDto(ChangeChronology changeChronology) {
+        return convertChangeChronologyToDto(changeChronology, Calculators.View.Default());
+    }
+
+    private List<VersionChange> convertChangeChronologyToDto(ChangeChronology changeChronology, ViewCalculatorWithCache calc) {
         List<VersionChange> versionChanges = new ArrayList<>();
 
         for (VersionChangeRecord versionChange : changeChronology.changeRecords()) {
-            StampInfo stampInfo = buildStampInfo(versionChange.stampNid());
-            List<FieldChange> fieldChanges = convertFieldChanges(versionChange.changes());
+            StampInfo stampInfo = buildStampInfo(versionChange.stampNid(), calc);
+            List<FieldChange> fieldChanges = convertFieldChanges(versionChange.changes(), calc);
             versionChanges.add(new VersionChange(stampInfo, fieldChanges));
         }
 
@@ -678,16 +735,20 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     private StampInfo buildStampInfo(int stampNid) {
+        return buildStampInfo(stampNid, Calculators.View.Default());
+    }
+
+    private StampInfo buildStampInfo(int stampNid, ViewCalculatorWithCache calc) {
         try {
             StampEntity<?> stampEntity = EntityService.get().getStampFast(stampNid);
             if (stampEntity == null) {
                 return new StampInfo(null, null, null, null, null, null);
             }
 
-            String status = getDescriptionForNid(stampEntity.stateNid());
-            String author = getDescriptionForNid(stampEntity.authorNid());
-            String module = getDescriptionForNid(stampEntity.moduleNid());
-            String path = getDescriptionForNid(stampEntity.pathNid());
+            String status = getDescriptionForNid(stampEntity.stateNid(), calc);
+            String author = getDescriptionForNid(stampEntity.authorNid(), calc);
+            String module = getDescriptionForNid(stampEntity.moduleNid(), calc);
+            String path = getDescriptionForNid(stampEntity.pathNid(), calc);
             long time = stampEntity.time();
             String formattedTime = formatTimestamp(time);
 
@@ -699,9 +760,12 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     private String getDescriptionForNid(int nid) {
+        return getDescriptionForNid(nid, Calculators.View.Default());
+    }
+
+    private String getDescriptionForNid(int nid, ViewCalculatorWithCache calc) {
         try {
-            return Calculators.View.Default()
-                    .languageCalculator()
+            return calc.languageCalculator()
                     .getRegularDescriptionText(nid)
                     .orElse("nid: " + nid);
         } catch (Exception e) {
@@ -719,19 +783,23 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     private List<FieldChange> convertFieldChanges(Iterable<FieldChangeRecord> fieldChangeRecords) {
+        return convertFieldChanges(fieldChangeRecords, Calculators.View.Default());
+    }
+
+    private List<FieldChange> convertFieldChanges(Iterable<FieldChangeRecord> fieldChangeRecords, ViewCalculatorWithCache calc) {
         List<FieldChange> fieldChanges = new ArrayList<>();
 
         for (FieldChangeRecord fieldChange : fieldChangeRecords) {
-            String fieldName = determineFieldName(fieldChange);
+            String fieldName = determineFieldName(fieldChange, calc);
             Integer fieldIndex = fieldChange.currentValue() != null
                     ? fieldChange.currentValue().indexInPattern()
                     : (fieldChange.priorValue() != null ? fieldChange.priorValue().indexInPattern() : null);
 
             String priorValue = fieldChange.priorValue() != null
-                    ? formatFieldValue(fieldChange.priorValue().value())
+                    ? formatFieldValue(fieldChange.priorValue().value(), calc)
                     : null;
             String currentValue = fieldChange.currentValue() != null
-                    ? formatFieldValue(fieldChange.currentValue().value())
+                    ? formatFieldValue(fieldChange.currentValue().value(), calc)
                     : null;
 
             String changeType = determineChangeType(priorValue, currentValue);
@@ -743,6 +811,10 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     private String determineFieldName(FieldChangeRecord fieldChange) {
+        return determineFieldName(fieldChange, Calculators.View.Default());
+    }
+
+    private String determineFieldName(FieldChangeRecord fieldChange, ViewCalculatorWithCache calc) {
         // Try to get a meaningful name from the pattern
         int patternNid = fieldChange.currentValue() != null
                 ? fieldChange.currentValue().patternNid()
@@ -750,8 +822,7 @@ public class TinkarServiceImpl implements TinkarService {
 
         if (patternNid != 0) {
             try {
-                String patternName = Calculators.View.Default()
-                        .languageCalculator()
+                String patternName = calc.languageCalculator()
                         .getRegularDescriptionText(patternNid)
                         .orElse(null);
                 if (patternName != null) {
@@ -768,6 +839,10 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     private String formatFieldValue(Object value) {
+        return formatFieldValue(value, Calculators.View.Default());
+    }
+
+    private String formatFieldValue(Object value, ViewCalculatorWithCache calc) {
         if (value == null) {
             return null;
         }
@@ -775,8 +850,7 @@ public class TinkarServiceImpl implements TinkarService {
             // Try to get a description for the public ID
             try {
                 int nid = EntityService.get().nidForPublicId(publicId);
-                return Calculators.View.Default()
-                        .languageCalculator()
+                return calc.languageCalculator()
                         .getRegularDescriptionText(nid)
                         .orElse(publicId.toString());
             } catch (Exception e) {
@@ -798,15 +872,18 @@ public class TinkarServiceImpl implements TinkarService {
 
     @Override
     public ConceptSemanticsResponse getConceptComments(String conceptId) {
+        return getConceptComments(conceptId, null);
+    }
+
+    @Override
+    public ConceptSemanticsResponse getConceptComments(String conceptId, ViewCalculatorWithCache viewCalculator) {
+        ViewCalculatorWithCache calc = resolveCalculator(viewCalculator);
         try {
             PublicId publicId = primitive.getPublicId(conceptId);
             int conceptNid = EntityService.get().nidForPublicId(publicId);
 
-            // Get the concept description
-            String conceptDescription = Calculators.View.Default()
-                    .languageCalculator()
-                    .getRegularDescriptionText(conceptNid)
-                    .orElse("Unknown concept");
+            // Get the concept description — use safe helper that handles restricted states
+            String conceptDescription = getDescriptionForNid(conceptNid, calc);
 
             // Get all comment semantics for this concept using the Comment Pattern
             int[] semanticNids = EntityService.get().semanticNidsForComponentOfPattern(
@@ -814,7 +891,7 @@ public class TinkarServiceImpl implements TinkarService {
 
             List<SemanticInfo> semantics = new ArrayList<>();
             for (int semanticNid : semanticNids) {
-                TinkarConceptSemanticInfo protoSemantic = buildSemanticInfoProto(semanticNid);
+                TinkarConceptSemanticInfo protoSemantic = buildSemanticInfoProto(semanticNid, calc);
                 if (protoSemantic != null) {
                     semantics.add(convertProtoSemanticToDto(protoSemantic));
                 }
@@ -829,8 +906,13 @@ public class TinkarServiceImpl implements TinkarService {
 
     @Override
     public ConceptSemanticsResponse getConceptSemantics(String conceptId) {
+        return getConceptSemantics(conceptId, null);
+    }
+
+    @Override
+    public ConceptSemanticsResponse getConceptSemantics(String conceptId, ViewCalculatorWithCache viewCalculator) {
         // Delegate to proto implementation and convert to DTO
-        TinkarConceptSemanticsResponse protoResponse = getConceptSemanticsProto(conceptId);
+        TinkarConceptSemanticsResponse protoResponse = getConceptSemanticsProto(conceptId, viewCalculator);
         return convertProtoToDto(protoResponse);
     }
 
@@ -877,15 +959,18 @@ public class TinkarServiceImpl implements TinkarService {
 
     @Override
     public TinkarConceptSemanticsResponse getConceptSemanticsProto(String conceptId) {
+        return getConceptSemanticsProto(conceptId, null);
+    }
+
+    @Override
+    public TinkarConceptSemanticsResponse getConceptSemanticsProto(String conceptId, ViewCalculatorWithCache viewCalculator) {
+        ViewCalculatorWithCache calc = resolveCalculator(viewCalculator);
         try {
             PublicId publicId = primitive.getPublicId(conceptId);
             int conceptNid = EntityService.get().nidForPublicId(publicId);
 
-            // Get the concept description
-            String conceptDescription = Calculators.View.Default()
-                    .languageCalculator()
-                    .getRegularDescriptionText(conceptNid)
-                    .orElse("Unknown concept");
+            // Get the concept description — use safe helper that handles restricted states
+            String conceptDescription = getDescriptionForNid(conceptNid, calc);
 
             // Get all semantics for this concept (any pattern)
             int[] semanticNids = EntityService.get().semanticNidsForComponent(conceptNid);
@@ -897,7 +982,7 @@ public class TinkarServiceImpl implements TinkarService {
 
             int count = 0;
             for (int semanticNid : semanticNids) {
-                TinkarConceptSemanticInfo semanticInfo = buildSemanticInfoProto(semanticNid);
+                TinkarConceptSemanticInfo semanticInfo = buildSemanticInfoProto(semanticNid, calc);
                 if (semanticInfo != null) {
                     responseBuilder.addSemantics(semanticInfo);
                     count++;
@@ -911,32 +996,36 @@ public class TinkarServiceImpl implements TinkarService {
             return TinkarConceptSemanticsResponse.newBuilder()
                     .setConceptPublicId(dev.ikm.tinkar.schema.PublicId.newBuilder().addUuids(conceptId).build())
                     .setSuccess(false)
-                    .setErrorMessage(e.getMessage())
+                    .setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName())
                     .setTotalCount(0)
                     .build();
         }
     }
 
     private TinkarConceptSemanticInfo buildSemanticInfoProto(int semanticNid) {
+        return buildSemanticInfoProto(semanticNid, Calculators.View.Default());
+    }
+
+    private TinkarConceptSemanticInfo buildSemanticInfoProto(int semanticNid, ViewCalculatorWithCache calc) {
         try {
             Entity<?> entity = EntityService.get().getEntityFast(semanticNid);
             if (!(entity instanceof SemanticEntity<?> semanticEntity)) {
                 return null;
             }
 
+            // Use the stamp calculator to get the latest version that matches the stamp coordinates
+            // (respects allowedStates, positionTime, path, modules filters)
+            Latest<SemanticEntityVersion> latestResult = calc.stampCalculator().latest(semanticNid);
+            if (!latestResult.isPresent()) {
+                return null; // No version visible under the current coordinates
+            }
+            SemanticEntityVersion latestVersion = latestResult.get();
+
             // Get the semantic's public ID
             String semanticId = semanticEntity.publicId().asUuidList().get(0).toString();
 
             // Get the pattern name
-            String patternName = getDescriptionForNid(semanticEntity.patternNid());
-
-            // Get the latest version to extract fields and stamp
-            if (semanticEntity.versions().isEmpty()) {
-                return null;
-            }
-
-            SemanticEntityVersion latestVersion = semanticEntity.versions().get(
-                    semanticEntity.versions().size() - 1);
+            String patternName = getDescriptionForNid(semanticEntity.patternNid(), calc);
 
             TinkarConceptSemanticInfo.Builder semanticBuilder = TinkarConceptSemanticInfo.newBuilder()
                     .setSemanticPublicId(dev.ikm.tinkar.schema.PublicId.newBuilder().addUuids(semanticId).build())
@@ -945,7 +1034,7 @@ public class TinkarServiceImpl implements TinkarService {
             // Build field values
             Object[] fieldValues = latestVersion.fieldValues().toArray();
             for (Object fieldValue : fieldValues) {
-                String value = formatFieldValue(fieldValue);
+                String value = formatFieldValue(fieldValue, calc);
                 if (value != null) {
                     semanticBuilder.addFields(
                             dev.ikm.tinkar.schema.Field.newBuilder()
@@ -955,7 +1044,7 @@ public class TinkarServiceImpl implements TinkarService {
             }
 
             // Build stamp info
-            semanticBuilder.setStamp(buildStampInfoProto(latestVersion.stampNid()));
+            semanticBuilder.setStamp(buildStampInfoProto(latestVersion.stampNid(), calc));
 
             return semanticBuilder.build();
         } catch (Exception e) {
@@ -965,6 +1054,10 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     private TinkarStampInfo buildStampInfoProto(int stampNid) {
+        return buildStampInfoProto(stampNid, Calculators.View.Default());
+    }
+
+    private TinkarStampInfo buildStampInfoProto(int stampNid, ViewCalculatorWithCache calc) {
         TinkarStampInfo.Builder stampBuilder = TinkarStampInfo.newBuilder();
         try {
             StampEntity<?> stampEntity = EntityService.get().getStampFast(stampNid);
@@ -972,10 +1065,10 @@ public class TinkarServiceImpl implements TinkarService {
                 return stampBuilder.build();
             }
 
-            String status = getDescriptionForNid(stampEntity.stateNid());
-            String author = getDescriptionForNid(stampEntity.authorNid());
-            String module = getDescriptionForNid(stampEntity.moduleNid());
-            String path = getDescriptionForNid(stampEntity.pathNid());
+            String status = getDescriptionForNid(stampEntity.stateNid(), calc);
+            String author = getDescriptionForNid(stampEntity.authorNid(), calc);
+            String module = getDescriptionForNid(stampEntity.moduleNid(), calc);
+            String path = getDescriptionForNid(stampEntity.pathNid(), calc);
             long time = stampEntity.time();
             String formattedTime = formatTimestamp(time);
 
@@ -995,22 +1088,24 @@ public class TinkarServiceImpl implements TinkarService {
 
     @Override
     public ConceptChangeHistoryResponse getConceptChangeHistory(String conceptId) {
+        return getConceptChangeHistory(conceptId, null);
+    }
+
+    @Override
+    public ConceptChangeHistoryResponse getConceptChangeHistory(String conceptId, ViewCalculatorWithCache viewCalculator) {
+        ViewCalculatorWithCache calc = resolveCalculator(viewCalculator);
         try {
             PublicId publicId = primitive.getPublicId(conceptId);
             int conceptNid = EntityService.get().nidForPublicId(publicId);
 
-            // Get the concept description
-            String conceptDescription = Calculators.View.Default()
-                    .languageCalculator()
-                    .getRegularDescriptionText(conceptNid)
-                    .orElse("Unknown concept");
+            // Get the concept description — use safe helper that handles restricted states
+            String conceptDescription = getDescriptionForNid(conceptNid, calc);
 
             // Get change chronology for the concept itself
-            ChangeChronology conceptChronology = Calculators.View.Default()
-                    .stampCalculator()
+            ChangeChronology conceptChronology = calc.stampCalculator()
                     .changeChronology(conceptNid);
             List<ConceptChangeHistoryResponse.VersionChange> conceptChanges =
-                    convertToConceptVersionChanges(conceptChronology);
+                    convertToConceptVersionChanges(conceptChronology, calc);
 
             // Get all semantics attached to this concept and their change histories
             int[] semanticNids = EntityService.get().semanticNidsForComponent(conceptNid);
@@ -1018,7 +1113,7 @@ public class TinkarServiceImpl implements TinkarService {
 
             for (int semanticNid : semanticNids) {
                 ConceptChangeHistoryResponse.SemanticChangeHistory semanticHistory =
-                        buildSemanticChangeHistory(semanticNid);
+                        buildSemanticChangeHistory(semanticNid, calc);
                 if (semanticHistory != null) {
                     semanticChanges.add(semanticHistory);
                 }
@@ -1032,11 +1127,16 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     private List<ConceptChangeHistoryResponse.VersionChange> convertToConceptVersionChanges(ChangeChronology changeChronology) {
+        return convertToConceptVersionChanges(changeChronology, Calculators.View.Default());
+    }
+
+    private List<ConceptChangeHistoryResponse.VersionChange> convertToConceptVersionChanges(
+            ChangeChronology changeChronology, ViewCalculatorWithCache calc) {
         List<ConceptChangeHistoryResponse.VersionChange> versionChanges = new ArrayList<>();
 
         for (VersionChangeRecord versionChange : changeChronology.changeRecords()) {
-            ConceptChangeHistoryResponse.StampInfo stampInfo = buildConceptStampInfo(versionChange.stampNid());
-            List<ConceptChangeHistoryResponse.FieldChange> fieldChanges = convertToConceptFieldChanges(versionChange.changes());
+            ConceptChangeHistoryResponse.StampInfo stampInfo = buildConceptStampInfo(versionChange.stampNid(), calc);
+            List<ConceptChangeHistoryResponse.FieldChange> fieldChanges = convertToConceptFieldChanges(versionChange.changes(), calc);
             versionChanges.add(new ConceptChangeHistoryResponse.VersionChange(stampInfo, fieldChanges));
         }
 
@@ -1044,16 +1144,20 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     private ConceptChangeHistoryResponse.StampInfo buildConceptStampInfo(int stampNid) {
+        return buildConceptStampInfo(stampNid, Calculators.View.Default());
+    }
+
+    private ConceptChangeHistoryResponse.StampInfo buildConceptStampInfo(int stampNid, ViewCalculatorWithCache calc) {
         try {
             StampEntity<?> stampEntity = EntityService.get().getStampFast(stampNid);
             if (stampEntity == null) {
                 return new ConceptChangeHistoryResponse.StampInfo(null, null, null, null, null, null);
             }
 
-            String status = getDescriptionForNid(stampEntity.stateNid());
-            String author = getDescriptionForNid(stampEntity.authorNid());
-            String module = getDescriptionForNid(stampEntity.moduleNid());
-            String path = getDescriptionForNid(stampEntity.pathNid());
+            String status = getDescriptionForNid(stampEntity.stateNid(), calc);
+            String author = getDescriptionForNid(stampEntity.authorNid(), calc);
+            String module = getDescriptionForNid(stampEntity.moduleNid(), calc);
+            String path = getDescriptionForNid(stampEntity.pathNid(), calc);
             long time = stampEntity.time();
             String formattedTime = formatTimestamp(time);
 
@@ -1066,19 +1170,24 @@ public class TinkarServiceImpl implements TinkarService {
 
     private List<ConceptChangeHistoryResponse.FieldChange> convertToConceptFieldChanges(
             Iterable<FieldChangeRecord> fieldChangeRecords) {
+        return convertToConceptFieldChanges(fieldChangeRecords, Calculators.View.Default());
+    }
+
+    private List<ConceptChangeHistoryResponse.FieldChange> convertToConceptFieldChanges(
+            Iterable<FieldChangeRecord> fieldChangeRecords, ViewCalculatorWithCache calc) {
         List<ConceptChangeHistoryResponse.FieldChange> fieldChanges = new ArrayList<>();
 
         for (FieldChangeRecord fieldChange : fieldChangeRecords) {
-            String fieldName = determineFieldName(fieldChange);
+            String fieldName = determineFieldName(fieldChange, calc);
             Integer fieldIndex = fieldChange.currentValue() != null
                     ? fieldChange.currentValue().indexInPattern()
                     : (fieldChange.priorValue() != null ? fieldChange.priorValue().indexInPattern() : null);
 
             String priorValue = fieldChange.priorValue() != null
-                    ? formatFieldValue(fieldChange.priorValue().value())
+                    ? formatFieldValue(fieldChange.priorValue().value(), calc)
                     : null;
             String currentValue = fieldChange.currentValue() != null
-                    ? formatFieldValue(fieldChange.currentValue().value())
+                    ? formatFieldValue(fieldChange.currentValue().value(), calc)
                     : null;
 
             String changeType = determineChangeType(priorValue, currentValue);
@@ -1091,6 +1200,11 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     private ConceptChangeHistoryResponse.SemanticChangeHistory buildSemanticChangeHistory(int semanticNid) {
+        return buildSemanticChangeHistory(semanticNid, Calculators.View.Default());
+    }
+
+    private ConceptChangeHistoryResponse.SemanticChangeHistory buildSemanticChangeHistory(
+            int semanticNid, ViewCalculatorWithCache calc) {
         try {
             Entity<?> entity = EntityService.get().getEntityFast(semanticNid);
             if (!(entity instanceof SemanticEntity<?> semanticEntity)) {
@@ -1101,17 +1215,16 @@ public class TinkarServiceImpl implements TinkarService {
             String semanticId = semanticEntity.publicId().asUuidList().get(0).toString();
 
             // Get the pattern name
-            String patternName = getDescriptionForNid(semanticEntity.patternNid());
+            String patternName = getDescriptionForNid(semanticEntity.patternNid(), calc);
 
             // Get a summary of the semantic content (first field value if available)
-            String summary = getSemanticSummary(semanticEntity);
+            String summary = getSemanticSummary(semanticEntity, calc);
 
             // Get change chronology for this semantic
-            ChangeChronology semanticChronology = Calculators.View.Default()
-                    .stampCalculator()
+            ChangeChronology semanticChronology = calc.stampCalculator()
                     .changeChronology(semanticNid);
             List<ConceptChangeHistoryResponse.VersionChange> versionChanges =
-                    convertToConceptVersionChanges(semanticChronology);
+                    convertToConceptVersionChanges(semanticChronology, calc);
 
             return new ConceptChangeHistoryResponse.SemanticChangeHistory(
                     semanticId, patternName, summary, versionChanges);
@@ -1122,6 +1235,10 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     private String getSemanticSummary(SemanticEntity<?> semanticEntity) {
+        return getSemanticSummary(semanticEntity, Calculators.View.Default());
+    }
+
+    private String getSemanticSummary(SemanticEntity<?> semanticEntity, ViewCalculatorWithCache calc) {
         try {
             if (semanticEntity.versions().isEmpty()) {
                 return null;
@@ -1135,7 +1252,7 @@ public class TinkarServiceImpl implements TinkarService {
 
             // Get the first field value as summary
             Object firstField = latestVersion.fieldValues().get(0);
-            String summary = formatFieldValue(firstField);
+            String summary = formatFieldValue(firstField, calc);
 
             // Truncate if too long
             if (summary != null && summary.length() > 100) {

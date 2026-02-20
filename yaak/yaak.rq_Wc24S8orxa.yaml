@@ -1,0 +1,94 @@
+type: http_request
+model: http_request
+id: rq_Wc24S8orxa
+createdAt: 2026-02-13T20:00:39.909650
+updatedAt: 2026-02-18T14:40:11.189984
+workspaceId: wk_F4TtaH4LNi
+folderId: fl_S6LmWLxfJ7
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers:
+- enabled: true
+  name: User-Agent
+  value: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:147.0) Gecko/20100101 Firefox/147.0
+  id: null
+- enabled: true
+  name: Accept
+  value: '*/*'
+  id: null
+- enabled: true
+  name: Accept-Language
+  value: en-US,en;q=0.9
+  id: null
+- enabled: true
+  name: Accept-Encoding
+  value: gzip, deflate, br, zstd
+  id: null
+- enabled: true
+  name: Referer
+  value: http://localhost:5173/
+  id: null
+- enabled: true
+  name: Origin
+  value: http://localhost:5173
+  id: null
+- enabled: true
+  name: Sec-GPC
+  value: '1'
+  id: null
+- enabled: true
+  name: Connection
+  value: keep-alive
+  id: null
+- enabled: true
+  name: Sec-Fetch-Dest
+  value: empty
+  id: null
+- enabled: true
+  name: Sec-Fetch-Mode
+  value: cors
+  id: null
+- enabled: true
+  name: Sec-Fetch-Site
+  value: same-site
+  id: null
+- enabled: true
+  name: Priority
+  value: u=4
+  id: null
+- enabled: true
+  name: Pragma
+  value: no-cache
+  id: null
+- enabled: true
+  name: Cache-Control
+  value: no-cache
+  id: null
+method: GET
+name: Semantics ACTIVE
+sortPriority: 1000.0
+url: http://localhost:8085/api/ike/knowledgegraph/semantics
+urlParameters:
+- enabled: true
+  name: conceptId
+  value: 8dc715ee-5d4c-50a6-9f5d-87ac50d9253d
+  id: rjKsebi4am
+- enabled: false
+  name: allowedStates
+  value: ACTIVE
+  id: RQgpMs0FSW
+- enabled: true
+  name: premiseType
+  value: STATED
+  id: 5ty9xgdkUt
+- enabled: false
+  name: premiseType
+  value: INFERRED
+  id: VfN8FQrcR8
+- enabled: true
+  name: ''
+  value: ''
+  id: QDvX6UpQGb

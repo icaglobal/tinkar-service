@@ -131,6 +131,25 @@ export type ChangeHistoryResponse = {
   errorMessage: string | null;
 };
 
+// Response for /concept-change-history endpoint
+export type ConceptChangeHistoryResponse = {
+  conceptId: string;
+  conceptDescription: string | null;
+  conceptChanges: unknown[];
+  semanticChanges: unknown[];
+  totalChanges: number;
+  success: boolean;
+};
+
+// Optional coordinate overrides for Tier 2 (Knowledge Graph) queries
+export type CoordinateOverrideParams = {
+  allowedStates?: 'ACTIVE' | 'INACTIVE' | 'ACTIVE_AND_INACTIVE';
+  positionTime?: number;
+  positionPath?: string;
+  modules?: string[];
+  premiseType?: 'STATED' | 'INFERRED';
+};
+
 // ── Test Runner Types ────────────────────────────────────────────────
 
 export type TestStatus = 'pending' | 'running' | 'pass' | 'fail' | 'skip';

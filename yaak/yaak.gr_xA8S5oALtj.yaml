@@ -1,0 +1,20 @@
+type: grpc_request
+model: grpc_request
+id: gr_xA8S5oALtj
+createdAt: 2026-02-13T19:31:00.090324
+updatedAt: 2026-02-18T14:40:11.190821
+workspaceId: wk_F4TtaH4LNi
+folderId: fl_S6LmWLxfJ7
+authenticationType: null
+authentication: {}
+description: ''
+message: |-
+  {
+    "public_id": {"uuids": ["33f1bc3a-904e-5417-a3a6-43e19ede6ed9"]}
+  }
+metadata: []
+method: GetConceptSemantics
+name: GetConceptSemantics
+service: ai.ica.tinkar.IkeKnowledgeGraph
+sortPriority: 2000.0
+url: localhost:9095

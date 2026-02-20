@@ -22,6 +22,15 @@ function buildInitialGroups(): TestGroup[] {
   }));
 }
 
+function resetGroup(group: TestGroup): TestGroup {
+  const def = allTestGroups.find((g) => g.id === group.id);
+  if (!def) return group;
+  return {
+    ...group,
+    tests: def.tests.map((t) => ({ id: t.id, name: t.name, status: 'pending' as const })),
+  };
+}
+
 const INITIAL_SUMMARY: TestRunSummary = {
   pass: 0,
   fail: 0,
@@ -34,6 +43,7 @@ export function TestRunner({ onBack }: TestRunnerProps) {
   const [groups, setGroups] = useState<TestGroup[]>(buildInitialGroups);
   const [summary, setSummary] = useState<TestRunSummary>(INITIAL_SUMMARY);
   const [isRunning, setIsRunning] = useState(false);
+  const [runningGroupId, setRunningGroupId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const handleProgress = useCallback(
@@ -60,29 +70,43 @@ export function TestRunner({ onBack }: TestRunnerProps) {
     [],
   );
 
-  const handleRun = useCallback(async () => {
-    // Reset state
-    setGroups(buildInitialGroups());
-    setSummary({ ...INITIAL_SUMMARY, isRunning: true });
+  const startRun = useCallback(async (groupsToRun: typeof allTestGroups, activeGroupId: string | null) => {
     setIsRunning(true);
+    setRunningGroupId(activeGroupId);
+    setSummary({ ...INITIAL_SUMMARY, isRunning: true });
 
     const controller = new AbortController();
     abortRef.current = controller;
 
     await runAllTests(
-      allTestGroups,
+      groupsToRun,
       handleProgress,
       (finalSummary) => {
         setSummary(finalSummary);
         setIsRunning(false);
+        setRunningGroupId(null);
       },
       controller.signal,
     );
   }, [handleProgress]);
 
+  const handleRunAll = useCallback(async () => {
+    setGroups(buildInitialGroups());
+    await startRun(allTestGroups, null);
+  }, [startRun]);
+
+  const handleRunGroup = useCallback(async (groupId: string) => {
+    // Reset only the target group to pending
+    setGroups((prev) => prev.map((g) => g.id === groupId ? resetGroup(g) : g));
+    const groupDef = allTestGroups.find((g) => g.id === groupId);
+    if (!groupDef) return;
+    await startRun([groupDef], groupId);
+  }, [startRun]);
+
   const handleCancel = useCallback(() => {
     abortRef.current?.abort();
     setIsRunning(false);
+    setRunningGroupId(null);
     setSummary((prev) => ({ ...prev, isRunning: false }));
   }, []);
 
@@ -103,8 +127,8 @@ export function TestRunner({ onBack }: TestRunnerProps) {
 
       <div className="test-runner-controls">
         {!isRunning ? (
-          <button className="run-tests-button" onClick={handleRun}>
-            Run Tests
+          <button className="run-tests-button" onClick={handleRunAll}>
+            Run All Tests
           </button>
         ) : (
           <button className="cancel-tests-button" onClick={handleCancel}>
@@ -115,7 +139,13 @@ export function TestRunner({ onBack }: TestRunnerProps) {
 
       <div className="test-runner-groups">
         {groups.map((group) => (
-          <TestScenarioGroup key={group.id} group={group} />
+          <TestScenarioGroup
+            key={group.id}
+            group={group}
+            onRunGroup={handleRunGroup}
+            isRunning={isRunning}
+            isGroupRunning={runningGroupId === group.id}
+          />
         ))}
       </div>
     </div>

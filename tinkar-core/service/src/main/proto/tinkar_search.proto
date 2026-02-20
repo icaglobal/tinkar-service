@@ -1,3 +1,8 @@
+// DEPRECATED: This service is maintained for backward compatibility only.
+// New clients should use:
+//   - ike_graph_rag.proto (Tier 1: IkeGraphRAG service)
+//   - ike_knowledge_graph.proto (Tier 2: IkeKnowledgeGraph service)
+
 syntax = "proto3";
 
 package ai.ica.tinkar;

@@ -32,9 +32,14 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+/**
+ * @deprecated Use {@link ai.ica.tinkar.controller.graphrag.GraphRAGRestController} (Tier 1)
+ *             and {@link ai.ica.tinkar.controller.knowledgegraph.KnowledgeGraphRestController} (Tier 2) instead.
+ */
+@Deprecated
 @RestController
 @RequestMapping("/api/tinkar")
-@Tag(name = "Tinkar Search", description = "Search operations for Tinkar concepts")
+@Tag(name = "Tinkar Search (Deprecated)", description = "DEPRECATED — Use IKE Graph RAG (Tier 1) or IKE Knowledge Graph (Tier 2) endpoints instead.")
 public class TinkarSearchController {
 
         private final TinkarService tinkarService;

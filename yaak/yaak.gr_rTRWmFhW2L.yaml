@@ -1,0 +1,17 @@
+type: grpc_request
+model: grpc_request
+id: gr_rTRWmFhW2L
+createdAt: 2026-02-12T20:19:47.770614
+updatedAt: 2026-02-12T20:19:53.920435
+workspaceId: wk_F4TtaH4LNi
+folderId: null
+authenticationType: null
+authentication: {}
+description: ''
+message: ''
+metadata: []
+method: Check
+name: Health
+service: grpc.health.v1.Health
+sortPriority: 0.0
+url: localhost:9095

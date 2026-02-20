@@ -4,9 +4,12 @@ import { TestResultRow } from './TestResultRow';
 
 interface TestScenarioGroupProps {
   group: TestGroup;
+  onRunGroup?: (groupId: string) => void;
+  isRunning?: boolean;
+  isGroupRunning?: boolean;
 }
 
-export function TestScenarioGroup({ group }: TestScenarioGroupProps) {
+export function TestScenarioGroup({ group, onRunGroup, isRunning, isGroupRunning }: TestScenarioGroupProps) {
   const [expanded, setExpanded] = useState(true);
 
   const pass = group.tests.filter((t) => t.status === 'pass').length;
@@ -27,6 +30,18 @@ export function TestScenarioGroup({ group }: TestScenarioGroupProps) {
           {fail > 0 && <span className="summary-fail">{fail} fail</span>}
           {skip > 0 && <span className="summary-skip">{skip} skip</span>}
           <span className="summary-total">{group.tests.length} total</span>
+          {onRunGroup && (
+            <button
+              className={`run-group-button${isGroupRunning ? ' running' : ''}`}
+              disabled={isRunning}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRunGroup(group.id);
+              }}
+            >
+              {isGroupRunning ? 'Running...' : 'Run'}
+            </button>
+          )}
         </div>
       </div>
       {expanded && (

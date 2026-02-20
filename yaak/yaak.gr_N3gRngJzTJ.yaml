@@ -1,0 +1,27 @@
+type: grpc_request
+model: grpc_request
+id: gr_N3gRngJzTJ
+createdAt: 2026-02-18T19:29:55.780337
+updatedAt: 2026-02-19T16:43:14.939584
+workspaceId: wk_F4TtaH4LNi
+folderId: fl_S6LmWLxfJ7
+authenticationType: null
+authentication: {}
+description: ''
+message: |-
+  {
+    "public_id": {
+      "uuids": [
+        "02afcfce-19f6-536c-b331-9f17107e0858"
+      ]
+    },
+    "coordinate_override": {
+      "module_ids": ["6b341bca-9c47-5e9e-83fb-9782c8fea56e"]
+    }
+  }
+metadata: []
+method: GetConceptSemantics
+name: Albumin SNOMED
+service: ai.ica.tinkar.IkeKnowledgeGraph
+sortPriority: 4000.001
+url: localhost:9095

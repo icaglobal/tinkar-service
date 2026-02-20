@@ -1,0 +1,24 @@
+type: grpc_request
+model: grpc_request
+id: gr_AWU4gnhtXR
+createdAt: 2026-02-19T18:49:51.755628
+updatedAt: 2026-02-19T18:49:57.268789
+workspaceId: wk_F4TtaH4LNi
+folderId: fl_S6LmWLxfJ7
+authenticationType: null
+authentication: {}
+description: ''
+message: |-
+  {
+    "public_id": {
+      "uuids": [
+        "02afcfce-19f6-536c-b331-9f17107e0858"
+      ]
+    }
+  }
+metadata: []
+method: GetConceptSemantics
+name: Albumin
+service: ai.ica.tinkar.IkeKnowledgeGraph
+sortPriority: 4000.004
+url: localhost:9095

@@ -791,6 +791,32 @@
   display: flex;
   gap: 0.75rem;
   font-size: 0.85rem;
+  align-items: center;
+}
+
+.run-group-button {
+  padding: 0.2rem 0.6rem;
+  font-size: 0.8rem;
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  margin-left: 0.25rem;
+}
+
+.run-group-button:hover:not(:disabled) {
+  background-color: #218838;
+}
+
+.run-group-button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+.run-group-button.running {
+  background-color: #17a2b8;
 }
 
 .scenario-group-description {

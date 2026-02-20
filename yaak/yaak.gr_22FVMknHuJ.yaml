@@ -1,0 +1,27 @@
+type: grpc_request
+model: grpc_request
+id: gr_22FVMknHuJ
+createdAt: 2026-02-13T21:00:38.536405
+updatedAt: 2026-02-18T14:40:11.192191
+workspaceId: wk_F4TtaH4LNi
+folderId: fl_S6LmWLxfJ7
+authenticationType: null
+authentication: {}
+description: ''
+message: |-
+  {
+    "public_id": {
+      "uuids": [
+        "52d02a6d-eaad-57ff-9cd4-82fae97fb044"
+      ]
+    },
+    "coordinate_override": {
+      "allowed_states": "INACTIVE_ONLY"
+    }
+  }
+metadata: []
+method: GetConceptSemantics
+name: Diabetes INACTIVE
+service: ai.ica.tinkar.IkeKnowledgeGraph
+sortPriority: 4000.0
+url: localhost:9095
