@@ -39,6 +39,26 @@ public class KnowledgeGraphGrpcController extends IkeKnowledgeGraphGrpc.IkeKnowl
         responseObserver.onCompleted();
     }
 
+    @Override
+    public void getChildConcepts(KnowledgeGraphConceptRequest request,
+            StreamObserver<TinkarSearchQueryResponse> responseObserver) {
+        String conceptId = extractConceptId(request.getPublicId());
+        log.info("IkeKnowledgeGraph getChildConcepts request for conceptId: {}", conceptId);
+        ViewCalculatorWithCache calc = buildCalculator(request.getCoordinateOverride());
+        responseObserver.onNext(tinkarService.getChildConcepts(conceptId, calc));
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void getDescendantConcepts(KnowledgeGraphConceptRequest request,
+            StreamObserver<TinkarSearchQueryResponse> responseObserver) {
+        String conceptId = extractConceptId(request.getPublicId());
+        log.info("IkeKnowledgeGraph getDescendantConcepts request for conceptId: {}", conceptId);
+        ViewCalculatorWithCache calc = buildCalculator(request.getCoordinateOverride());
+        responseObserver.onNext(tinkarService.getDescendantConcepts(conceptId, calc));
+        responseObserver.onCompleted();
+    }
+
     private ViewCalculatorWithCache buildCalculator(ai.ica.tinkar.proto.CoordinateOverride protoOverride) {
         if (protoOverride == null || protoOverride.equals(ai.ica.tinkar.proto.CoordinateOverride.getDefaultInstance())) {
             return CoordinateFactory.defaultCalculator();

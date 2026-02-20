@@ -496,19 +496,67 @@ print(sum(1 for s in data.get('semantics', []) if s.get('stamp', {}).get('status
     FAIL=$((FAIL + 1))
   fi
 
-  # ── premiseType overrides ──────────────────────────────────────────
+  # ── premiseType — hierarchy (children/descendants) ───────────────
 
-  subheader "GetConceptSemantics — premise_type (Navigation Coordinate)"
+  subheader "GetChildConcepts / GetDescendantConcepts — premise_type (Navigation Coordinate)"
 
-  grpc_call "$KG_SVC" "$(kg_request "$COORD_TEST_ID" '{"premise_type":"STATED"}')"
-  assert_grpc_ok "semantics (premise_type=STATED)"
-  assert_count_gt0 "semantics (STATED) returns results"
-  assert_contains "semantics (STATED) has Stated definition" "Stated definition"
+  # "Disease (disorder)" — has 167 inferred children, 0 stated children
+  HIERARCHY_TEST_ID="c3735e2d-9206-58bb-aa12-f92c4e5730a7"
 
-  grpc_call "$KG_SVC" "$(kg_request "$COORD_TEST_ID" '{"premise_type":"INFERRED"}')"
-  assert_grpc_ok "semantics (premise_type=INFERRED)"
-  assert_count_gt0 "semantics (INFERRED) returns results"
-  assert_contains "semantics (INFERRED) has Inferred definition" "Inferred definition"
+  KG_CHILDREN="ai.ica.tinkar.IkeKnowledgeGraph/GetChildConcepts"
+  KG_DESCENDANTS="ai.ica.tinkar.IkeKnowledgeGraph/GetDescendantConcepts"
+
+  grpc_call "$KG_CHILDREN" "$(kg_request "$HIERARCHY_TEST_ID")"
+  assert_grpc_ok "children (default/INFERRED)"
+  CHILDREN_INFERRED=$(json_total_count)
+  assert_count_gt0 "children (INFERRED) returns results"
+
+  grpc_call "$KG_CHILDREN" "$(kg_request "$HIERARCHY_TEST_ID" '{"premise_type":"STATED"}')"
+  assert_grpc_ok "children (STATED)"
+  CHILDREN_STATED=$(json_total_count)
+
+  TOTAL=$((TOTAL + 1))
+  if [ "$CHILDREN_INFERRED" -gt "$CHILDREN_STATED" ]; then
+    echo -e "  ${GREEN}PASS${NC}  INFERRED children ($CHILDREN_INFERRED) > STATED children ($CHILDREN_STATED) — premise_type has effect"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  INFERRED ($CHILDREN_INFERRED) should be > STATED ($CHILDREN_STATED)"
+    FAIL=$((FAIL + 1))
+  fi
+
+  grpc_call "$KG_CHILDREN" "$(kg_request "$HIERARCHY_TEST_ID" '{"premise_type":"INFERRED"}')"
+  assert_grpc_ok "children (explicit INFERRED)"
+  CHILDREN_EXPLICIT_INF=$(json_total_count)
+
+  TOTAL=$((TOTAL + 1))
+  if [ "$CHILDREN_EXPLICIT_INF" = "$CHILDREN_INFERRED" ]; then
+    echo -e "  ${GREEN}PASS${NC}  Explicit INFERRED ($CHILDREN_EXPLICIT_INF) = default ($CHILDREN_INFERRED)"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  Explicit INFERRED ($CHILDREN_EXPLICIT_INF) should equal default ($CHILDREN_INFERRED)"
+    FAIL=$((FAIL + 1))
+  fi
+
+  # Descendants: "Abscess (disorder)" — smaller subtree for descendants
+  ABSCESS_TEST_ID="9728786a-1eb1-5553-892b-e0aad91bc034"
+
+  grpc_call "$KG_DESCENDANTS" "$(kg_request "$ABSCESS_TEST_ID")"
+  assert_grpc_ok "descendants (default/INFERRED)"
+  DESC_INFERRED=$(json_total_count)
+  assert_count_gt0 "descendants (INFERRED) returns results"
+
+  grpc_call "$KG_DESCENDANTS" "$(kg_request "$ABSCESS_TEST_ID" '{"premise_type":"STATED"}')"
+  assert_grpc_ok "descendants (STATED)"
+  DESC_STATED=$(json_total_count)
+
+  TOTAL=$((TOTAL + 1))
+  if [ "$DESC_INFERRED" -gt "$DESC_STATED" ]; then
+    echo -e "  ${GREEN}PASS${NC}  INFERRED descendants ($DESC_INFERRED) > STATED descendants ($DESC_STATED)"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  INFERRED ($DESC_INFERRED) should be > STATED ($DESC_STATED)"
+    FAIL=$((FAIL + 1))
+  fi
 
   # ── Combined overrides ─────────────────────────────────────────────
 
@@ -714,6 +762,14 @@ grpc_call "$KG_SVC" "$(kg_request "$COORD_TEST_ID")"
 assert_grpc_ok "GetConceptSemantics"
 assert_count_gt0 "GetConceptSemantics returns results"
 
+grpc_call "ai.ica.tinkar.IkeKnowledgeGraph/GetChildConcepts" "$(kg_request "$HIERARCHY_TEST_ID")"
+assert_grpc_ok "GetChildConcepts (Tier 2)"
+assert_count_gt0 "GetChildConcepts (Tier 2) returns results"
+
+grpc_call "ai.ica.tinkar.IkeKnowledgeGraph/GetDescendantConcepts" "$(kg_request "$ABSCESS_TEST_ID")"
+assert_grpc_ok "GetDescendantConcepts (Tier 2)"
+assert_count_gt0 "GetDescendantConcepts (Tier 2) returns results"
+
 subheader "TinkarSearchService (Deprecated)"
 
 grpc_call "ai.ica.tinkar.TinkarSearchService/Search" '{"query":"albumin"}'
@@ -743,8 +799,8 @@ echo ""
 if [ "$FAIL" -gt 0 ]; then
   echo -e "${BOLD}${RED}  Known gaps:${NC}"
   echo "  1. LIDR Record pattern (DIAGNOSTIC_DEVICE_PATTERN) not in dataset"
-  echo "  2. Tier 2 gRPC only has GetConceptSemantics (no comments, change-history,"
-  echo "     concept-change-history RPCs yet)"
+  echo "  2. Stated taxonomy empty in this dataset — STATED premise_type returns 0"
+  echo "     hierarchy results (this is expected, demonstrates STATED vs INFERRED difference)"
   echo ""
 fi
 

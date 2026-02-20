@@ -82,10 +82,9 @@ service IkeKnowledgeGraph {
   // Get all semantics attached to a concept (patterns, fields, STAMP info)
   rpc GetConceptSemantics(KnowledgeGraphConceptRequest) returns (TinkarConceptSemanticsResponse);
 
-  // Future Tier 2 RPCs:
-  // rpc GetVersionHistory(...) returns (...);
-  // rpc CompareVersions(...) returns (...);
-  // rpc ResolveToText(...) returns (...);
-  // rpc GetSemanticsByPattern(...) returns (...);
-  // rpc QueryWithCoordinates(...) returns (...);
+  // Get direct child concepts with coordinate-aware navigation (premise type controls STATED vs INFERRED hierarchy)
+  rpc GetChildConcepts(KnowledgeGraphConceptRequest) returns (TinkarSearchQueryResponse);
+
+  // Get all descendant concepts (full subtree) with coordinate-aware navigation
+  rpc GetDescendantConcepts(KnowledgeGraphConceptRequest) returns (TinkarSearchQueryResponse);
 }

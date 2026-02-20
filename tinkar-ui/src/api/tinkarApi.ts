@@ -315,6 +315,44 @@ export async function kgGetChangeHistory(
   return response.json();
 }
 
+export async function kgGetChildren(
+  conceptId: string,
+  coords?: CoordinateOverrideParams,
+): Promise<ConceptSearchResponse> {
+  const params = new URLSearchParams({ conceptId });
+  appendCoordinateParams(params, coords);
+
+  const response = await fetch(`${KG_API_BASE_URL}/children?${params}`, {
+    method: 'GET',
+    headers: { accept: '*/*' },
+  });
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function kgGetDescendants(
+  conceptId: string,
+  coords?: CoordinateOverrideParams,
+): Promise<ConceptSearchResponse> {
+  const params = new URLSearchParams({ conceptId });
+  appendCoordinateParams(params, coords);
+
+  const response = await fetch(`${KG_API_BASE_URL}/descendants?${params}`, {
+    method: 'GET',
+    headers: { accept: '*/*' },
+  });
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
 export async function kgGetConceptChangeHistory(
   conceptId: string,
   coords?: CoordinateOverrideParams,

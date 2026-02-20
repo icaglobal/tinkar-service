@@ -6,9 +6,16 @@ import ai.ica.tinkar.dto.ConceptSemanticsResponse;
 import ai.ica.tinkar.dto.CoordinateOverride;
 import ai.ica.tinkar.dto.DescendantOperationResponse;
 import ai.ica.tinkar.dto.PremiseType;
+import ai.ica.tinkar.dto.TinkarSearchQueryResponse;
+import ai.ica.tinkar.dto.TinkarSearchQueryResponse.Descriptions;
+import ai.ica.tinkar.dto.TinkarSearchQueryResponse.SearchResult;
+import ai.ica.tinkar.dto.TinkarSearchQueryResponse.Stamp;
+import ai.ica.tinkar.proto.TinkarConceptDescriptions;
+import ai.ica.tinkar.proto.TinkarSearchResult;
 import ai.ica.tinkar.service.CoordinateFactory;
 import ai.ica.tinkar.service.TinkarService;
 import dev.ikm.tinkar.coordinate.view.calculator.ViewCalculatorWithCache;
+import dev.ikm.tinkar.schema.StampVersion;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -123,6 +130,44 @@ public class KnowledgeGraphRestController {
         return ResponseEntity.ok(tinkarService.getConceptChangeHistory(conceptId, calc));
     }
 
+    @Operation(summary = "Get direct child concepts",
+            description = "Retrieves direct child concepts using coordinate-aware navigation. " +
+                    "The premiseType parameter controls whether STATED (authored) or INFERRED (classified) IS-A relationships are used.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Child concepts retrieved successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid concept ID parameter")
+    })
+    @GetMapping("/children")
+    public ResponseEntity<TinkarSearchQueryResponse> getChildConcepts(
+            @Parameter(description = "Concept ID (UUID)", required = true, example = "f6978e15-e169-58c2-a93d-eac1511974da") @RequestParam("conceptId") String conceptId,
+            @Parameter(description = "Allowed states: ACTIVE, INACTIVE, or ACTIVE_AND_INACTIVE") @RequestParam(required = false) String allowedStates,
+            @Parameter(description = "Position time as epoch milliseconds (null = latest)") @RequestParam(required = false) Long positionTime,
+            @Parameter(description = "UUID of the path concept") @RequestParam(required = false) String positionPath,
+            @Parameter(description = "UUIDs of module concepts to include") @RequestParam(required = false) List<String> modules,
+            @Parameter(description = "Navigation premise type: STATED or INFERRED") @RequestParam(required = false) PremiseType premiseType) {
+        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, premiseType);
+        return ResponseEntity.ok(toDto(tinkarService.getChildConcepts(conceptId, calc)));
+    }
+
+    @Operation(summary = "Get all descendant concepts",
+            description = "Retrieves all descendant concepts (full subtree) using coordinate-aware navigation. " +
+                    "The premiseType parameter controls whether STATED (authored) or INFERRED (classified) IS-A relationships are used.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Descendant concepts retrieved successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid concept ID parameter")
+    })
+    @GetMapping("/descendants")
+    public ResponseEntity<TinkarSearchQueryResponse> getDescendantConcepts(
+            @Parameter(description = "Concept ID (UUID)", required = true, example = "f6978e15-e169-58c2-a93d-eac1511974da") @RequestParam("conceptId") String conceptId,
+            @Parameter(description = "Allowed states: ACTIVE, INACTIVE, or ACTIVE_AND_INACTIVE") @RequestParam(required = false) String allowedStates,
+            @Parameter(description = "Position time as epoch milliseconds (null = latest)") @RequestParam(required = false) Long positionTime,
+            @Parameter(description = "UUID of the path concept") @RequestParam(required = false) String positionPath,
+            @Parameter(description = "UUIDs of module concepts to include") @RequestParam(required = false) List<String> modules,
+            @Parameter(description = "Navigation premise type: STATED or INFERRED") @RequestParam(required = false) PremiseType premiseType) {
+        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, premiseType);
+        return ResponseEntity.ok(toDto(tinkarService.getDescendantConcepts(conceptId, calc)));
+    }
+
     @Operation(summary = "Create a sample change (comment)", description = "Creates a new comment semantic attached to the specified concept.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Change created successfully", content = @Content(schema = @Schema(implementation = ChangeHistoryResponse.class))),
@@ -200,5 +245,37 @@ public class KnowledgeGraphRestController {
         CoordinateOverride override = new CoordinateOverride(
                 allowedStates, positionTime, positionPath, modules, null, premiseType);
         return CoordinateFactory.buildCalculator(override);
+    }
+
+    private TinkarSearchQueryResponse toDto(ai.ica.tinkar.proto.TinkarSearchQueryResponse proto) {
+        List<SearchResult> results = proto.getResultsList().stream()
+                .map(this::toSearchResultDto)
+                .toList();
+        return new TinkarSearchQueryResponse(
+                proto.getQuery(),
+                proto.getTotalCount(),
+                results,
+                proto.getSuccess(),
+                proto.getErrorMessage().isEmpty() ? null : proto.getErrorMessage());
+    }
+
+    private SearchResult toSearchResultDto(TinkarSearchResult proto) {
+        List<String> publicIds = proto.getPublicId().getUuidsList();
+        Descriptions descriptions = new Descriptions(
+                proto.getDescriptions().getFullyQualifiedName(),
+                proto.getDescriptions().getRegularName(),
+                proto.getDescriptions().getDefinition());
+        StampVersion stampProto = proto.getStamp();
+        Stamp stamp = new Stamp(
+                stampProto.hasStatusPublicId() && !stampProto.getStatusPublicId().getUuidsList().isEmpty()
+                        ? stampProto.getStatusPublicId().getUuids(0) : null,
+                stampProto.hasAuthorPublicId() && !stampProto.getAuthorPublicId().getUuidsList().isEmpty()
+                        ? stampProto.getAuthorPublicId().getUuids(0) : null,
+                stampProto.hasModulePublicId() && !stampProto.getModulePublicId().getUuidsList().isEmpty()
+                        ? stampProto.getModulePublicId().getUuids(0) : null,
+                stampProto.hasPathPublicId() && !stampProto.getPathPublicId().getUuidsList().isEmpty()
+                        ? stampProto.getPathPublicId().getUuids(0) : null,
+                stampProto.getTime());
+        return new SearchResult(publicIds, descriptions, stamp);
     }
 }

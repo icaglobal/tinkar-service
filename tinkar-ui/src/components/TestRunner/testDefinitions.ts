@@ -11,6 +11,8 @@ import {
   getComments,
   kgGetSemantics,
   kgGetComments,
+  kgGetChildren,
+  kgGetDescendants,
   kgGetChangeHistory,
   kgGetConceptChangeHistory,
 } from '../../api/tinkarApi';
@@ -325,6 +327,12 @@ const MODULE_TEST_CONCEPT = '02afcfce-19f6-536c-b331-9f17107e0858';
 const SNOMED_CT_CORE_MODULE = '6b341bca-9c47-5e9e-83fb-9782c8fea56e';
 const SOLOR_OVERLAY_MODULE = '9ecc154c-e490-5cf8-805d-d2865d62aef3';
 
+// "Disease (disorder)" — has many inferred children, 0 stated children (demonstrates premiseType effect)
+const HIERARCHY_TEST_CONCEPT = 'c3735e2d-9206-58bb-aa12-f92c4e5730a7';
+
+// "Abscess (disorder)" — smaller inferred subtree suitable for descendants test
+const DESCENDANTS_TEST_CONCEPT = '9728786a-1eb1-5553-892b-e0aad91bc034';
+
 // Path UUIDs
 const DEVELOPMENT_PATH = '1f200ca6-960e-11e5-8994-feff819cdc9f';
 const SANDBOX_PATH = '80710ea6-983c-5fa0-8908-e479f1f03ea9';
@@ -403,32 +411,69 @@ const coordinateOverrideGroup: TestGroupDefinition = {
       },
     },
 
-    // ── Semantics: premiseType ────────────────────────────────────
+    // ── Hierarchy: premiseType (children/descendants) ──────────────
 
     {
-      id: 'coord-sem-stated',
-      name: 'Semantics (premiseType=STATED) — has Stated definition',
+      id: 'coord-children-inferred',
+      name: 'Children (default/INFERRED) — Disease (disorder) has children',
       run: async (ctx) => {
-        const id = ctx.get('albumin_id') ?? COORD_TEST_CONCEPT;
-        const data = await kgGetSemantics(id, { premiseType: 'STATED' });
-        const count = data.totalCount ?? data.semantics?.length ?? 0;
-        if (count === 0) return { status: 'fail', detail: '0 semantics', responseData: data };
-        return containsText(data, 'Stated definition')
-          ? { status: 'pass', detail: `${count} semantics, has Stated definition`, responseData: data }
-          : { status: 'fail', detail: '"Stated definition" not found', responseData: data };
+        // "Disease (disorder)" — has many inferred children, 0 stated children
+        const data = await kgGetChildren(HIERARCHY_TEST_CONCEPT);
+        const count = data.totalCount ?? data.results?.length ?? 0;
+        ctx.set('coord_children_inferred', String(count));
+        return count > 0
+          ? { status: 'pass', detail: `${count} inferred children`, responseData: data }
+          : { status: 'fail', detail: '0 children', responseData: data };
       },
     },
     {
-      id: 'coord-sem-inferred',
-      name: 'Semantics (premiseType=INFERRED) — has Inferred definition',
+      id: 'coord-children-stated',
+      name: 'Children (STATED) — different from INFERRED',
       run: async (ctx) => {
-        const id = ctx.get('albumin_id') ?? COORD_TEST_CONCEPT;
-        const data = await kgGetSemantics(id, { premiseType: 'INFERRED' });
-        const count = data.totalCount ?? data.semantics?.length ?? 0;
-        if (count === 0) return { status: 'fail', detail: '0 semantics', responseData: data };
-        return containsText(data, 'Inferred definition')
-          ? { status: 'pass', detail: `${count} semantics, has Inferred definition`, responseData: data }
-          : { status: 'fail', detail: '"Inferred definition" not found', responseData: data };
+        const data = await kgGetChildren(HIERARCHY_TEST_CONCEPT, { premiseType: 'STATED' });
+        const statedCount = data.totalCount ?? data.results?.length ?? 0;
+        const inferredCount = Number(ctx.get('coord_children_inferred') ?? '0');
+        ctx.set('coord_children_stated', String(statedCount));
+        return statedCount !== inferredCount
+          ? { status: 'pass', detail: `STATED: ${statedCount} vs INFERRED: ${inferredCount} — premiseType has effect`, responseData: data }
+          : { status: 'fail', detail: `STATED (${statedCount}) = INFERRED (${inferredCount}) — premiseType had no effect`, responseData: data };
+      },
+    },
+    {
+      id: 'coord-children-explicit-inferred',
+      name: 'Children (explicit INFERRED) = default',
+      run: async (ctx) => {
+        const data = await kgGetChildren(HIERARCHY_TEST_CONCEPT, { premiseType: 'INFERRED' });
+        const count = data.totalCount ?? data.results?.length ?? 0;
+        const defaultCount = Number(ctx.get('coord_children_inferred') ?? '0');
+        return count === defaultCount
+          ? { status: 'pass', detail: `Explicit INFERRED (${count}) = default (${defaultCount})`, responseData: data }
+          : { status: 'fail', detail: `Mismatch: explicit=${count}, default=${defaultCount}`, responseData: data };
+      },
+    },
+    {
+      id: 'coord-descendants-inferred',
+      name: 'Descendants (INFERRED) — Abscess (disorder) has descendants',
+      run: async (ctx) => {
+        // "Abscess (disorder)" — smaller subtree suitable for descendants test
+        const data = await kgGetDescendants(DESCENDANTS_TEST_CONCEPT);
+        const count = data.totalCount ?? data.results?.length ?? 0;
+        ctx.set('coord_desc_inferred', String(count));
+        return count > 0
+          ? { status: 'pass', detail: `${count} inferred descendants`, responseData: data }
+          : { status: 'fail', detail: '0 descendants', responseData: data };
+      },
+    },
+    {
+      id: 'coord-descendants-stated',
+      name: 'Descendants (STATED) — different from INFERRED',
+      run: async (ctx) => {
+        const data = await kgGetDescendants(DESCENDANTS_TEST_CONCEPT, { premiseType: 'STATED' });
+        const statedCount = data.totalCount ?? data.results?.length ?? 0;
+        const inferredCount = Number(ctx.get('coord_desc_inferred') ?? '0');
+        return statedCount !== inferredCount
+          ? { status: 'pass', detail: `STATED: ${statedCount} vs INFERRED: ${inferredCount}`, responseData: data }
+          : { status: 'fail', detail: `STATED (${statedCount}) = INFERRED (${inferredCount}) — no difference`, responseData: data };
       },
     },
 
@@ -819,6 +864,24 @@ const endpointCoverageGroup: TestGroupDefinition = {
         if (!id) return { status: 'skip', detail: 'No concept ID available' };
         const data = await kgGetConceptChangeHistory(id);
         return { status: 'pass', detail: 'HTTP 200', responseData: data };
+      },
+    },
+    {
+      id: 'ep-kg-children',
+      name: 'Tier 2: GET /knowledgegraph/children',
+      run: async () => {
+        const data = await kgGetChildren(HIERARCHY_TEST_CONCEPT);
+        const count = data.totalCount ?? data.results?.length ?? 0;
+        return { status: 'pass', detail: `HTTP 200, ${count} children`, responseData: data };
+      },
+    },
+    {
+      id: 'ep-kg-descendants',
+      name: 'Tier 2: GET /knowledgegraph/descendants',
+      run: async () => {
+        const data = await kgGetDescendants(DESCENDANTS_TEST_CONCEPT);
+        const count = data.totalCount ?? data.results?.length ?? 0;
+        return { status: 'pass', detail: `HTTP 200, ${count} descendants`, responseData: data };
       },
     },
   ],

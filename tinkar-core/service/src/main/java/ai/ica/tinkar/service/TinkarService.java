@@ -36,7 +36,25 @@ public interface TinkarService {
 
     TinkarSearchQueryResponse getChildConcepts(String conceptId);
 
+    /**
+     * Gets direct child concepts using the specified view calculator for coordinate resolution.
+     * The navigation coordinate (premise type) controls whether stated or inferred relationships are used.
+     * @param conceptId The public ID (UUID) of the parent concept
+     * @param viewCalculator The view calculator with coordinate overrides
+     * @return TinkarSearchQueryResponse containing child concepts
+     */
+    TinkarSearchQueryResponse getChildConcepts(String conceptId, ViewCalculatorWithCache viewCalculator);
+
     TinkarSearchQueryResponse getDescendantConcepts(String conceptId);
+
+    /**
+     * Gets all descendant concepts (full subtree) using the specified view calculator for coordinate resolution.
+     * The navigation coordinate (premise type) controls whether stated or inferred relationships are used.
+     * @param conceptId The public ID (UUID) of the parent concept
+     * @param viewCalculator The view calculator with coordinate overrides
+     * @return TinkarSearchQueryResponse containing descendant concepts
+     */
+    TinkarSearchQueryResponse getDescendantConcepts(String conceptId, ViewCalculatorWithCache viewCalculator);
 
     TinkarSearchQueryResponse getLIDRRecordConceptsFromTestKit(String conceptId);
 

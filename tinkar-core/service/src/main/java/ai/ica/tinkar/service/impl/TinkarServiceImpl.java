@@ -42,6 +42,7 @@ import dev.ikm.tinkar.entity.SemanticRecord;
 import dev.ikm.tinkar.entity.StampEntity;
 import dev.ikm.tinkar.entity.transaction.Transaction;
 import dev.ikm.tinkar.schema.StampVersion;
+import dev.ikm.tinkar.terms.EntityProxy;
 import dev.ikm.tinkar.terms.TinkarTerm;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.collections.api.factory.Lists;
@@ -378,6 +379,36 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     @Override
+    public TinkarSearchQueryResponse getChildConcepts(String conceptId, ViewCalculatorWithCache viewCalculator) {
+        ViewCalculatorWithCache calc = resolveCalculator(viewCalculator);
+        try {
+            PublicId parentConceptId = primitive.getPublicId(conceptId);
+            EntityProxy.Concept concept = EntityProxy.Concept.make(parentConceptId);
+            List<TinkarSearchResult> results = new ArrayList<>();
+            calc.navigationCalculator().childrenOf(concept)
+                    .forEach(childNid -> results.add(publicIdToSearchResult(PrimitiveData.publicId(childNid), calc)));
+            return buildSuccessResponse(conceptId, results);
+        } catch (Exception e) {
+            return buildErrorResponse(conceptId, e.getMessage());
+        }
+    }
+
+    @Override
+    public TinkarSearchQueryResponse getDescendantConcepts(String conceptId, ViewCalculatorWithCache viewCalculator) {
+        ViewCalculatorWithCache calc = resolveCalculator(viewCalculator);
+        try {
+            PublicId parentConceptId = primitive.getPublicId(conceptId);
+            EntityProxy.Concept concept = EntityProxy.Concept.make(parentConceptId);
+            List<TinkarSearchResult> results = new ArrayList<>();
+            calc.navigationCalculator().descendentsOf(concept)
+                    .forEach(descNid -> results.add(publicIdToSearchResult(PrimitiveData.publicId(descNid), calc)));
+            return buildSuccessResponse(conceptId, results);
+        } catch (Exception e) {
+            return buildErrorResponse(conceptId, e.getMessage());
+        }
+    }
+
+    @Override
     public TinkarSearchQueryResponse getLIDRRecordConceptsFromTestKit(String conceptId) {
         try {
             PublicId testKitConceptId = primitive.getPublicId(conceptId);
@@ -464,6 +495,10 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     private TinkarSearchResult publicIdToSearchResult(PublicId publicId) {
+        return publicIdToSearchResult(publicId, Calculators.View.Default());
+    }
+
+    private TinkarSearchResult publicIdToSearchResult(PublicId publicId, ViewCalculatorWithCache calc) {
         int nid = EntityService.get().nidForPublicId(publicId);
 
         // Build PublicId proto
@@ -474,13 +509,11 @@ public class TinkarServiceImpl implements TinkarService {
                 .build();
 
         // Build descriptions
-        String fullyQualifiedName = Calculators.View.Default()
-                .languageCalculator()
+        String fullyQualifiedName = calc.languageCalculator()
                 .getFullyQualifiedNameText(nid)
                 .orElse("");
 
-        String regularName = Calculators.View.Default()
-                .languageCalculator()
+        String regularName = calc.languageCalculator()
                 .getRegularDescriptionText(nid)
                 .orElse("");
 
