@@ -147,6 +147,8 @@ export type CoordinateOverrideParams = {
   positionTime?: number;
   positionPath?: string;
   modules?: string[];
+  excludedModules?: string[];
+  modulePriority?: string[];
   premiseType?: 'STATED' | 'INFERRED';
 };
 
