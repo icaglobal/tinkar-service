@@ -128,7 +128,7 @@
             <groupId>dev.ikm.jpms</groupId>
             <artifactId>rocksdbjni-jpms</artifactId>
             <version>10.4.2-r1-SNAPSHOT</version>
-            <classifier>linux64</classifier>
+            <classifier>${rocksdbjni.classifier}</classifier>
         </dependency>
         <dependency>
             <groupId>dev.ikm.tinkar</groupId>
@@ -143,6 +143,32 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <profiles>
+        <profile>
+            <id>macos</id>
+            <activation>
+                <os>
+                    <family>mac</family>
+                </os>
+            </activation>
+            <properties>
+                <rocksdbjni.classifier>osx</rocksdbjni.classifier>
+            </properties>
+        </profile>
+        <profile>
+            <id>linux</id>
+            <activation>
+                <os>
+                    <family>unix</family>
+                    <name>Linux</name>
+                </os>
+            </activation>
+            <properties>
+                <rocksdbjni.classifier>linux64</rocksdbjni.classifier>
+            </properties>
+        </profile>
+    </profiles>
 
     <build>
         <extensions>
