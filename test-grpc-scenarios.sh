@@ -674,6 +674,69 @@ print(len(modules))
     FAIL=$((FAIL + 1))
   fi
 
+  # ── excluded_module_ids overrides ─────────────────────────────────
+
+  subheader "GetConceptSemantics — excluded_module_ids (STAMP Coordinate)"
+
+  grpc_call "$KG_SVC" "$(kg_request "$MODULE_TEST_ID" "{\"excluded_module_ids\":[\"$SOLOR_OVERLAY_MODULE\"]}")"
+  assert_grpc_ok "semantics (excluded_module_ids=SOLOR overlay)"
+  MOD_EXCLUDE_SOLOR_COUNT=$(json_total_count)
+
+  TOTAL=$((TOTAL + 1))
+  if [ "$MOD_EXCLUDE_SOLOR_COUNT" = "$MOD_SNOMED_COUNT" ]; then
+    echo -e "  ${GREEN}PASS${NC}  Exclude SOLOR ($MOD_EXCLUDE_SOLOR_COUNT) = Include SNOMED ($MOD_SNOMED_COUNT)"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  Exclude SOLOR ($MOD_EXCLUDE_SOLOR_COUNT) should equal Include SNOMED ($MOD_SNOMED_COUNT)"
+    FAIL=$((FAIL + 1))
+  fi
+
+  grpc_call "$KG_SVC" "$(kg_request "$MODULE_TEST_ID" "{\"excluded_module_ids\":[\"$SNOMED_CT_CORE_MODULE\"]}")"
+  assert_grpc_ok "semantics (excluded_module_ids=SNOMED CT core)"
+  MOD_EXCLUDE_SNOMED_COUNT=$(json_total_count)
+
+  TOTAL=$((TOTAL + 1))
+  if [ "$MOD_EXCLUDE_SNOMED_COUNT" = "$MOD_SOLOR_COUNT" ]; then
+    echo -e "  ${GREEN}PASS${NC}  Exclude SNOMED ($MOD_EXCLUDE_SNOMED_COUNT) = Include SOLOR ($MOD_SOLOR_COUNT)"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  Exclude SNOMED ($MOD_EXCLUDE_SNOMED_COUNT) should equal Include SOLOR ($MOD_SOLOR_COUNT)"
+    FAIL=$((FAIL + 1))
+  fi
+
+  # ── module_priority_ids overrides ───────────────────────────────
+
+  subheader "GetConceptSemantics — module_priority_ids (STAMP Coordinate)"
+
+  PRIORITY_SOLOR_FIRST='{"module_priority_ids":["'"$SOLOR_OVERLAY_MODULE"'","'"$SNOMED_CT_CORE_MODULE"'"]}'
+  grpc_call "$KG_SVC" "$(kg_request "$MODULE_TEST_ID" "$PRIORITY_SOLOR_FIRST")"
+  assert_grpc_ok "semantics (module_priority_ids=SOLOR first)"
+  MOD_PRIORITY_COUNT=$(json_total_count)
+
+  # Priority doesn't filter — count should match default
+  TOTAL=$((TOTAL + 1))
+  if [ "$MOD_PRIORITY_COUNT" = "$MOD_DEFAULT_COUNT" ]; then
+    echo -e "  ${GREEN}PASS${NC}  Priority count ($MOD_PRIORITY_COUNT) = default ($MOD_DEFAULT_COUNT) — accepted without error"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  Priority count ($MOD_PRIORITY_COUNT) should equal default ($MOD_DEFAULT_COUNT)"
+    FAIL=$((FAIL + 1))
+  fi
+
+  PRIORITY_SNOMED_FIRST='{"module_priority_ids":["'"$SNOMED_CT_CORE_MODULE"'","'"$SOLOR_OVERLAY_MODULE"'"]}'
+  grpc_call "$KG_SVC" "$(kg_request "$MODULE_TEST_ID" "$PRIORITY_SNOMED_FIRST")"
+  assert_grpc_ok "semantics (module_priority_ids=SNOMED first)"
+  MOD_PRIORITY_REV_COUNT=$(json_total_count)
+
+  TOTAL=$((TOTAL + 1))
+  if [ "$MOD_PRIORITY_REV_COUNT" = "$MOD_DEFAULT_COUNT" ]; then
+    echo -e "  ${GREEN}PASS${NC}  Reversed priority ($MOD_PRIORITY_REV_COUNT) = default ($MOD_DEFAULT_COUNT)"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  Reversed priority ($MOD_PRIORITY_REV_COUNT) should equal default ($MOD_DEFAULT_COUNT)"
+    FAIL=$((FAIL + 1))
+  fi
+
   # ── positionPath overrides ─────────────────────────────────────────
 
   subheader "GetConceptSemantics — position_path_id (STAMP Coordinate)"

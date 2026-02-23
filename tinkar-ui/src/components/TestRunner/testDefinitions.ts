@@ -477,6 +477,55 @@ const coordinateOverrideGroup: TestGroupDefinition = {
       },
     },
 
+    // ── Module exclusion and priority ──────────────────────────────
+
+    {
+      id: 'coord-exclude-module',
+      name: 'Exclude SOLOR overlay — fewer semantics than baseline',
+      run: async (ctx) => {
+        // Baseline: all modules
+        const baseline = await kgGetSemantics(MODULE_TEST_CONCEPT);
+        const baselineCount = baseline.totalCount ?? baseline.semantics?.length ?? 0;
+        ctx.set('coord_module_baseline', String(baselineCount));
+        // Exclude SOLOR overlay module
+        const data = await kgGetSemantics(MODULE_TEST_CONCEPT, { excludedModules: [SOLOR_OVERLAY_MODULE] });
+        const count = data.totalCount ?? data.semantics?.length ?? 0;
+        ctx.set('coord_exclude_solor', String(count));
+        const allSnomed = data.semantics?.every((s) => s.stamp?.module !== 'SOLOR overlay module') ?? false;
+        return count < baselineCount && allSnomed
+          ? { status: 'pass', detail: `${count} (excluded) < ${baselineCount} (baseline), no SOLOR semantics`, responseData: data }
+          : { status: 'fail', detail: `excluded=${count}, baseline=${baselineCount}, allSnomed=${allSnomed}`, responseData: data };
+      },
+    },
+    {
+      id: 'coord-include-vs-exclude',
+      name: 'Include SNOMED = Exclude SOLOR (same result)',
+      run: async (ctx) => {
+        const excludeCount = Number(ctx.get('coord_exclude_solor') ?? '0');
+        // Include only SNOMED CT core
+        const data = await kgGetSemantics(MODULE_TEST_CONCEPT, { modules: [SNOMED_CT_CORE_MODULE] });
+        const includeCount = data.totalCount ?? data.semantics?.length ?? 0;
+        return includeCount === excludeCount
+          ? { status: 'pass', detail: `Include SNOMED (${includeCount}) = Exclude SOLOR (${excludeCount})`, responseData: data }
+          : { status: 'fail', detail: `Include (${includeCount}) ≠ Exclude (${excludeCount})`, responseData: data };
+      },
+    },
+    {
+      id: 'coord-module-priority',
+      name: 'Module priority — accepted without error, same count as baseline',
+      run: async (ctx) => {
+        const baselineCount = Number(ctx.get('coord_module_baseline') ?? '0');
+        // Priority doesn't filter — it controls version precedence
+        const data = await kgGetSemantics(MODULE_TEST_CONCEPT, {
+          modulePriority: [SOLOR_OVERLAY_MODULE, SNOMED_CT_CORE_MODULE],
+        });
+        const count = data.totalCount ?? data.semantics?.length ?? 0;
+        return count === baselineCount
+          ? { status: 'pass', detail: `Priority count (${count}) = baseline (${baselineCount}) — priority accepted`, responseData: data }
+          : { status: 'fail', detail: `Priority count (${count}) ≠ baseline (${baselineCount})`, responseData: data };
+      },
+    },
+
     // ── Semantics: combined overrides ─────────────────────────────
 
     {
