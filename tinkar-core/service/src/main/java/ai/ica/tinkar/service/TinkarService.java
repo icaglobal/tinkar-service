@@ -5,10 +5,15 @@ import ai.ica.tinkar.dto.ConceptChangeHistoryResponse;
 import ai.ica.tinkar.dto.ConceptSearchResponse;
 import ai.ica.tinkar.dto.ConceptSemanticsResponse;
 import ai.ica.tinkar.dto.DescendantOperationResponse;
+import ai.ica.tinkar.dto.EntityCountSummaryResponse;
+import ai.ica.tinkar.dto.ReasonerResultsResponse;
 import ai.ica.tinkar.dto.SearchSortOption;
 import ai.ica.tinkar.proto.TinkarConceptSemanticsResponse;
 import ai.ica.tinkar.proto.TinkarSearchQueryResponse;
 import dev.ikm.tinkar.coordinate.view.calculator.ViewCalculatorWithCache;
+
+import java.io.File;
+import java.util.List;
 
 public interface TinkarService {
     TinkarSearchQueryResponse search(String query);
@@ -197,4 +202,45 @@ public interface TinkarService {
      * @return DescendantOperationResponse indicating success or failure
      */
     DescendantOperationResponse removeDescendant(String parentConceptId, String descendantConceptId);
+
+    // ── Admin: Import / Export / Reasoner ────────────────────────────
+
+    /**
+     * Imports a Tinkar changeset from a protobuf ZIP file.
+     * @param importFile the ZIP file containing delimited TinkarMsg protobuf + manifest
+     * @param useMultiPass if true, use multi-pass import to resolve forward references
+     * @return EntityCountSummaryResponse with counts of imported entities
+     */
+    EntityCountSummaryResponse importChangeset(File importFile, boolean useMultiPass);
+
+    /**
+     * Exports all entities to a protobuf ZIP file.
+     * @param exportFile the target ZIP file
+     * @return EntityCountSummaryResponse with counts of exported entities
+     */
+    EntityCountSummaryResponse exportEntities(File exportFile);
+
+    /**
+     * Exports entities modified within a time range to a protobuf ZIP file.
+     * @param exportFile the target ZIP file
+     * @param fromEpochMillis start time (inclusive)
+     * @param toEpochMillis end time (inclusive)
+     * @return EntityCountSummaryResponse with counts of exported entities
+     */
+    EntityCountSummaryResponse exportEntities(File exportFile, long fromEpochMillis, long toEpochMillis);
+
+    /**
+     * Exports entities matching membership tags to a protobuf ZIP file.
+     * @param exportFile the target ZIP file
+     * @param membershipTagIds list of tag PublicId UUIDs
+     * @return EntityCountSummaryResponse with counts of exported entities
+     */
+    EntityCountSummaryResponse exportEntitiesByMembership(File exportFile, List<String> membershipTagIds);
+
+    /**
+     * Runs the full reasoner classification pipeline:
+     * init -> extractData -> loadData -> computeInferences -> writeInferredResults.
+     * @return ReasonerResultsResponse with classification results
+     */
+    ReasonerResultsResponse runReasoner();
 }

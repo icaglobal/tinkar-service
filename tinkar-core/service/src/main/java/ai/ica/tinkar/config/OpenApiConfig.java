@@ -23,6 +23,9 @@ public class OpenApiConfig {
 						.name("IKE Knowledge Graph (Tier 2)")
 						.description("Concept-aware API exposing STAMP coordinates, semantic patterns, and version history."))
 				.addTagsItem(new Tag()
+						.name("IKE Admin (Tier 3)")
+						.description("Data management operations: import changesets, export entities, and reasoner classification."))
+				.addTagsItem(new Tag()
 						.name("Tinkar Search (Deprecated)")
 						.description("DEPRECATED — Use Tier 1 or Tier 2 endpoints instead."));
 	}

@@ -135,6 +135,17 @@
             <artifactId>executor-provider</artifactId>
         </dependency>
 
+        <!-- Reasoner -->
+        <dependency>
+            <groupId>dev.ikm.tinkar</groupId>
+            <artifactId>reasoner-service</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>dev.ikm.tinkar</groupId>
+            <artifactId>reasoner-elk-snomed</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
         <!-- Testing -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

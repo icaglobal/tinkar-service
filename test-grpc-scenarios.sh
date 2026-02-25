@@ -1,18 +1,26 @@
 #!/usr/bin/env bash
 #
 # Test script for gRPC services against the Tinkar gRPC API using grpcurl.
-# Usage: ./test-grpc-scenarios.sh [HOST:PORT]
-#   HOST:PORT defaults to localhost:9095
+# Usage: ./test-grpc-scenarios.sh [GRPC_HOST:PORT] [REST_HOST:PORT]
+#   GRPC_HOST:PORT defaults to localhost:9095
+#   REST_HOST:PORT defaults to localhost:8085
+#   CHANGESET_FILE env var overrides the synthetic changeset path (default: test-data/synthetic-changeset.zip)
 #
-# Tests all three gRPC services:
+# Tests all four gRPC services:
 #   - IkeGraphRAG (Tier 1: simple, opinionated API)
 #   - IkeKnowledgeGraph (Tier 2: coordinate-aware knowledge graph)
+#   - IkeAdmin (Tier 3: import, export, reasoner)
 #   - TinkarSearchService (deprecated, backward compatibility)
 #
 
 set -euo pipefail
 
 GRPC_HOST="${1:-localhost:9095}"
+REST_HOST="${2:-localhost:8085}"
+
+# Synthetic test changeset for import testing
+CHANGESET_FILE="${CHANGESET_FILE:-test-data/synthetic-changeset.zip}"
+SYNTHETIC_FQN="Synthetic Import Test Device (SITD-42)"
 
 # ── Counters ──────────────────────────────────────────────────────────
 PASS=0
@@ -251,7 +259,7 @@ else
 fi
 
 # Verify all three services are registered
-for svc in "ai.ica.tinkar.IkeGraphRAG" "ai.ica.tinkar.IkeKnowledgeGraph" "ai.ica.tinkar.TinkarSearchService"; do
+for svc in "ai.ica.tinkar.IkeGraphRAG" "ai.ica.tinkar.IkeKnowledgeGraph" "ai.ica.tinkar.IkeAdmin" "ai.ica.tinkar.TinkarSearchService"; do
   TOTAL=$((TOTAL + 1))
   if grpcurl -plaintext "$GRPC_HOST" list 2>/dev/null | grep -q "$svc"; then
     echo -e "  ${GREEN}PASS${NC}  Service registered: $svc"
@@ -784,6 +792,166 @@ print(len(modules))
   assert_count_gt0 "TinkarSearchService.GetConceptSemantics returns results"
 
 # ══════════════════════════════════════════════════════════════════════
+#  TIER 3: IkeAdmin — Import / Export / Reasoner
+# ══════════════════════════════════════════════════════════════════════
+header "Tier 3 (IkeAdmin): Import / Export / Reasoner"
+
+subheader "Reasoner"
+grpc_call "ai.ica.tinkar.IkeAdmin/RunReasoner" '{}'
+assert_grpc_ok "RunReasoner responds"
+assert_success "RunReasoner success"
+
+# Extract reasoner result fields
+REASONER_CLASSIFIED=$(echo "$RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    r = data.get('results', {})
+    print(r.get('classifiedConceptCount', r.get('classified_concept_count', 0)) or 0)
+except:
+    print(0)
+" 2>/dev/null || echo "0")
+
+TOTAL=$((TOTAL + 1))
+if [ "$REASONER_CLASSIFIED" -gt 0 ] 2>/dev/null; then
+  echo -e "  ${GREEN}PASS${NC}  Reasoner classified $REASONER_CLASSIFIED concepts"
+  PASS=$((PASS + 1))
+else
+  echo -e "  ${YELLOW}SKIP${NC}  Reasoner classified 0 concepts (may need stated axioms in dataset)"
+  SKIP=$((SKIP + 1))
+fi
+
+REASONER_DURATION=$(echo "$RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    print(data.get('durationMs', data.get('duration_ms', 0)) or 0)
+except:
+    print(0)
+" 2>/dev/null || echo "0")
+
+TOTAL=$((TOTAL + 1))
+if [ "$REASONER_DURATION" -gt 0 ] 2>/dev/null; then
+  echo -e "  ${GREEN}PASS${NC}  Reasoner duration: ${REASONER_DURATION}ms"
+  PASS=$((PASS + 1))
+else
+  echo -e "  ${RED}FAIL${NC}  Reasoner duration is 0 (unexpected)"
+  FAIL=$((FAIL + 1))
+fi
+
+subheader "Export (FULL)"
+grpc_call "ai.ica.tinkar.IkeAdmin/ExportEntities" '{"export_type":"FULL"}'
+assert_grpc_ok "ExportEntities (FULL) responds"
+assert_success "ExportEntities (FULL) success"
+
+EXPORT_HAS_DATA=$(echo "$RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    ec = data.get('entityCounts', data.get('entity_counts', {}))
+    total = ec.get('totalCount', ec.get('total_count', 0)) or 0
+    print(total)
+except:
+    print(0)
+" 2>/dev/null || echo "0")
+
+TOTAL=$((TOTAL + 1))
+if [ "$EXPORT_HAS_DATA" -gt 0 ] 2>/dev/null; then
+  echo -e "  ${GREEN}PASS${NC}  Export entity count: $EXPORT_HAS_DATA"
+  PASS=$((PASS + 1))
+else
+  echo -e "  ${RED}FAIL${NC}  Export returned 0 entities"
+  FAIL=$((FAIL + 1))
+fi
+
+subheader "Import → Search (synthetic changeset)"
+
+if [ -f "$CHANGESET_FILE" ]; then
+  # Step 1: Verify the synthetic concept does NOT exist yet
+  grpc_call "ai.ica.tinkar.IkeGraphRAG/Search" "{\"query\":\"SITD-42\"}"
+  PRE_IMPORT_COUNT=$(json_total_count)
+  TOTAL=$((TOTAL + 1))
+  if [ "$PRE_IMPORT_COUNT" = "0" ]; then
+    echo -e "  ${GREEN}PASS${NC}  Pre-import: 'SITD-42' not found (expected)"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${YELLOW}SKIP${NC}  Pre-import: 'SITD-42' already exists ($PRE_IMPORT_COUNT results) — may be from a previous import"
+    SKIP=$((SKIP + 1))
+  fi
+
+  # Step 2: Import via REST (multipart file upload)
+  IMPORT_RESPONSE=$(curl -s -X POST "http://$REST_HOST/api/ike/admin/import" \
+    -F "file=@$CHANGESET_FILE" \
+    -F "useMultiPass=true")
+
+  IMPORT_SUCCESS=$(echo "$IMPORT_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    print('true' if data.get('success', False) else 'false')
+except:
+    print('false')
+" 2>/dev/null) || IMPORT_SUCCESS="false"
+
+  TOTAL=$((TOTAL + 1))
+  if [ "$IMPORT_SUCCESS" = "true" ]; then
+    echo -e "  ${GREEN}PASS${NC}  Import changeset succeeded"
+    PASS=$((PASS + 1))
+  else
+    IMPORT_ERROR=$(echo "$IMPORT_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    print(data.get('errorMessage', 'unknown'))
+except:
+    print('unknown')
+" 2>/dev/null) || IMPORT_ERROR="unknown"
+    echo -e "  ${RED}FAIL${NC}  Import changeset failed: $IMPORT_ERROR"
+    FAIL=$((FAIL + 1))
+  fi
+
+  IMPORT_TOTAL=$(echo "$IMPORT_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    print(data.get('totalCount', 0) or 0)
+except:
+    print(0)
+" 2>/dev/null || echo "0")
+
+  TOTAL=$((TOTAL + 1))
+  if [ "$IMPORT_TOTAL" -gt 0 ] 2>/dev/null; then
+    echo -e "  ${GREEN}PASS${NC}  Import entity count: $IMPORT_TOTAL"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  Import returned 0 entities"
+    FAIL=$((FAIL + 1))
+  fi
+
+  # Step 3: Search for the imported concept via gRPC
+  grpc_call "ai.ica.tinkar.IkeGraphRAG/Search" "{\"query\":\"SITD-42\"}"
+  assert_grpc_ok "Post-import search responds"
+
+  POST_IMPORT_COUNT=$(json_total_count)
+  TOTAL=$((TOTAL + 1))
+  if [ "$POST_IMPORT_COUNT" -gt 0 ] 2>/dev/null; then
+    echo -e "  ${GREEN}PASS${NC}  Post-import: 'SITD-42' found ($POST_IMPORT_COUNT results)"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  Post-import: 'SITD-42' not found (expected ≥1 result)"
+    FAIL=$((FAIL + 1))
+  fi
+
+  # Step 4: Verify the FQN text is in the response
+  assert_contains "Post-import FQN match" "Synthetic Import Test Device"
+
+else
+  TOTAL=$((TOTAL + 1))
+  echo -e "  ${YELLOW}SKIP${NC}  Import test skipped ($CHANGESET_FILE not found)"
+  SKIP=$((SKIP + 1))
+fi
+
+# ══════════════════════════════════════════════════════════════════════
 #  RPC METHOD COVERAGE
 # ══════════════════════════════════════════════════════════════════════
 header "RPC Method Coverage"
@@ -833,6 +1001,16 @@ grpc_call "ai.ica.tinkar.IkeKnowledgeGraph/GetDescendantConcepts" "$(kg_request 
 assert_grpc_ok "GetDescendantConcepts (Tier 2)"
 assert_count_gt0 "GetDescendantConcepts (Tier 2) returns results"
 
+subheader "IkeAdmin (Tier 3)"
+
+grpc_call "ai.ica.tinkar.IkeAdmin/RunReasoner" '{}'
+assert_grpc_ok "RunReasoner"
+assert_success "RunReasoner success"
+
+grpc_call "ai.ica.tinkar.IkeAdmin/ExportEntities" '{"export_type":"FULL"}'
+assert_grpc_ok "ExportEntities (FULL)"
+assert_success "ExportEntities (FULL) success"
+
 subheader "TinkarSearchService (Deprecated)"
 
 grpc_call "ai.ica.tinkar.TinkarSearchService/Search" '{"query":"albumin"}'
@@ -864,6 +1042,8 @@ if [ "$FAIL" -gt 0 ]; then
   echo "  1. LIDR Record pattern (DIAGNOSTIC_DEVICE_PATTERN) not in dataset"
   echo "  2. Stated taxonomy empty in this dataset — STATED premise_type returns 0"
   echo "     hierarchy results (this is expected, demonstrates STATED vs INFERRED difference)"
+  echo "  3. Export round-trip may skip if export_data exceeds gRPC response size"
+  echo "  4. Reasoner classification count may be 0 if dataset lacks stated axioms"
   echo ""
 fi
 

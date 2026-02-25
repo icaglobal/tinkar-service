@@ -13,6 +13,8 @@ import ai.ica.tinkar.dto.ConceptSemanticsResponse;
 import ai.ica.tinkar.dto.ConceptSemanticsResponse.SemanticInfo;
 import ai.ica.tinkar.dto.ConceptSemanticsResponse.FieldValue;
 import ai.ica.tinkar.dto.DescendantOperationResponse;
+import ai.ica.tinkar.dto.EntityCountSummaryResponse;
+import ai.ica.tinkar.dto.ReasonerResultsResponse;
 import ai.ica.tinkar.dto.SearchSortOption;
 import dev.ikm.tinkar.common.id.IntIdSet;
 import dev.ikm.tinkar.common.id.IntIds;
@@ -34,13 +36,20 @@ import dev.ikm.tinkar.coordinate.view.calculator.ViewCalculatorWithCache;
 import dev.ikm.tinkar.coordinate.stamp.change.ChangeChronology;
 import dev.ikm.tinkar.coordinate.stamp.change.FieldChangeRecord;
 import dev.ikm.tinkar.coordinate.stamp.change.VersionChangeRecord;
+import dev.ikm.tinkar.common.service.PluggableService;
+import dev.ikm.tinkar.common.service.TrackingCallable;
 import dev.ikm.tinkar.entity.Entity;
+import dev.ikm.tinkar.entity.EntityCountSummary;
 import dev.ikm.tinkar.entity.EntityService;
 import dev.ikm.tinkar.entity.SemanticEntity;
 import dev.ikm.tinkar.entity.SemanticEntityVersion;
 import dev.ikm.tinkar.entity.SemanticRecord;
 import dev.ikm.tinkar.entity.StampEntity;
+import dev.ikm.tinkar.entity.export.ExportEntitiesToProtobufFile;
+import dev.ikm.tinkar.entity.load.LoadEntitiesFromProtobufFile;
 import dev.ikm.tinkar.entity.transaction.Transaction;
+import dev.ikm.tinkar.reasoner.service.ClassifierResults;
+import dev.ikm.tinkar.reasoner.service.ReasonerService;
 import dev.ikm.tinkar.schema.StampVersion;
 import dev.ikm.tinkar.terms.EntityProxy;
 import dev.ikm.tinkar.terms.TinkarTerm;
@@ -50,6 +59,7 @@ import org.eclipse.collections.api.set.primitive.MutableIntSet;
 import org.eclipse.collections.impl.factory.primitive.IntSets;
 import org.springframework.stereotype.Service;
 
+import java.io.File;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -58,6 +68,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.ServiceLoader;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -1642,6 +1653,159 @@ public class TinkarServiceImpl implements TinkarService {
             log.error("Failed to remove descendant {} from parent {}: {}",
                     descendantConceptId, parentConceptId, e.getMessage(), e);
             return DescendantOperationResponse.error(parentConceptId, descendantConceptId, e.getMessage());
+        }
+    }
+
+    // ── Admin: Import / Export / Reasoner ────────────────────────────
+
+    @Override
+    public EntityCountSummaryResponse importChangeset(File importFile, boolean useMultiPass) {
+        log.info("Importing changeset from: {} (multiPass={})", importFile.getAbsolutePath(), useMultiPass);
+        try {
+            LoadEntitiesFromProtobufFile loader = new LoadEntitiesFromProtobufFile(importFile, useMultiPass);
+            EntityCountSummary summary = loader.compute();
+
+            log.info("Import complete: {} concepts, {} semantics, {} patterns, {} stamps",
+                    summary.conceptsCount(), summary.semanticsCount(),
+                    summary.patternsCount(), summary.stampsCount());
+
+            // Rebuild search index so newly imported entities are searchable
+            log.info("Rebuilding search index after import...");
+            PrimitiveData.get().recreateLuceneIndex();
+
+            // Clear caches so queries reflect the imported data
+            dev.ikm.tinkar.common.service.CachingService.clearAll();
+
+            return EntityCountSummaryResponse.success(
+                    summary.conceptsCount(), summary.semanticsCount(),
+                    summary.patternsCount(), summary.stampsCount());
+        } catch (Exception e) {
+            log.error("Import failed: {}", e.getMessage(), e);
+            return EntityCountSummaryResponse.error(e.getMessage());
+        }
+    }
+
+    @Override
+    public EntityCountSummaryResponse exportEntities(File exportFile) {
+        log.info("Exporting all entities to: {}", exportFile.getAbsolutePath());
+        try {
+            ExportEntitiesToProtobufFile exporter = new ExportEntitiesToProtobufFile(exportFile);
+            EntityCountSummary summary = exporter.compute();
+
+            log.info("Export complete: {} concepts, {} semantics, {} patterns, {} stamps",
+                    summary.conceptsCount(), summary.semanticsCount(),
+                    summary.patternsCount(), summary.stampsCount());
+
+            return EntityCountSummaryResponse.success(
+                    summary.conceptsCount(), summary.semanticsCount(),
+                    summary.patternsCount(), summary.stampsCount());
+        } catch (Exception e) {
+            log.error("Export failed: {}", e.getMessage(), e);
+            return EntityCountSummaryResponse.error(e.getMessage());
+        }
+    }
+
+    @Override
+    public EntityCountSummaryResponse exportEntities(File exportFile, long fromEpochMillis, long toEpochMillis) {
+        log.info("Exporting temporal entities to: {} (from={}, to={})",
+                exportFile.getAbsolutePath(), fromEpochMillis, toEpochMillis);
+        try {
+            ExportEntitiesToProtobufFile exporter =
+                    new ExportEntitiesToProtobufFile(exportFile, fromEpochMillis, toEpochMillis);
+            EntityCountSummary summary = exporter.compute();
+
+            log.info("Temporal export complete: {} concepts, {} semantics, {} patterns, {} stamps",
+                    summary.conceptsCount(), summary.semanticsCount(),
+                    summary.patternsCount(), summary.stampsCount());
+
+            return EntityCountSummaryResponse.success(
+                    summary.conceptsCount(), summary.semanticsCount(),
+                    summary.patternsCount(), summary.stampsCount());
+        } catch (Exception e) {
+            log.error("Temporal export failed: {}", e.getMessage(), e);
+            return EntityCountSummaryResponse.error(e.getMessage());
+        }
+    }
+
+    @Override
+    public EntityCountSummaryResponse exportEntitiesByMembership(File exportFile, List<String> membershipTagIds) {
+        log.info("Exporting membership entities to: {} (tags={})",
+                exportFile.getAbsolutePath(), membershipTagIds);
+        try {
+            List<PublicId> tagPublicIds = membershipTagIds.stream()
+                    .map(id -> (PublicId) PublicIds.of(UUID.fromString(id)))
+                    .toList();
+            ExportEntitiesToProtobufFile exporter =
+                    new ExportEntitiesToProtobufFile(exportFile, tagPublicIds);
+            EntityCountSummary summary = exporter.compute();
+
+            log.info("Membership export complete: {} concepts, {} semantics, {} patterns, {} stamps",
+                    summary.conceptsCount(), summary.semanticsCount(),
+                    summary.patternsCount(), summary.stampsCount());
+
+            return EntityCountSummaryResponse.success(
+                    summary.conceptsCount(), summary.semanticsCount(),
+                    summary.patternsCount(), summary.stampsCount());
+        } catch (Exception e) {
+            log.error("Membership export failed: {}", e.getMessage(), e);
+            return EntityCountSummaryResponse.error(e.getMessage());
+        }
+    }
+
+    @Override
+    public ReasonerResultsResponse runReasoner() {
+        log.info("Starting reasoner classification pipeline...");
+        long startTime = System.currentTimeMillis();
+        try {
+            List<ReasonerService> reasonerServices = PluggableService.load(ReasonerService.class)
+                    .stream()
+                    .map(ServiceLoader.Provider::get)
+                    .sorted(Comparator.comparing(ReasonerService::getName))
+                    .toList();
+
+            if (reasonerServices.isEmpty()) {
+                return ReasonerResultsResponse.error("No ReasonerService implementation found via SPI");
+            }
+
+            ReasonerService rs = reasonerServices.getFirst();
+            log.info("Using reasoner: {}", rs.getName());
+
+            TrackingCallable<Object> noOpTracker = new TrackingCallable<>() {
+                @Override
+                protected Object compute() { return null; }
+            };
+
+            rs.init(Calculators.View.Default(),
+                    TinkarTerm.EL_PLUS_PLUS_STATED_AXIOMS_PATTERN,
+                    TinkarTerm.EL_PLUS_PLUS_INFERRED_AXIOMS_PATTERN);
+
+            rs.extractData(noOpTracker);
+            rs.loadData(noOpTracker);
+            rs.computeInferences();
+            ClassifierResults results = rs.writeInferredResults();
+
+            // Clear caches so navigation queries reflect the new inferred hierarchy
+            dev.ikm.tinkar.common.service.CachingService.clearAll();
+
+            long durationMs = System.currentTimeMillis() - startTime;
+            log.info("Reasoner completed in {}ms: {} classified concepts, {} inferred changes, {} navigation changes",
+                    durationMs,
+                    results.getClassificationConceptSet().size(),
+                    results.getConceptsWithInferredChanges().size(),
+                    results.getConceptsWithNavigationChanges().size());
+
+            return ReasonerResultsResponse.success(
+                    results.getClassificationConceptSet().size(),
+                    results.getConceptsWithInferredChanges().size(),
+                    results.getConceptsWithNavigationChanges().size(),
+                    results.getEquivalentSets().size(),
+                    results.getCycles() != null ? results.getCycles().size() : 0,
+                    results.getOrphans() != null ? results.getOrphans().size() : 0,
+                    durationMs);
+        } catch (Exception e) {
+            long durationMs = System.currentTimeMillis() - startTime;
+            log.error("Reasoner failed after {}ms: {}", durationMs, e.getMessage(), e);
+            return ReasonerResultsResponse.error(e.getMessage());
         }
     }
 }
