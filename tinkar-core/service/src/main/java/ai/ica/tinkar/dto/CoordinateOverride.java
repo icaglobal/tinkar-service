@@ -27,6 +27,9 @@ public record CoordinateOverride(
         @Schema(description = "UUIDs of module concepts to exclude. Null or empty means no exclusions.")
         List<String> excludedModuleIds,
 
+        @Schema(description = "Ordered list of module concept UUIDs for priority when multiple versions compete. Null or empty means server default.")
+        List<String> modulePriorityIds,
+
         @Schema(description = "Navigation premise type: STATED or INFERRED. Default: INFERRED.")
         PremiseType premiseType) {
 }

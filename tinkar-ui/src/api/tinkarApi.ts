@@ -255,6 +255,12 @@ function appendCoordinateParams(params: URLSearchParams, coords?: CoordinateOver
   if (coords.modules) {
     for (const m of coords.modules) params.append('modules', m);
   }
+  if (coords.excludedModules) {
+    for (const m of coords.excludedModules) params.append('excludedModules', m);
+  }
+  if (coords.modulePriority) {
+    for (const m of coords.modulePriority) params.append('modulePriority', m);
+  }
   if (coords.premiseType) params.set('premiseType', coords.premiseType);
 }
 

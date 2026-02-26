@@ -2,6 +2,7 @@ package ai.ica.tinkar.service;
 
 import ai.ica.tinkar.dto.CoordinateOverride;
 import ai.ica.tinkar.dto.PremiseType;
+import dev.ikm.tinkar.common.id.IntIdList;
 import dev.ikm.tinkar.common.id.IntIdSet;
 import dev.ikm.tinkar.common.id.IntIds;
 import dev.ikm.tinkar.common.id.PublicId;
@@ -52,10 +53,11 @@ public class CoordinateFactory {
         int pathNid = resolvePathNid(override.positionPathId());
         IntIdSet moduleNids = resolveModuleNids(override.moduleIds());
         IntIdSet excludedModuleNids = resolveModuleNids(override.excludedModuleIds());
+        IntIdList modulePriorityNids = resolveModulePriorityNids(override.modulePriorityIds());
 
         StampPositionRecord stampPosition = StampPositionRecord.make(positionTime, pathNid);
         StampCoordinateRecord stampCoordinate = new StampCoordinateRecord(
-                allowedStates, stampPosition, moduleNids, excludedModuleNids, IntIds.list.empty());
+                allowedStates, stampPosition, moduleNids, excludedModuleNids, modulePriorityNids);
 
         // Navigation coordinate
         NavigationCoordinateRecord navigationCoordinate = resolveNavigation(override.premiseType());
@@ -116,6 +118,25 @@ public class CoordinateFactory {
                 .filter(nid -> nid != Integer.MIN_VALUE)
                 .toArray();
         return IntIds.set.of(nids);
+    }
+
+    private static IntIdList resolveModulePriorityNids(List<String> modulePriorityIds) {
+        if (modulePriorityIds == null || modulePriorityIds.isEmpty()) {
+            return IntIds.list.empty();
+        }
+        int[] nids = modulePriorityIds.stream()
+                .mapToInt(id -> {
+                    try {
+                        PublicId publicId = PublicIds.of(UUID.fromString(id));
+                        return EntityService.get().nidForPublicId(publicId);
+                    } catch (Exception e) {
+                        log.warn("Failed to resolve module priority UUID '{}': {}", id, e.getMessage());
+                        return Integer.MIN_VALUE;
+                    }
+                })
+                .filter(nid -> nid != Integer.MIN_VALUE)
+                .toArray();
+        return IntIds.list.of(nids);
     }
 
     private static NavigationCoordinateRecord resolveNavigation(PremiseType premiseType) {

@@ -63,6 +63,12 @@ message CoordinateOverride {
    * Navigation premise type. Default: INFERRED.
    */
   ProtoPremiseType premise_type = 6;
+
+  /*
+   * Ordered list of module concept UUIDs for priority when multiple versions compete.
+   * Order matters — earlier entries take precedence. Empty means server default.
+   */
+  repeated string module_priority_ids = 7;
 }
 
 // Request message with coordinate support for concept-level queries

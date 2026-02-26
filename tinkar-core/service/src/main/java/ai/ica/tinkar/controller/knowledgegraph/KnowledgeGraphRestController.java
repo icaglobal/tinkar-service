@@ -68,8 +68,10 @@ public class KnowledgeGraphRestController {
             @Parameter(description = "Position time as epoch milliseconds (null = latest)") @RequestParam(required = false) Long positionTime,
             @Parameter(description = "UUID of the path concept") @RequestParam(required = false) String positionPath,
             @Parameter(description = "UUIDs of module concepts to include") @RequestParam(required = false) List<String> modules,
+            @Parameter(description = "UUIDs of module concepts to exclude") @RequestParam(required = false) List<String> excludedModules,
+            @Parameter(description = "Ordered UUIDs of module concepts for priority") @RequestParam(required = false) List<String> modulePriority,
             @Parameter(description = "Navigation premise type: STATED or INFERRED") @RequestParam(required = false) PremiseType premiseType) {
-        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, premiseType);
+        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, excludedModules, modulePriority, premiseType);
         return ResponseEntity.ok(tinkarService.getConceptSemantics(conceptId, calc));
     }
 
@@ -87,8 +89,10 @@ public class KnowledgeGraphRestController {
             @Parameter(description = "Position time as epoch milliseconds (null = latest)") @RequestParam(required = false) Long positionTime,
             @Parameter(description = "UUID of the path concept") @RequestParam(required = false) String positionPath,
             @Parameter(description = "UUIDs of module concepts to include") @RequestParam(required = false) List<String> modules,
+            @Parameter(description = "UUIDs of module concepts to exclude") @RequestParam(required = false) List<String> excludedModules,
+            @Parameter(description = "Ordered UUIDs of module concepts for priority") @RequestParam(required = false) List<String> modulePriority,
             @Parameter(description = "Navigation premise type: STATED or INFERRED") @RequestParam(required = false) PremiseType premiseType) {
-        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, premiseType);
+        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, excludedModules, modulePriority, premiseType);
         return ResponseEntity.ok(tinkarService.getConceptComments(conceptId, calc));
     }
 
@@ -106,8 +110,10 @@ public class KnowledgeGraphRestController {
             @Parameter(description = "Position time as epoch milliseconds (null = latest)") @RequestParam(required = false) Long positionTime,
             @Parameter(description = "UUID of the path concept") @RequestParam(required = false) String positionPath,
             @Parameter(description = "UUIDs of module concepts to include") @RequestParam(required = false) List<String> modules,
+            @Parameter(description = "UUIDs of module concepts to exclude") @RequestParam(required = false) List<String> excludedModules,
+            @Parameter(description = "Ordered UUIDs of module concepts for priority") @RequestParam(required = false) List<String> modulePriority,
             @Parameter(description = "Navigation premise type: STATED or INFERRED") @RequestParam(required = false) PremiseType premiseType) {
-        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, premiseType);
+        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, excludedModules, modulePriority, premiseType);
         return ResponseEntity.ok(tinkarService.getChangeHistory(entityId, calc));
     }
 
@@ -125,8 +131,10 @@ public class KnowledgeGraphRestController {
             @Parameter(description = "Position time as epoch milliseconds (null = latest)") @RequestParam(required = false) Long positionTime,
             @Parameter(description = "UUID of the path concept") @RequestParam(required = false) String positionPath,
             @Parameter(description = "UUIDs of module concepts to include") @RequestParam(required = false) List<String> modules,
+            @Parameter(description = "UUIDs of module concepts to exclude") @RequestParam(required = false) List<String> excludedModules,
+            @Parameter(description = "Ordered UUIDs of module concepts for priority") @RequestParam(required = false) List<String> modulePriority,
             @Parameter(description = "Navigation premise type: STATED or INFERRED") @RequestParam(required = false) PremiseType premiseType) {
-        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, premiseType);
+        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, excludedModules, modulePriority, premiseType);
         return ResponseEntity.ok(tinkarService.getConceptChangeHistory(conceptId, calc));
     }
 
@@ -144,8 +152,10 @@ public class KnowledgeGraphRestController {
             @Parameter(description = "Position time as epoch milliseconds (null = latest)") @RequestParam(required = false) Long positionTime,
             @Parameter(description = "UUID of the path concept") @RequestParam(required = false) String positionPath,
             @Parameter(description = "UUIDs of module concepts to include") @RequestParam(required = false) List<String> modules,
+            @Parameter(description = "UUIDs of module concepts to exclude") @RequestParam(required = false) List<String> excludedModules,
+            @Parameter(description = "Ordered UUIDs of module concepts for priority") @RequestParam(required = false) List<String> modulePriority,
             @Parameter(description = "Navigation premise type: STATED or INFERRED") @RequestParam(required = false) PremiseType premiseType) {
-        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, premiseType);
+        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, excludedModules, modulePriority, premiseType);
         return ResponseEntity.ok(toDto(tinkarService.getChildConcepts(conceptId, calc)));
     }
 
@@ -163,8 +173,10 @@ public class KnowledgeGraphRestController {
             @Parameter(description = "Position time as epoch milliseconds (null = latest)") @RequestParam(required = false) Long positionTime,
             @Parameter(description = "UUID of the path concept") @RequestParam(required = false) String positionPath,
             @Parameter(description = "UUIDs of module concepts to include") @RequestParam(required = false) List<String> modules,
+            @Parameter(description = "UUIDs of module concepts to exclude") @RequestParam(required = false) List<String> excludedModules,
+            @Parameter(description = "Ordered UUIDs of module concepts for priority") @RequestParam(required = false) List<String> modulePriority,
             @Parameter(description = "Navigation premise type: STATED or INFERRED") @RequestParam(required = false) PremiseType premiseType) {
-        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, premiseType);
+        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, excludedModules, modulePriority, premiseType);
         return ResponseEntity.ok(toDto(tinkarService.getDescendantConcepts(conceptId, calc)));
     }
 
@@ -237,13 +249,17 @@ public class KnowledgeGraphRestController {
     }
 
     private ViewCalculatorWithCache buildCalculator(String allowedStates, Long positionTime,
-            String positionPath, List<String> modules, PremiseType premiseType) {
+            String positionPath, List<String> modules, List<String> excludedModules,
+            List<String> modulePriority, PremiseType premiseType) {
         if (allowedStates == null && positionTime == null && positionPath == null
-                && (modules == null || modules.isEmpty()) && premiseType == null) {
+                && (modules == null || modules.isEmpty())
+                && (excludedModules == null || excludedModules.isEmpty())
+                && (modulePriority == null || modulePriority.isEmpty())
+                && premiseType == null) {
             return CoordinateFactory.defaultCalculator();
         }
         CoordinateOverride override = new CoordinateOverride(
-                allowedStates, positionTime, positionPath, modules, null, premiseType);
+                allowedStates, positionTime, positionPath, modules, excludedModules, modulePriority, premiseType);
         return CoordinateFactory.buildCalculator(override);
     }
 

@@ -760,17 +760,21 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     private String getDescriptionForNid(int nid) {
-        return getDescriptionForNid(nid, Calculators.View.Default());
-    }
-
-    private String getDescriptionForNid(int nid, ViewCalculatorWithCache calc) {
         try {
-            return calc.languageCalculator()
-                    .getRegularDescriptionText(nid)
+            var lc = Calculators.View.Default().languageCalculator();
+            return lc.getRegularDescriptionText(nid)
+                    .or(() -> lc.getFullyQualifiedNameText(nid))
                     .orElse("nid: " + nid);
         } catch (Exception e) {
             return "nid: " + nid;
         }
+    }
+
+    private String getDescriptionForNid(int nid, ViewCalculatorWithCache calc) {
+        // Always use the default calculator for name resolution so that
+        // coordinate filters (module, state, time) don't prevent resolving display names.
+        // The filtered calc is only for data queries (latest version, navigation, etc.).
+        return getDescriptionForNid(nid);
     }
 
     private String formatTimestamp(long epochMillis) {
@@ -839,25 +843,23 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     private String formatFieldValue(Object value) {
-        return formatFieldValue(value, Calculators.View.Default());
-    }
-
-    private String formatFieldValue(Object value, ViewCalculatorWithCache calc) {
         if (value == null) {
             return null;
         }
         if (value instanceof PublicId publicId) {
-            // Try to get a description for the public ID
             try {
                 int nid = EntityService.get().nidForPublicId(publicId);
-                return calc.languageCalculator()
-                        .getRegularDescriptionText(nid)
-                        .orElse(publicId.toString());
+                return getDescriptionForNid(nid);
             } catch (Exception e) {
                 return publicId.toString();
             }
         }
         return value.toString();
+    }
+
+    private String formatFieldValue(Object value, ViewCalculatorWithCache calc) {
+        // Always use the default calculator for name resolution (same rationale as getDescriptionForNid)
+        return formatFieldValue(value);
     }
 
     private String determineChangeType(String priorValue, String currentValue) {

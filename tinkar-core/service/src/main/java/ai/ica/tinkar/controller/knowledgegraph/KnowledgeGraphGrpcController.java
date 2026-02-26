@@ -74,6 +74,7 @@ public class KnowledgeGraphGrpcController extends IkeKnowledgeGraphGrpc.IkeKnowl
         String positionPathId = protoOverride.getPositionPathId().isEmpty() ? null : protoOverride.getPositionPathId();
         List<String> moduleIds = protoOverride.getModuleIdsList().isEmpty() ? null : protoOverride.getModuleIdsList();
         List<String> excludedModuleIds = protoOverride.getExcludedModuleIdsList().isEmpty() ? null : protoOverride.getExcludedModuleIdsList();
+        List<String> modulePriorityIds = protoOverride.getModulePriorityIdsList().isEmpty() ? null : protoOverride.getModulePriorityIdsList();
 
         PremiseType premiseType = switch (protoOverride.getPremiseType()) {
             case STATED -> PremiseType.STATED;
@@ -81,7 +82,7 @@ public class KnowledgeGraphGrpcController extends IkeKnowledgeGraphGrpc.IkeKnowl
         };
 
         ai.ica.tinkar.dto.CoordinateOverride dtoOverride = new ai.ica.tinkar.dto.CoordinateOverride(
-                allowedStates, positionTime, positionPathId, moduleIds, excludedModuleIds, premiseType);
+                allowedStates, positionTime, positionPathId, moduleIds, excludedModuleIds, modulePriorityIds, premiseType);
         return CoordinateFactory.buildCalculator(dtoOverride);
     }
 

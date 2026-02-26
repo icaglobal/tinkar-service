@@ -2,7 +2,7 @@ type: grpc_request
 model: grpc_request
 id: gr_bS3RqxFvdQ
 createdAt: 2026-02-19T16:43:21.855917
-updatedAt: 2026-02-19T18:50:30.632558
+updatedAt: 2026-02-20T18:51:03.193714
 workspaceId: wk_F4TtaH4LNi
 folderId: fl_S6LmWLxfJ7
 authenticationType: null
