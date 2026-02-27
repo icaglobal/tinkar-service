@@ -101,6 +101,12 @@ public class TinkarServiceImpl implements TinkarService {
                     .toList();
 
             return buildSuccessResponse(query, results);
+        } catch (IllegalStateException e) {
+            if (isEmptyDatabaseError(e)) {
+                log.debug("Search on empty/fresh database returned no results for query '{}'", query);
+                return buildSuccessResponse(query, List.of());
+            }
+            return buildErrorResponse(query, e.getMessage());
         } catch (Exception e) {
             return buildErrorResponse(query, e.getMessage());
         }
@@ -121,6 +127,12 @@ public class TinkarServiceImpl implements TinkarService {
                     .toList();
 
             return buildSuccessResponse(query, results);
+        } catch (IllegalStateException e) {
+            if (isEmptyDatabaseError(e)) {
+                log.debug("conceptSearch on empty/fresh database returned no results for query '{}'", query);
+                return buildSuccessResponse(query, List.of());
+            }
+            return buildErrorResponse(query, e.getMessage());
         } catch (Exception e) {
             return buildErrorResponse(query, e.getMessage());
         }
@@ -146,10 +158,26 @@ public class TinkarServiceImpl implements TinkarService {
                 case SEMANTIC_ALPHA -> buildFlatResponse(query, searchResults, effectiveSortBy, true);
             };
 
+        } catch (IllegalStateException e) {
+            if (isEmptyDatabaseError(e)) {
+                log.debug("conceptSearchWithSort on empty/fresh database returned no results for query '{}'", query);
+                return ConceptSearchResponse.empty(query);
+            }
+            log.error("Error in conceptSearchWithSort for query '{}': {}", query, e.getMessage(), e);
+            return ConceptSearchResponse.error(query, e.getMessage());
         } catch (Exception e) {
             log.error("Error in conceptSearchWithSort for query '{}': {}", query, e.getMessage(), e);
             return ConceptSearchResponse.error(query, e.getMessage());
         }
+    }
+
+    /**
+     * Returns true when the exception indicates a missing TinkarTerm concept in the database —
+     * the expected state on a fresh DB that has not had starter data imported yet.
+     * In this case, search should return empty results rather than an error.
+     */
+    private static boolean isEmptyDatabaseError(IllegalStateException e) {
+        return e.getMessage() != null && e.getMessage().startsWith("No entity key found for UUIDs");
     }
 
     /**
@@ -308,8 +336,12 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     private String getConceptName(int nid, ViewCalculatorWithCache calc) {
-        return calc.languageCalculator()
-                .getFullyQualifiedDescriptionTextWithFallbackOrNid(nid);
+        try {
+            return calc.languageCalculator()
+                    .getFullyQualifiedDescriptionTextWithFallbackOrNid(nid);
+        } catch (Exception e) {
+            return "nid: " + nid;
+        }
     }
 
     /**
@@ -320,9 +352,13 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     private String getConceptRegularName(int nid, ViewCalculatorWithCache calc) {
-        return calc.languageCalculator()
-                .getRegularDescriptionText(nid)
-                .orElse(null);
+        try {
+            return calc.languageCalculator()
+                    .getRegularDescriptionText(nid)
+                    .orElse(null);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /**
@@ -506,7 +542,14 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     private TinkarSearchResult publicIdToSearchResult(PublicId publicId) {
-        return publicIdToSearchResult(publicId, Calculators.View.Default());
+        ViewCalculatorWithCache calc = null;
+        try {
+            calc = Calculators.View.Default();
+        } catch (IllegalStateException e) {
+            // Fresh DB: some TinkarTerm UUID stubs are missing; descriptions will be empty
+            log.debug("ViewCalculator init failed (fresh DB?): {}", e.getMessage());
+        }
+        return publicIdToSearchResult(publicId, calc);
     }
 
     private TinkarSearchResult publicIdToSearchResult(PublicId publicId, ViewCalculatorWithCache calc) {
@@ -519,14 +562,29 @@ public class TinkarServiceImpl implements TinkarService {
                         .toList())
                 .build();
 
-        // Build descriptions
-        String fullyQualifiedName = calc.languageCalculator()
-                .getFullyQualifiedNameText(nid)
-                .orElse("");
-
-        String regularName = calc.languageCalculator()
-                .getRegularDescriptionText(nid)
-                .orElse("");
+        // Build descriptions — guard against missing TinkarTerm concepts on a fresh DB.
+        // calc may be null when ViewCalculator initialization failed (missing UUID stubs).
+        // If the language calculator throws (e.g. DESCRIPTION_PATTERN stub has no field
+        // definitions so indexOfMeaning() returns -1), fall back to direct semantic scan.
+        String fullyQualifiedName = "";
+        String regularName = "";
+        boolean descLookupSucceeded = false;
+        if (calc != null) {
+            try {
+                var lc = calc.languageCalculator();
+                fullyQualifiedName = lc.getFullyQualifiedNameText(nid).orElse("");
+                regularName = lc.getRegularDescriptionText(nid).orElse("");
+                descLookupSucceeded = true;
+            } catch (Exception e) {
+                log.debug("Description lookup failed for nid {} (may be fresh DB with no starter data): {}", nid, e.getMessage());
+            }
+        }
+        if (!descLookupSucceeded) {
+            // Fallback: scan the concept's semantics and return the first String field value
+            // found (that's the description text). This works without pattern field definitions.
+            fullyQualifiedName = getFallbackDescriptionText(nid);
+            regularName = fullyQualifiedName;
+        }
 
         TinkarConceptDescriptions descriptions = TinkarConceptDescriptions.newBuilder()
                 .setFullyQualifiedName(fullyQualifiedName)
@@ -786,6 +844,32 @@ public class TinkarServiceImpl implements TinkarService {
         // coordinate filters (module, state, time) don't prevent resolving display names.
         // The filtered calc is only for data queries (latest version, navigation, etc.).
         return getDescriptionForNid(nid);
+    }
+
+    /**
+     * Fallback description lookup that does not require pattern field definitions.
+     * Scans all semantics for the concept and returns the first non-blank String field
+     * value found — on a standard Tinkar description semantic this is the text at field[1].
+     * Used when the language calculator fails (e.g. on a fresh DB where the
+     * DESCRIPTION_PATTERN stub has no FieldDefinitions, causing indexOfMeaning() to return -1).
+     */
+    private String getFallbackDescriptionText(int nid) {
+        try {
+            int[] semanticNids = EntityService.get().semanticNidsForComponent(nid);
+            for (int semanticNid : semanticNids) {
+                Entity<?> entity = EntityService.get().getEntityFast(semanticNid);
+                if (!(entity instanceof SemanticEntity<?> semantic) || semantic.versions().isEmpty()) continue;
+                SemanticEntityVersion version = (SemanticEntityVersion) semantic.versions().get(0);
+                for (Object field : version.fieldValues()) {
+                    if (field instanceof String text && !text.isBlank()) {
+                        return text;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Fallback description lookup failed for nid {}: {}", nid, e.getMessage());
+        }
+        return "";
     }
 
     private String formatTimestamp(long epochMillis) {

@@ -127,6 +127,21 @@ public record ConceptSearchResponse(
     }
 
     /**
+     * Factory method to create a successful empty response (no results, no error).
+     * Used when the database has no starter data yet (fresh DB).
+     */
+    public static ConceptSearchResponse empty(String query) {
+        return new ConceptSearchResponse(
+                query,
+                0L,
+                null,
+                List.of(),
+                List.of(),
+                true,
+                null);
+    }
+
+    /**
      * Factory method to create an error response.
      */
     public static ConceptSearchResponse error(String query, String errorMessage) {
