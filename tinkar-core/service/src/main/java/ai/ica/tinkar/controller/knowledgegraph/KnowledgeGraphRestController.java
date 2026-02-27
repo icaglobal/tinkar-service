@@ -6,6 +6,8 @@ import ai.ica.tinkar.dto.ConceptSemanticsResponse;
 import ai.ica.tinkar.dto.CoordinateOverride;
 import ai.ica.tinkar.dto.DescendantOperationResponse;
 import ai.ica.tinkar.dto.PremiseType;
+import ai.ica.tinkar.dto.SavedCoordinateRequest;
+import ai.ica.tinkar.dto.SavedCoordinateResponse;
 import ai.ica.tinkar.dto.TinkarSearchQueryResponse;
 import ai.ica.tinkar.dto.TinkarSearchQueryResponse.Descriptions;
 import ai.ica.tinkar.dto.TinkarSearchQueryResponse.SearchResult;
@@ -13,6 +15,7 @@ import ai.ica.tinkar.dto.TinkarSearchQueryResponse.Stamp;
 import ai.ica.tinkar.proto.TinkarConceptDescriptions;
 import ai.ica.tinkar.proto.TinkarSearchResult;
 import ai.ica.tinkar.service.CoordinateFactory;
+import ai.ica.tinkar.service.CoordinateStoreService;
 import ai.ica.tinkar.service.TinkarService;
 import dev.ikm.tinkar.coordinate.view.calculator.ViewCalculatorWithCache;
 import dev.ikm.tinkar.schema.StampVersion;
@@ -23,13 +26,16 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -49,9 +55,11 @@ import java.util.List;
 public class KnowledgeGraphRestController {
 
     private final TinkarService tinkarService;
+    private final CoordinateStoreService coordinateStoreService;
 
-    public KnowledgeGraphRestController(TinkarService tinkarService) {
+    public KnowledgeGraphRestController(TinkarService tinkarService, CoordinateStoreService coordinateStoreService) {
         this.tinkarService = tinkarService;
+        this.coordinateStoreService = coordinateStoreService;
     }
 
     @Operation(summary = "Get all semantics for a concept",
@@ -246,6 +254,47 @@ public class KnowledgeGraphRestController {
             @Parameter(description = "Parent concept ID (UUID)", required = true, example = "f6978e15-e169-58c2-a93d-eac1511974da") @RequestParam("parentConceptId") String parentConceptId,
             @Parameter(description = "Descendant concept ID to remove (UUID)", required = true, example = "9fc3832b-a5f8-5504-ba16-7551976841dc") @RequestParam("descendantConceptId") String descendantConceptId) {
         return ResponseEntity.ok(tinkarService.removeDescendant(parentConceptId, descendantConceptId));
+    }
+
+    @Operation(summary = "Save a named coordinate configuration",
+            description = "Saves a coordinate configuration to the loaded dataset and returns its assigned UUID. " +
+                    "The coordinate ID can later be passed to /semantics-by-coordinate instead of individual parameters.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "201", description = "Coordinate saved successfully", content = @Content(schema = @Schema(implementation = SavedCoordinateResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid request body")
+    })
+    @PostMapping("/coordinates")
+    public ResponseEntity<SavedCoordinateResponse> saveCoordinate(@RequestBody SavedCoordinateRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(coordinateStoreService.save(request));
+    }
+
+    @Operation(summary = "List all saved coordinate configurations",
+            description = "Returns all coordinate configurations that have been saved to the loaded dataset.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Coordinates retrieved successfully", content = @Content(schema = @Schema(implementation = SavedCoordinateResponse.class)))
+    })
+    @GetMapping("/coordinates")
+    public ResponseEntity<List<SavedCoordinateResponse>> listCoordinates() {
+        return ResponseEntity.ok(coordinateStoreService.findAll());
+    }
+
+    @Operation(summary = "Get semantics for a concept using a saved coordinate",
+            description = "Retrieves all semantics for a concept using a previously saved coordinate configuration. " +
+                    "Save a coordinate via POST /coordinates to obtain a coordinateId.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Semantics retrieved successfully", content = @Content(schema = @Schema(implementation = ConceptSemanticsResponse.class))),
+            @ApiResponse(responseCode = "404", description = "No coordinate found with the given coordinateId"),
+            @ApiResponse(responseCode = "400", description = "Invalid conceptId or coordinateId parameter")
+    })
+    @GetMapping("/semantics-by-coordinate")
+    public ResponseEntity<ConceptSemanticsResponse> getSemanticsWithCoordinate(
+            @Parameter(description = "Concept ID (UUID)", required = true, example = "9fc3832b-a5f8-5504-ba16-7551976841dc") @RequestParam("conceptId") String conceptId,
+            @Parameter(description = "Saved coordinate ID (UUID returned by POST /coordinates)", required = true, example = "3f47a12e-bc94-4b8a-a8f2-1234567890ab") @RequestParam("coordinateId") String coordinateId) {
+        SavedCoordinateResponse coord = coordinateStoreService.findById(coordinateId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "No coordinate found with id: " + coordinateId));
+        ViewCalculatorWithCache calc = CoordinateFactory.buildCalculator(coord.settings());
+        return ResponseEntity.ok(tinkarService.getConceptSemantics(conceptId, calc));
     }
 
     private ViewCalculatorWithCache buildCalculator(String allowedStates, Long positionTime,

@@ -20,8 +20,8 @@ option java_outer_classname = "IkeKnowledgeGraphProto";
 // Allowed status states for STAMP filtering
 enum AllowedStates {
   ACTIVE_AND_INACTIVE = 0;  // Include both active and inactive (default)
-  ACTIVE_ONLY = 1;          // Only include active entities
-  INACTIVE_ONLY = 2;        // Only include inactive entities
+  ACTIVE = 1;               // Only include active entities
+  INACTIVE = 2;             // Only include inactive entities
 }
 
 // Navigation premise type
@@ -84,6 +84,34 @@ message KnowledgeGraphConceptRequest {
   CoordinateOverride coordinate_override = 2;
 }
 
+// Request for saving a named coordinate configuration
+message SaveCoordinateRequest {
+  string name = 1;
+  CoordinateOverride settings = 2;
+}
+
+// A saved coordinate configuration with its assigned ID
+message SaveCoordinateResponse {
+  string id = 1;          // UUID assigned to this coordinate; pass as coordinate_id elsewhere
+  string name = 2;
+  CoordinateOverride settings = 3;
+  string created_at = 4;  // ISO-8601 timestamp
+}
+
+// Request for listing all saved coordinate configurations (no parameters)
+message ListCoordinatesRequest {}
+
+// All saved coordinate configurations
+message ListCoordinatesResponse {
+  repeated SaveCoordinateResponse coordinates = 1;
+}
+
+// Request for getting semantics using a previously saved coordinate ID
+message SemanticsWithCoordinateRequest {
+  dev.ikm.tinkar.schema.PublicId concept_public_id = 1;
+  string coordinate_id = 2;  // UUID returned by SaveCoordinate
+}
+
 service IkeKnowledgeGraph {
   // Get all semantics attached to a concept (patterns, fields, STAMP info)
   rpc GetConceptSemantics(KnowledgeGraphConceptRequest) returns (TinkarConceptSemanticsResponse);
@@ -93,4 +121,13 @@ service IkeKnowledgeGraph {
 
   // Get all descendant concepts (full subtree) with coordinate-aware navigation
   rpc GetDescendantConcepts(KnowledgeGraphConceptRequest) returns (TinkarSearchQueryResponse);
+
+  // Save a named coordinate configuration to the dataset
+  rpc SaveCoordinate(SaveCoordinateRequest) returns (SaveCoordinateResponse);
+
+  // List all saved coordinate configurations
+  rpc ListCoordinates(ListCoordinatesRequest) returns (ListCoordinatesResponse);
+
+  // Get semantics for a concept using a previously saved coordinate ID
+  rpc GetSemanticsWithCoordinate(SemanticsWithCoordinateRequest) returns (TinkarConceptSemanticsResponse);
 }
