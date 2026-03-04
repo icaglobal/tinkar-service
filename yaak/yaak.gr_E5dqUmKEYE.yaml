@@ -1,0 +1,23 @@
+type: grpc_request
+model: grpc_request
+id: gr_E5dqUmKEYE
+createdAt: 2026-02-27T19:10:03.244525
+updatedAt: 2026-02-27T19:24:11.745337
+workspaceId: wk_F4TtaH4LNi
+folderId: fl_S6LmWLxfJ7
+authenticationType: null
+authentication: {}
+description: ''
+message: |-
+  {
+    "name": "Active-Only",
+    "settings": {
+      "allowedStates": "ACTIVE"
+    }
+  }
+metadata: []
+method: SaveCoordinate
+name: Coordinate Save
+service: ai.ica.tinkar.IkeKnowledgeGraph
+sortPriority: 4000.005
+url: localhost:9095

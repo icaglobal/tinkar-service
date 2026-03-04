@@ -2,7 +2,7 @@ type: grpc_request
 model: grpc_request
 id: gr_22FVMknHuJ
 createdAt: 2026-02-13T21:00:38.536405
-updatedAt: 2026-02-18T14:40:11.192191
+updatedAt: 2026-02-27T19:24:21.377092
 workspaceId: wk_F4TtaH4LNi
 folderId: fl_S6LmWLxfJ7
 authenticationType: null
@@ -16,7 +16,7 @@ message: |-
       ]
     },
     "coordinate_override": {
-      "allowed_states": "INACTIVE_ONLY"
+      "allowed_states": "INACTIVE"
     }
   }
 metadata: []

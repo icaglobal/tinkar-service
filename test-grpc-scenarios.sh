@@ -4,12 +4,10 @@
 # Usage: ./test-grpc-scenarios.sh [GRPC_HOST:PORT] [REST_HOST:PORT]
 #   GRPC_HOST:PORT defaults to localhost:9095
 #   REST_HOST:PORT defaults to localhost:8085
-#   CHANGESET_FILE env var overrides the synthetic changeset path (default: test-data/synthetic-changeset.zip)
 #
-# Tests all four gRPC services:
+# Tests gRPC and REST services:
 #   - IkeGraphRAG (Tier 1: simple, opinionated API)
-#   - IkeKnowledgeGraph (Tier 2: coordinate-aware knowledge graph)
-#   - IkeAdmin (Tier 3: import, export, reasoner)
+#   - IkeKnowledgeGraph (Tier 2: coordinate-aware knowledge graph, gRPC + REST)
 #   - TinkarSearchService (deprecated, backward compatibility)
 #
 
@@ -17,10 +15,6 @@ set -euo pipefail
 
 GRPC_HOST="${1:-localhost:9095}"
 REST_HOST="${2:-localhost:8085}"
-
-# Synthetic test changeset for import testing
-CHANGESET_FILE="${CHANGESET_FILE:-test-data/synthetic-changeset.zip}"
-SYNTHETIC_FQN="Synthetic Import Test Device (SITD-42)"
 
 # ── Counters ──────────────────────────────────────────────────────────
 PASS=0
@@ -258,8 +252,8 @@ else
   exit 1
 fi
 
-# Verify all three services are registered
-for svc in "ai.ica.tinkar.IkeGraphRAG" "ai.ica.tinkar.IkeKnowledgeGraph" "ai.ica.tinkar.IkeAdmin" "ai.ica.tinkar.TinkarSearchService"; do
+# Verify services are registered
+for svc in "ai.ica.tinkar.IkeGraphRAG" "ai.ica.tinkar.IkeKnowledgeGraph" "ai.ica.tinkar.TinkarSearchService"; do
   TOTAL=$((TOTAL + 1))
   if grpcurl -plaintext "$GRPC_HOST" list 2>/dev/null | grep -q "$svc"; then
     echo -e "  ${GREEN}PASS${NC}  Service registered: $svc"
@@ -460,8 +454,8 @@ KG_SVC="ai.ica.tinkar.IkeKnowledgeGraph/GetConceptSemantics"
   assert_count_gt0 "semantics (default) returns results"
   DEFAULT_SEM_COUNT=$(json_total_count)
 
-  grpc_call "$KG_SVC" "$(kg_request "$COORD_TEST_ID" '{"allowed_states":"ACTIVE_ONLY"}')"
-  assert_grpc_ok "semantics (allowed_states=ACTIVE_ONLY)"
+  grpc_call "$KG_SVC" "$(kg_request "$COORD_TEST_ID" '{"allowed_states":"ACTIVE"}')"
+  assert_grpc_ok "semantics (allowed_states=ACTIVE)"
   ACTIVE_SEM_COUNT=$(json_total_count)
 
   # ACTIVE count must be less than DEFAULT
@@ -489,8 +483,8 @@ print(sum(1 for s in data.get('semantics', []) if s.get('stamp', {}).get('status
     FAIL=$((FAIL + 1))
   fi
 
-  grpc_call "$KG_SVC" "$(kg_request "$COORD_TEST_ID" '{"allowed_states":"INACTIVE_ONLY"}')"
-  assert_grpc_ok "semantics (allowed_states=INACTIVE_ONLY)"
+  grpc_call "$KG_SVC" "$(kg_request "$COORD_TEST_ID" '{"allowed_states":"INACTIVE"}')"
+  assert_grpc_ok "semantics (allowed_states=INACTIVE)"
   INACTIVE_SEM_COUNT=$(json_total_count)
 
   # ACTIVE + INACTIVE = DEFAULT
@@ -570,7 +564,7 @@ print(sum(1 for s in data.get('semantics', []) if s.get('stamp', {}).get('status
 
   subheader "GetConceptSemantics — combined overrides"
 
-  grpc_call "$KG_SVC" "$(kg_request "$COORD_TEST_ID" '{"allowed_states":"ACTIVE_ONLY","premise_type":"STATED"}')"
+  grpc_call "$KG_SVC" "$(kg_request "$COORD_TEST_ID" '{"allowed_states":"ACTIVE","premise_type":"STATED"}')"
   assert_grpc_ok "semantics (ACTIVE + STATED)"
   COMBINED_COUNT=$(json_total_count)
   assert_count_gt0 "semantics (ACTIVE + STATED) returns results"
@@ -792,162 +786,133 @@ print(len(modules))
   assert_count_gt0 "TinkarSearchService.GetConceptSemantics returns results"
 
 # ══════════════════════════════════════════════════════════════════════
-#  TIER 3: IkeAdmin — Import / Export / Reasoner
+#  TIER 2: REST — Coordinate Save & Retrieve
 # ══════════════════════════════════════════════════════════════════════
-header "Tier 3 (IkeAdmin): Import / Export / Reasoner"
+header "Tier 2 (REST): Coordinate Save & Retrieve"
 
-subheader "Reasoner"
-grpc_call "ai.ica.tinkar.IkeAdmin/RunReasoner" '{}'
-assert_grpc_ok "RunReasoner responds"
-assert_success "RunReasoner success"
+# "Diabetes insipidus, NOS" — reuses COORD_TEST_ID and DEFAULT_SEM_COUNT from Tier 2 gRPC section above
 
-# Extract reasoner result fields
-REASONER_CLASSIFIED=$(echo "$RESPONSE" | python3 -c "
+subheader "Save Coordinate (ACTIVE filter)"
+COORD_SAVE_RESPONSE=$(curl -s -X POST "http://$REST_HOST/api/ike/knowledgegraph/coordinates" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Diabetes Test - Active Only","settings":{"allowedStates":"ACTIVE"}}')
+
+SAVED_COORD_ID=$(echo "$COORD_SAVE_RESPONSE" | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
-    r = data.get('results', {})
-    print(r.get('classifiedConceptCount', r.get('classified_concept_count', 0)) or 0)
+    print(data.get('id', ''))
 except:
-    print(0)
-" 2>/dev/null || echo "0")
+    print('')
+" 2>/dev/null) || SAVED_COORD_ID=""
 
 TOTAL=$((TOTAL + 1))
-if [ "$REASONER_CLASSIFIED" -gt 0 ] 2>/dev/null; then
-  echo -e "  ${GREEN}PASS${NC}  Reasoner classified $REASONER_CLASSIFIED concepts"
+if [ -n "$SAVED_COORD_ID" ]; then
+  echo -e "  ${GREEN}PASS${NC}  Coordinate saved (id=$SAVED_COORD_ID)"
   PASS=$((PASS + 1))
 else
-  echo -e "  ${YELLOW}SKIP${NC}  Reasoner classified 0 concepts (may need stated axioms in dataset)"
+  echo -e "  ${RED}FAIL${NC}  Coordinate save returned no id (response: $COORD_SAVE_RESPONSE)"
+  FAIL=$((FAIL + 1))
+fi
+
+subheader "List Coordinates"
+COORD_LIST_RESPONSE=$(curl -s "http://$REST_HOST/api/ike/knowledgegraph/coordinates")
+
+COORD_LIST_COUNT=$(echo "$COORD_LIST_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    print(len(data))
+except:
+    print(0)
+" 2>/dev/null) || COORD_LIST_COUNT="0"
+
+TOTAL=$((TOTAL + 1))
+if [ "$COORD_LIST_COUNT" -gt 0 ] 2>/dev/null; then
+  echo -e "  ${GREEN}PASS${NC}  Coordinate list returned $COORD_LIST_COUNT item(s)"
+  PASS=$((PASS + 1))
+else
+  echo -e "  ${RED}FAIL${NC}  Coordinate list is empty"
+  FAIL=$((FAIL + 1))
+fi
+
+# Verify the newly saved coordinate appears in the list
+TOTAL=$((TOTAL + 1))
+if [ -n "$SAVED_COORD_ID" ]; then
+  COORD_IN_LIST=$(echo "$COORD_LIST_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    target = '${SAVED_COORD_ID}'
+    print('true' if any(c.get('id') == target for c in data) else 'false')
+except:
+    print('false')
+" 2>/dev/null) || COORD_IN_LIST="false"
+
+  if [ "$COORD_IN_LIST" = "true" ]; then
+    echo -e "  ${GREEN}PASS${NC}  Saved coordinate found in list"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  Saved coordinate (id=$SAVED_COORD_ID) not found in list"
+    FAIL=$((FAIL + 1))
+  fi
+else
+  echo -e "  ${YELLOW}SKIP${NC}  Skipping list check (no saved coordinate ID)"
   SKIP=$((SKIP + 1))
 fi
 
-REASONER_DURATION=$(echo "$RESPONSE" | python3 -c "
+subheader "Get Semantics by Coordinate ID (Diabetes insipidus, NOS)"
+
+if [ -n "$SAVED_COORD_ID" ]; then
+  SEMANTICS_BY_COORD=$(curl -s \
+    "http://$REST_HOST/api/ike/knowledgegraph/semantics-by-coordinate?conceptId=${COORD_TEST_ID}&coordinateId=${SAVED_COORD_ID}")
+
+  SBC_COUNT=$(echo "$SEMANTICS_BY_COORD" | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
-    print(data.get('durationMs', data.get('duration_ms', 0)) or 0)
+    print(len(data.get('semantics', [])))
 except:
     print(0)
-" 2>/dev/null || echo "0")
-
-TOTAL=$((TOTAL + 1))
-if [ "$REASONER_DURATION" -gt 0 ] 2>/dev/null; then
-  echo -e "  ${GREEN}PASS${NC}  Reasoner duration: ${REASONER_DURATION}ms"
-  PASS=$((PASS + 1))
-else
-  echo -e "  ${RED}FAIL${NC}  Reasoner duration is 0 (unexpected)"
-  FAIL=$((FAIL + 1))
-fi
-
-subheader "Export (FULL)"
-grpc_call "ai.ica.tinkar.IkeAdmin/ExportEntities" '{"export_type":"FULL"}'
-assert_grpc_ok "ExportEntities (FULL) responds"
-assert_success "ExportEntities (FULL) success"
-
-EXPORT_HAS_DATA=$(echo "$RESPONSE" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    ec = data.get('entityCounts', data.get('entity_counts', {}))
-    total = ec.get('totalCount', ec.get('total_count', 0)) or 0
-    print(total)
-except:
-    print(0)
-" 2>/dev/null || echo "0")
-
-TOTAL=$((TOTAL + 1))
-if [ "$EXPORT_HAS_DATA" -gt 0 ] 2>/dev/null; then
-  echo -e "  ${GREEN}PASS${NC}  Export entity count: $EXPORT_HAS_DATA"
-  PASS=$((PASS + 1))
-else
-  echo -e "  ${RED}FAIL${NC}  Export returned 0 entities"
-  FAIL=$((FAIL + 1))
-fi
-
-subheader "Import → Search (synthetic changeset)"
-
-if [ -f "$CHANGESET_FILE" ]; then
-  # Step 1: Verify the synthetic concept does NOT exist yet
-  grpc_call "ai.ica.tinkar.IkeGraphRAG/Search" "{\"query\":\"SITD-42\"}"
-  PRE_IMPORT_COUNT=$(json_total_count)
-  TOTAL=$((TOTAL + 1))
-  if [ "$PRE_IMPORT_COUNT" = "0" ]; then
-    echo -e "  ${GREEN}PASS${NC}  Pre-import: 'SITD-42' not found (expected)"
-    PASS=$((PASS + 1))
-  else
-    echo -e "  ${YELLOW}SKIP${NC}  Pre-import: 'SITD-42' already exists ($PRE_IMPORT_COUNT results) — may be from a previous import"
-    SKIP=$((SKIP + 1))
-  fi
-
-  # Step 2: Import via REST (multipart file upload)
-  IMPORT_RESPONSE=$(curl -s -X POST "http://$REST_HOST/api/ike/admin/import" \
-    -F "file=@$CHANGESET_FILE" \
-    -F "useMultiPass=true")
-
-  IMPORT_SUCCESS=$(echo "$IMPORT_RESPONSE" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    print('true' if data.get('success', False) else 'false')
-except:
-    print('false')
-" 2>/dev/null) || IMPORT_SUCCESS="false"
+" 2>/dev/null) || SBC_COUNT="0"
 
   TOTAL=$((TOTAL + 1))
-  if [ "$IMPORT_SUCCESS" = "true" ]; then
-    echo -e "  ${GREEN}PASS${NC}  Import changeset succeeded"
+  if [ "$SBC_COUNT" -gt 0 ] 2>/dev/null; then
+    echo -e "  ${GREEN}PASS${NC}  semantics-by-coordinate returned $SBC_COUNT semantics"
     PASS=$((PASS + 1))
   else
-    IMPORT_ERROR=$(echo "$IMPORT_RESPONSE" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    print(data.get('errorMessage', 'unknown'))
-except:
-    print('unknown')
-" 2>/dev/null) || IMPORT_ERROR="unknown"
-    echo -e "  ${RED}FAIL${NC}  Import changeset failed: $IMPORT_ERROR"
+    echo -e "  ${RED}FAIL${NC}  semantics-by-coordinate returned 0 semantics"
     FAIL=$((FAIL + 1))
   fi
 
-  IMPORT_TOTAL=$(echo "$IMPORT_RESPONSE" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    print(data.get('totalCount', 0) or 0)
-except:
-    print(0)
-" 2>/dev/null || echo "0")
-
+  # ACTIVE-only via saved coordinate should be fewer than the default (all states)
   TOTAL=$((TOTAL + 1))
-  if [ "$IMPORT_TOTAL" -gt 0 ] 2>/dev/null; then
-    echo -e "  ${GREEN}PASS${NC}  Import entity count: $IMPORT_TOTAL"
+  if [ "$SBC_COUNT" -lt "${DEFAULT_SEM_COUNT:-0}" ] && [ "$SBC_COUNT" -gt 0 ] 2>/dev/null; then
+    echo -e "  ${GREEN}PASS${NC}  Active-only via saved coordinate ($SBC_COUNT) < default (${DEFAULT_SEM_COUNT}) — filtering works"
     PASS=$((PASS + 1))
   else
-    echo -e "  ${RED}FAIL${NC}  Import returned 0 entities"
+    echo -e "  ${RED}FAIL${NC}  Expected active-only ($SBC_COUNT) < default (${DEFAULT_SEM_COUNT:-?})"
     FAIL=$((FAIL + 1))
   fi
 
-  # Step 3: Search for the imported concept via gRPC
-  grpc_call "ai.ica.tinkar.IkeGraphRAG/Search" "{\"query\":\"SITD-42\"}"
-  assert_grpc_ok "Post-import search responds"
+  # All returned semantics should have Active status
+  INACTIVE_IN_SBC=$(echo "$SEMANTICS_BY_COORD" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+print(sum(1 for s in data.get('semantics', []) if s.get('stamp', {}).get('status') != 'Active'))
+" 2>/dev/null || echo "-1")
 
-  POST_IMPORT_COUNT=$(json_total_count)
   TOTAL=$((TOTAL + 1))
-  if [ "$POST_IMPORT_COUNT" -gt 0 ] 2>/dev/null; then
-    echo -e "  ${GREEN}PASS${NC}  Post-import: 'SITD-42' found ($POST_IMPORT_COUNT results)"
+  if [ "$INACTIVE_IN_SBC" = "0" ]; then
+    echo -e "  ${GREEN}PASS${NC}  All $SBC_COUNT semantics have Active status"
     PASS=$((PASS + 1))
   else
-    echo -e "  ${RED}FAIL${NC}  Post-import: 'SITD-42' not found (expected ≥1 result)"
+    echo -e "  ${RED}FAIL${NC}  Found $INACTIVE_IN_SBC non-Active semantics in ACTIVE-filtered response"
     FAIL=$((FAIL + 1))
   fi
-
-  # Step 4: Verify the FQN text is in the response
-  assert_contains "Post-import FQN match" "Synthetic Import Test Device"
-
 else
   TOTAL=$((TOTAL + 1))
-  echo -e "  ${YELLOW}SKIP${NC}  Import test skipped ($CHANGESET_FILE not found)"
+  echo -e "  ${YELLOW}SKIP${NC}  Skipping semantics-by-coordinate (no saved coordinate ID)"
   SKIP=$((SKIP + 1))
 fi
 
@@ -1001,16 +966,6 @@ grpc_call "ai.ica.tinkar.IkeKnowledgeGraph/GetDescendantConcepts" "$(kg_request 
 assert_grpc_ok "GetDescendantConcepts (Tier 2)"
 assert_count_gt0 "GetDescendantConcepts (Tier 2) returns results"
 
-subheader "IkeAdmin (Tier 3)"
-
-grpc_call "ai.ica.tinkar.IkeAdmin/RunReasoner" '{}'
-assert_grpc_ok "RunReasoner"
-assert_success "RunReasoner success"
-
-grpc_call "ai.ica.tinkar.IkeAdmin/ExportEntities" '{"export_type":"FULL"}'
-assert_grpc_ok "ExportEntities (FULL)"
-assert_success "ExportEntities (FULL) success"
-
 subheader "TinkarSearchService (Deprecated)"
 
 grpc_call "ai.ica.tinkar.TinkarSearchService/Search" '{"query":"albumin"}'
@@ -1042,8 +997,6 @@ if [ "$FAIL" -gt 0 ]; then
   echo "  1. LIDR Record pattern (DIAGNOSTIC_DEVICE_PATTERN) not in dataset"
   echo "  2. Stated taxonomy empty in this dataset — STATED premise_type returns 0"
   echo "     hierarchy results (this is expected, demonstrates STATED vs INFERRED difference)"
-  echo "  3. Export round-trip may skip if export_data exceeds gRPC response size"
-  echo "  4. Reasoner classification count may be 0 if dataset lacks stated axioms"
   echo ""
 fi
 

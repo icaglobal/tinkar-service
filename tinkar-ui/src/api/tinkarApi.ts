@@ -7,6 +7,8 @@ import type {
   CoordinateOverrideParams,
   DescendantsResponse,
   DescendantOperationResponse,
+  SavedCoordinateResponse,
+  SavedCoordinateSettings,
   SearchSortOption,
 } from './types';
 
@@ -367,6 +369,56 @@ export async function kgGetConceptChangeHistory(
   appendCoordinateParams(params, coords);
 
   const response = await fetch(`${KG_API_BASE_URL}/concept-change-history?${params}`, {
+    method: 'GET',
+    headers: { accept: '*/*' },
+  });
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+// ── Tier 2: Coordinate Save & Retrieve ──────────────────────────────
+
+export async function saveCoordinate(
+  name: string,
+  settings: SavedCoordinateSettings,
+): Promise<SavedCoordinateResponse> {
+  const response = await fetch(`${KG_API_BASE_URL}/coordinates`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', accept: '*/*' },
+    body: JSON.stringify({ name, settings }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function listCoordinates(): Promise<SavedCoordinateResponse[]> {
+  const response = await fetch(`${KG_API_BASE_URL}/coordinates`, {
+    method: 'GET',
+    headers: { accept: '*/*' },
+  });
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function getSemanticsWithCoordinate(
+  conceptId: string,
+  coordinateId: string,
+): Promise<ConceptSemanticsResponse> {
+  const params = new URLSearchParams({ conceptId, coordinateId });
+
+  const response = await fetch(`${KG_API_BASE_URL}/semantics-by-coordinate?${params}`, {
     method: 'GET',
     headers: { accept: '*/*' },
   });

@@ -1,8 +1,8 @@
 type: grpc_request
 model: grpc_request
-id: gr_2njcA6uQeb
-createdAt: 2026-02-13T20:58:05.003312
-updatedAt: 2026-02-27T19:24:15.372622
+id: gr_ezaM7qpkEV
+createdAt: 2026-02-27T19:11:36.608481
+updatedAt: 2026-02-27T19:24:40.941355
 workspaceId: wk_F4TtaH4LNi
 folderId: fl_S6LmWLxfJ7
 authenticationType: null
@@ -10,18 +10,16 @@ authentication: {}
 description: ''
 message: |-
   {
-    "public_id": {
+    "concept_public_id": {
       "uuids": [
         "52d02a6d-eaad-57ff-9cd4-82fae97fb044"
       ]
     },
-    "coordinate_override": {
-      "allowed_states": "ACTIVE"
-    }
+    "coordinate_id": "ea73696b-1bd6-45de-97b5-0d3acce3798a"
   }
 metadata: []
-method: GetConceptSemantics
-name: Diabetes ACTIVE
+method: GetSemanticsWithCoordinate
+name: Diabetes by Coordinate
 service: ai.ica.tinkar.IkeKnowledgeGraph
-sortPriority: 3000.0
+sortPriority: 4000.007
 url: localhost:9095

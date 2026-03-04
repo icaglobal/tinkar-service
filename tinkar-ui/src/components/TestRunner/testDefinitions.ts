@@ -15,6 +15,9 @@ import {
   kgGetDescendants,
   kgGetChangeHistory,
   kgGetConceptChangeHistory,
+  saveCoordinate,
+  listCoordinates,
+  getSemanticsWithCoordinate,
 } from '../../api/tinkarApi';
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -937,6 +940,97 @@ const endpointCoverageGroup: TestGroupDefinition = {
 };
 
 // ══════════════════════════════════════════════════════════════════════
+//  GROUP 7: Coordinate Save & Retrieve
+// ══════════════════════════════════════════════════════════════════════
+
+const savedCoordinateGroup: TestGroupDefinition = {
+  id: 'saved-coordinate',
+  name: 'Tier 2: Coordinate Save & Retrieve',
+  description: 'Save a coordinate, list coordinates, then use the ID to get semantics for "Diabetes insipidus, NOS"',
+  tests: [
+    {
+      id: 'sc-save',
+      name: 'Save coordinate (ACTIVE filter for Diabetes insipidus, NOS)',
+      run: async (ctx) => {
+        const data = await saveCoordinate('Diabetes Test - Active Only', { allowedStates: 'ACTIVE' });
+        if (!data.id) {
+          return { status: 'fail', detail: 'No id in response', responseData: data };
+        }
+        ctx.set('saved_coord_id', data.id);
+        return { status: 'pass', detail: `Saved with id: ${data.id}`, responseData: data };
+      },
+    },
+    {
+      id: 'sc-list',
+      name: 'List coordinates — saved coordinate appears in list',
+      run: async (ctx) => {
+        const savedId = ctx.get('saved_coord_id');
+        const data = await listCoordinates();
+        if (data.length === 0) {
+          return { status: 'fail', detail: '0 coordinates returned', responseData: data };
+        }
+        if (savedId && !data.some((c) => c.id === savedId)) {
+          return {
+            status: 'fail',
+            detail: `Saved coordinate (${savedId}) not found in list of ${data.length}`,
+            responseData: data,
+          };
+        }
+        return {
+          status: 'pass',
+          detail: `${data.length} coordinate(s) found, saved ID present`,
+          responseData: data,
+        };
+      },
+    },
+    {
+      id: 'sc-semantics-by-coord',
+      name: 'Get semantics by coordinate ID — returns results',
+      run: async (ctx) => {
+        const coordId = ctx.get('saved_coord_id');
+        if (!coordId) return { status: 'skip', detail: 'No saved coordinate ID' };
+        const data = await getSemanticsWithCoordinate(COORD_TEST_CONCEPT, coordId);
+        const count = data.totalCount ?? data.semantics?.length ?? 0;
+        ctx.set('sc_sem_count', String(count));
+        if (count === 0) return { status: 'fail', detail: '0 semantics', responseData: data };
+        return { status: 'pass', detail: `${count} semantics via saved coordinate`, responseData: data };
+      },
+    },
+    {
+      id: 'sc-semantics-fewer-than-default',
+      name: 'ACTIVE semantics via saved coordinate < all semantics (default)',
+      run: async (ctx) => {
+        const coordId = ctx.get('saved_coord_id');
+        if (!coordId) return { status: 'skip', detail: 'No saved coordinate ID' };
+        const defaultData = await kgGetSemantics(COORD_TEST_CONCEPT);
+        const defaultCount = defaultData.totalCount ?? defaultData.semantics?.length ?? 0;
+        const activeCount = Number(ctx.get('sc_sem_count') ?? '0');
+        if (defaultCount === 0) {
+          return { status: 'fail', detail: '0 semantics from default query', responseData: defaultData };
+        }
+        return activeCount < defaultCount
+          ? { status: 'pass', detail: `Active-only via saved coordinate (${activeCount}) < default (${defaultCount})` }
+          : { status: 'fail', detail: `Expected ${activeCount} < ${defaultCount}`, responseData: defaultData };
+      },
+    },
+    {
+      id: 'sc-semantics-all-active',
+      name: 'All semantics from saved coordinate have Active status',
+      run: async (ctx) => {
+        const coordId = ctx.get('saved_coord_id');
+        if (!coordId) return { status: 'skip', detail: 'No saved coordinate ID' };
+        const data = await getSemanticsWithCoordinate(COORD_TEST_CONCEPT, coordId);
+        const count = data.semantics?.length ?? 0;
+        const allActive = data.semantics?.every((s) => s.stamp?.status === 'Active') ?? false;
+        return allActive
+          ? { status: 'pass', detail: `All ${count} semantics have Active status`, responseData: data }
+          : { status: 'fail', detail: 'Some semantics have non-Active status', responseData: data };
+      },
+    },
+  ],
+};
+
+// ══════════════════════════════════════════════════════════════════════
 //  Export all groups
 // ══════════════════════════════════════════════════════════════════════
 
@@ -946,5 +1040,6 @@ export const allTestGroups: TestGroupDefinition[] = [
   scenario2Group,
   scenario3Group,
   coordinateOverrideGroup,
+  savedCoordinateGroup,
   endpointCoverageGroup,
 ];

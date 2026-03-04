@@ -152,6 +152,25 @@ export type CoordinateOverrideParams = {
   premiseType?: 'STATED' | 'INFERRED';
 };
 
+// ── Saved Coordinate Types ───────────────────────────────────────────
+
+export type SavedCoordinateSettings = {
+  allowedStates?: string;
+  positionTime?: number;
+  positionPathId?: string;
+  moduleIds?: string[];
+  excludedModuleIds?: string[];
+  modulePriorityIds?: string[];
+  premiseType?: string;
+};
+
+export type SavedCoordinateResponse = {
+  id: string;
+  name: string;
+  settings: SavedCoordinateSettings;
+  createdAt: string;
+};
+
 // ── Test Runner Types ────────────────────────────────────────────────
 
 export type TestStatus = 'pending' | 'running' | 'pass' | 'fail' | 'skip';
