@@ -84,32 +84,67 @@ message KnowledgeGraphConceptRequest {
   CoordinateOverride coordinate_override = 2;
 }
 
-// Request for saving a named coordinate configuration
-message SaveCoordinateRequest {
-  string name = 1;
-  CoordinateOverride settings = 2;
+// Settings for a saved StampCoordinate. Unset fields use server defaults.
+message StampCoordinateSettings {
+  AllowedStates allowed_states = 1;
+  int64 position_time = 2;         // 0 means latest (default)
+  string position_path_id = 3;     // empty means development path (default)
+  repeated string module_ids = 4;
+  repeated string excluded_module_ids = 5;
+  repeated string module_priority_ids = 6;
 }
 
-// A saved coordinate configuration with its assigned ID
-message SaveCoordinateResponse {
-  string id = 1;          // UUID assigned to this coordinate; pass as coordinate_id elsewhere
-  string name = 2;
-  CoordinateOverride settings = 3;
-  string created_at = 4;  // ISO-8601 timestamp
+// Settings for a saved NavigationCoordinate.
+message NavigationCoordinateSettings {
+  ProtoPremiseType premise_type = 1;  // Default: INFERRED
 }
 
-// Request for listing all saved coordinate configurations (no parameters)
-message ListCoordinatesRequest {}
-
-// All saved coordinate configurations
-message ListCoordinatesResponse {
-  repeated SaveCoordinateResponse coordinates = 1;
+// Request for saving a StampCoordinate
+message SaveStampCoordinateRequest {
+  StampCoordinateSettings settings = 1;
 }
 
-// Request for getting semantics using a previously saved coordinate ID
+// A saved StampCoordinate with its content-derived UUID
+message SavedStampCoordinateResponse {
+  string id = 1;                      // Content-derived UUID; pass as stamp_coordinate_id elsewhere
+  StampCoordinateSettings settings = 2;
+  string created_at = 3;              // ISO-8601 timestamp
+}
+
+// Request for listing all saved StampCoordinates (no parameters)
+message ListStampCoordinatesRequest {}
+
+// All saved StampCoordinates
+message ListStampCoordinatesResponse {
+  repeated SavedStampCoordinateResponse coordinates = 1;
+}
+
+// Request for saving a NavigationCoordinate
+message SaveNavigationCoordinateRequest {
+  NavigationCoordinateSettings settings = 1;
+}
+
+// A saved NavigationCoordinate with its content-derived UUID
+message SavedNavigationCoordinateResponse {
+  string id = 1;                           // Content-derived UUID; pass as navigation_coordinate_id elsewhere
+  NavigationCoordinateSettings settings = 2;
+  string created_at = 3;                   // ISO-8601 timestamp
+}
+
+// Request for listing all saved NavigationCoordinates (no parameters)
+message ListNavigationCoordinatesRequest {}
+
+// All saved NavigationCoordinates
+message ListNavigationCoordinatesResponse {
+  repeated SavedNavigationCoordinateResponse coordinates = 1;
+}
+
+// Request for getting semantics using previously saved coordinate IDs.
+// Both IDs are optional — omitted values use server defaults.
 message SemanticsWithCoordinateRequest {
   dev.ikm.tinkar.schema.PublicId concept_public_id = 1;
-  string coordinate_id = 2;  // UUID returned by SaveCoordinate
+  string stamp_coordinate_id = 2;       // UUID returned by SaveStampCoordinate
+  string navigation_coordinate_id = 3;  // UUID returned by SaveNavigationCoordinate
 }
 
 service IkeKnowledgeGraph {
@@ -122,12 +157,18 @@ service IkeKnowledgeGraph {
   // Get all descendant concepts (full subtree) with coordinate-aware navigation
   rpc GetDescendantConcepts(KnowledgeGraphConceptRequest) returns (TinkarSearchQueryResponse);
 
-  // Save a named coordinate configuration to the dataset
-  rpc SaveCoordinate(SaveCoordinateRequest) returns (SaveCoordinateResponse);
+  // Save a StampCoordinate to the dataset (idempotent — same settings return same UUID)
+  rpc SaveStampCoordinate(SaveStampCoordinateRequest) returns (SavedStampCoordinateResponse);
 
-  // List all saved coordinate configurations
-  rpc ListCoordinates(ListCoordinatesRequest) returns (ListCoordinatesResponse);
+  // List all saved StampCoordinates
+  rpc ListStampCoordinates(ListStampCoordinatesRequest) returns (ListStampCoordinatesResponse);
 
-  // Get semantics for a concept using a previously saved coordinate ID
+  // Save a NavigationCoordinate to the dataset (idempotent — same settings return same UUID)
+  rpc SaveNavigationCoordinate(SaveNavigationCoordinateRequest) returns (SavedNavigationCoordinateResponse);
+
+  // List all saved NavigationCoordinates
+  rpc ListNavigationCoordinates(ListNavigationCoordinatesRequest) returns (ListNavigationCoordinatesResponse);
+
+  // Get semantics for a concept using previously saved coordinate IDs (both optional)
   rpc GetSemanticsWithCoordinate(SemanticsWithCoordinateRequest) returns (TinkarConceptSemanticsResponse);
 }

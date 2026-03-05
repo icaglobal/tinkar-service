@@ -2,7 +2,7 @@ type: grpc_request
 model: grpc_request
 id: gr_2njcA6uQeb
 createdAt: 2026-02-13T20:58:05.003312
-updatedAt: 2026-02-27T19:24:15.372622
+updatedAt: 2026-03-04T20:09:07.814412
 workspaceId: wk_F4TtaH4LNi
 folderId: fl_S6LmWLxfJ7
 authenticationType: null
@@ -23,5 +23,5 @@ metadata: []
 method: GetConceptSemantics
 name: Diabetes ACTIVE
 service: ai.ica.tinkar.IkeKnowledgeGraph
-sortPriority: 3000.0
+sortPriority: 4000.0
 url: localhost:9095

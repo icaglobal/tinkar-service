@@ -15,8 +15,8 @@ import {
   kgGetDescendants,
   kgGetChangeHistory,
   kgGetConceptChangeHistory,
-  saveCoordinate,
-  listCoordinates,
+  saveStampCoordinate,
+  listStampCoordinates,
   getSemanticsWithCoordinate,
 } from '../../api/tinkarApi';
 
@@ -950,58 +950,71 @@ const savedCoordinateGroup: TestGroupDefinition = {
   tests: [
     {
       id: 'sc-save',
-      name: 'Save coordinate (ACTIVE filter for Diabetes insipidus, NOS)',
+      name: 'Save stamp coordinate (ACTIVE filter) — returns content-derived ID',
       run: async (ctx) => {
-        const data = await saveCoordinate('Diabetes Test - Active Only', { allowedStates: 'ACTIVE' });
+        const data = await saveStampCoordinate({ allowedStates: 'ACTIVE' });
         if (!data.id) {
           return { status: 'fail', detail: 'No id in response', responseData: data };
         }
-        ctx.set('saved_coord_id', data.id);
-        return { status: 'pass', detail: `Saved with id: ${data.id}`, responseData: data };
+        ctx.set('saved_stamp_id', data.id);
+        return { status: 'pass', detail: `Saved stamp coordinate with id: ${data.id}`, responseData: data };
+      },
+    },
+    {
+      id: 'sc-save-idempotent',
+      name: 'Save same stamp coordinate again — returns same ID (idempotent)',
+      run: async (ctx) => {
+        const firstId = ctx.get('saved_stamp_id');
+        if (!firstId) return { status: 'skip', detail: 'No saved stamp coordinate ID from previous test' };
+        const data = await saveStampCoordinate({ allowedStates: 'ACTIVE' });
+        if (data.id === firstId) {
+          return { status: 'pass', detail: `Same ID returned: ${data.id}`, responseData: data };
+        }
+        return { status: 'fail', detail: `Expected ${firstId}, got ${data.id}`, responseData: data };
       },
     },
     {
       id: 'sc-list',
-      name: 'List coordinates — saved coordinate appears in list',
+      name: 'List stamp coordinates — saved coordinate appears in list',
       run: async (ctx) => {
-        const savedId = ctx.get('saved_coord_id');
-        const data = await listCoordinates();
+        const savedId = ctx.get('saved_stamp_id');
+        const data = await listStampCoordinates();
         if (data.length === 0) {
-          return { status: 'fail', detail: '0 coordinates returned', responseData: data };
+          return { status: 'fail', detail: '0 stamp coordinates returned', responseData: data };
         }
         if (savedId && !data.some((c) => c.id === savedId)) {
           return {
             status: 'fail',
-            detail: `Saved coordinate (${savedId}) not found in list of ${data.length}`,
+            detail: `Saved stamp coordinate (${savedId}) not found in list of ${data.length}`,
             responseData: data,
           };
         }
         return {
           status: 'pass',
-          detail: `${data.length} coordinate(s) found, saved ID present`,
+          detail: `${data.length} stamp coordinate(s) found, saved ID present`,
           responseData: data,
         };
       },
     },
     {
       id: 'sc-semantics-by-coord',
-      name: 'Get semantics by coordinate ID — returns results',
+      name: 'Get semantics by stamp coordinate ID — returns results',
       run: async (ctx) => {
-        const coordId = ctx.get('saved_coord_id');
-        if (!coordId) return { status: 'skip', detail: 'No saved coordinate ID' };
-        const data = await getSemanticsWithCoordinate(COORD_TEST_CONCEPT, coordId);
+        const stampId = ctx.get('saved_stamp_id');
+        if (!stampId) return { status: 'skip', detail: 'No saved stamp coordinate ID' };
+        const data = await getSemanticsWithCoordinate(COORD_TEST_CONCEPT, stampId);
         const count = data.totalCount ?? data.semantics?.length ?? 0;
         ctx.set('sc_sem_count', String(count));
         if (count === 0) return { status: 'fail', detail: '0 semantics', responseData: data };
-        return { status: 'pass', detail: `${count} semantics via saved coordinate`, responseData: data };
+        return { status: 'pass', detail: `${count} semantics via saved stamp coordinate`, responseData: data };
       },
     },
     {
       id: 'sc-semantics-fewer-than-default',
-      name: 'ACTIVE semantics via saved coordinate < all semantics (default)',
+      name: 'ACTIVE semantics via saved stamp coordinate < all semantics (default)',
       run: async (ctx) => {
-        const coordId = ctx.get('saved_coord_id');
-        if (!coordId) return { status: 'skip', detail: 'No saved coordinate ID' };
+        const stampId = ctx.get('saved_stamp_id');
+        if (!stampId) return { status: 'skip', detail: 'No saved stamp coordinate ID' };
         const defaultData = await kgGetSemantics(COORD_TEST_CONCEPT);
         const defaultCount = defaultData.totalCount ?? defaultData.semantics?.length ?? 0;
         const activeCount = Number(ctx.get('sc_sem_count') ?? '0');
@@ -1015,11 +1028,11 @@ const savedCoordinateGroup: TestGroupDefinition = {
     },
     {
       id: 'sc-semantics-all-active',
-      name: 'All semantics from saved coordinate have Active status',
+      name: 'All semantics from saved stamp coordinate have Active status',
       run: async (ctx) => {
-        const coordId = ctx.get('saved_coord_id');
-        if (!coordId) return { status: 'skip', detail: 'No saved coordinate ID' };
-        const data = await getSemanticsWithCoordinate(COORD_TEST_CONCEPT, coordId);
+        const stampId = ctx.get('saved_stamp_id');
+        if (!stampId) return { status: 'skip', detail: 'No saved stamp coordinate ID' };
+        const data = await getSemanticsWithCoordinate(COORD_TEST_CONCEPT, stampId);
         const count = data.semantics?.length ?? 0;
         const allActive = data.semantics?.every((s) => s.stamp?.status === 'Active') ?? false;
         return allActive

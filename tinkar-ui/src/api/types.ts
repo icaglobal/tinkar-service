@@ -154,20 +154,28 @@ export type CoordinateOverrideParams = {
 
 // ── Saved Coordinate Types ───────────────────────────────────────────
 
-export type SavedCoordinateSettings = {
+export type StampCoordinateSettings = {
   allowedStates?: string;
   positionTime?: number;
   positionPathId?: string;
   moduleIds?: string[];
   excludedModuleIds?: string[];
   modulePriorityIds?: string[];
+};
+
+export type NavigationCoordinateSettings = {
   premiseType?: string;
 };
 
-export type SavedCoordinateResponse = {
+export type SavedStampCoordinateResponse = {
   id: string;
-  name: string;
-  settings: SavedCoordinateSettings;
+  settings: StampCoordinateSettings;
+  createdAt: string;
+};
+
+export type SavedNavigationCoordinateResponse = {
+  id: string;
+  settings: NavigationCoordinateSettings;
   createdAt: string;
 };
 

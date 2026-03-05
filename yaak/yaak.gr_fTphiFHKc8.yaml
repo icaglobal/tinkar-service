@@ -1,8 +1,8 @@
 type: grpc_request
 model: grpc_request
-id: gr_woPBzBN48U
-createdAt: 2026-02-27T19:11:06.774200
-updatedAt: 2026-03-04T20:27:37.340919
+id: gr_fTphiFHKc8
+createdAt: 2026-03-04T20:27:39.537401
+updatedAt: 2026-03-04T20:27:50.557904
 workspaceId: wk_F4TtaH4LNi
 folderId: fl_S6LmWLxfJ7
 authenticationType: null
@@ -10,8 +10,8 @@ authentication: {}
 description: ''
 message: ''
 metadata: []
-method: ListStampCoordinates
-name: List STAMP
+method: ListNavigationCoordinates
+name: List Navigation
 service: ai.ica.tinkar.IkeKnowledgeGraph
-sortPriority: 10333.333333333334
+sortPriority: 11000.001
 url: localhost:9095

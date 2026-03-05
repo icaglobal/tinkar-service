@@ -1,7 +1,9 @@
 package ai.ica.tinkar.service;
 
 import ai.ica.tinkar.dto.CoordinateOverride;
+import ai.ica.tinkar.dto.NavigationCoordinateDto;
 import ai.ica.tinkar.dto.PremiseType;
+import ai.ica.tinkar.dto.StampCoordinateDto;
 import dev.ikm.tinkar.common.id.IntIdList;
 import dev.ikm.tinkar.common.id.IntIdSet;
 import dev.ikm.tinkar.common.id.IntIds;
@@ -36,6 +38,50 @@ public class CoordinateFactory {
     }
 
     /**
+     * Builds a {@link StampCoordinateRecord} from a {@link StampCoordinateDto}.
+     * Null fields fall back to server defaults.
+     */
+    public static StampCoordinateRecord buildStampCoordinate(StampCoordinateDto dto) {
+        if (dto == null) {
+            return (StampCoordinateRecord) Coordinates.Stamp.DevelopmentLatestActiveOnly();
+        }
+        StateSet allowedStates = resolveAllowedStates(dto.allowedStates());
+        long positionTime = dto.positionTime() != null ? dto.positionTime() : Long.MAX_VALUE;
+        int pathNid = resolvePathNid(dto.positionPathId());
+        IntIdSet moduleNids = resolveModuleNids(dto.moduleIds());
+        IntIdSet excludedModuleNids = resolveModuleNids(dto.excludedModuleIds());
+        IntIdList modulePriorityNids = resolveModulePriorityNids(dto.modulePriorityIds());
+        StampPositionRecord stampPosition = StampPositionRecord.make(positionTime, pathNid);
+        return new StampCoordinateRecord(allowedStates, stampPosition, moduleNids, excludedModuleNids, modulePriorityNids);
+    }
+
+    /**
+     * Builds a {@link NavigationCoordinateRecord} from a {@link NavigationCoordinateDto}.
+     * A null dto or null premiseType defaults to INFERRED.
+     */
+    public static NavigationCoordinateRecord buildNavigationCoordinate(NavigationCoordinateDto dto) {
+        if (dto == null) {
+            return NavigationCoordinateRecord.makeInferred();
+        }
+        return resolveNavigation(dto.premiseType());
+    }
+
+    /**
+     * Builds a calculator from explicit stamp and navigation coordinates.
+     * Language, logic, and edit coordinates use server defaults.
+     */
+    public static ViewCalculatorWithCache buildCalculator(StampCoordinateRecord stampCoordinate,
+                                                          NavigationCoordinateRecord navigationCoordinate) {
+        ViewCoordinateRecord viewCoordinate = ViewCoordinateRecord.make(
+                stampCoordinate,
+                Coordinates.Language.UsEnglishRegularName(),
+                Coordinates.Logic.ElPlusPlus(),
+                navigationCoordinate,
+                Coordinates.Edit.Default());
+        return ViewCalculatorWithCache.getCalculator(viewCoordinate);
+    }
+
+    /**
      * Builds a calculator from optional coordinate overrides.
      * Any null field in the override uses the server default value.
      *
@@ -46,31 +92,11 @@ public class CoordinateFactory {
         if (override == null) {
             return defaultCalculator();
         }
-
-        // STAMP coordinate
-        StateSet allowedStates = resolveAllowedStates(override.allowedStates());
-        long positionTime = override.positionTime() != null ? override.positionTime() : Long.MAX_VALUE;
-        int pathNid = resolvePathNid(override.positionPathId());
-        IntIdSet moduleNids = resolveModuleNids(override.moduleIds());
-        IntIdSet excludedModuleNids = resolveModuleNids(override.excludedModuleIds());
-        IntIdList modulePriorityNids = resolveModulePriorityNids(override.modulePriorityIds());
-
-        StampPositionRecord stampPosition = StampPositionRecord.make(positionTime, pathNid);
-        StampCoordinateRecord stampCoordinate = new StampCoordinateRecord(
-                allowedStates, stampPosition, moduleNids, excludedModuleNids, modulePriorityNids);
-
-        // Navigation coordinate
-        NavigationCoordinateRecord navigationCoordinate = resolveNavigation(override.premiseType());
-
-        // Build view coordinate (language, logic, edit use defaults)
-        ViewCoordinateRecord viewCoordinate = ViewCoordinateRecord.make(
-                stampCoordinate,
-                Coordinates.Language.UsEnglishRegularName(),
-                Coordinates.Logic.ElPlusPlus(),
-                navigationCoordinate,
-                Coordinates.Edit.Default());
-
-        return ViewCalculatorWithCache.getCalculator(viewCoordinate);
+        StampCoordinateDto stampDto = new StampCoordinateDto(
+                override.allowedStates(), override.positionTime(), override.positionPathId(),
+                override.moduleIds(), override.excludedModuleIds(), override.modulePriorityIds());
+        NavigationCoordinateDto navDto = new NavigationCoordinateDto(override.premiseType());
+        return buildCalculator(buildStampCoordinate(stampDto), buildNavigationCoordinate(navDto));
     }
 
     private static StateSet resolveAllowedStates(String allowedStates) {

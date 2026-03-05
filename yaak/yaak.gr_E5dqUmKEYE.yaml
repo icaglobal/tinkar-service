@@ -2,7 +2,7 @@ type: grpc_request
 model: grpc_request
 id: gr_E5dqUmKEYE
 createdAt: 2026-02-27T19:10:03.244525
-updatedAt: 2026-02-27T19:24:11.745337
+updatedAt: 2026-03-04T20:09:07.823038
 workspaceId: wk_F4TtaH4LNi
 folderId: fl_S6LmWLxfJ7
 authenticationType: null
@@ -10,14 +10,13 @@ authentication: {}
 description: ''
 message: |-
   {
-    "name": "Active-Only",
     "settings": {
-      "allowedStates": "ACTIVE"
+      "allowedStates": "INACTIVE"
     }
   }
 metadata: []
-method: SaveCoordinate
-name: Coordinate Save
+method: SaveStampCoordinate
+name: STAMP Save
 service: ai.ica.tinkar.IkeKnowledgeGraph
-sortPriority: 4000.005
+sortPriority: 10000.0
 url: localhost:9095

@@ -7,8 +7,10 @@ import type {
   CoordinateOverrideParams,
   DescendantsResponse,
   DescendantOperationResponse,
-  SavedCoordinateResponse,
-  SavedCoordinateSettings,
+  NavigationCoordinateSettings,
+  SavedNavigationCoordinateResponse,
+  SavedStampCoordinateResponse,
+  StampCoordinateSettings,
   SearchSortOption,
 } from './types';
 
@@ -382,14 +384,13 @@ export async function kgGetConceptChangeHistory(
 
 // ── Tier 2: Coordinate Save & Retrieve ──────────────────────────────
 
-export async function saveCoordinate(
-  name: string,
-  settings: SavedCoordinateSettings,
-): Promise<SavedCoordinateResponse> {
-  const response = await fetch(`${KG_API_BASE_URL}/coordinates`, {
+export async function saveStampCoordinate(
+  settings: StampCoordinateSettings,
+): Promise<SavedStampCoordinateResponse> {
+  const response = await fetch(`${KG_API_BASE_URL}/coordinates/stamp`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', accept: '*/*' },
-    body: JSON.stringify({ name, settings }),
+    body: JSON.stringify(settings),
   });
 
   if (!response.ok) {
@@ -399,8 +400,37 @@ export async function saveCoordinate(
   return response.json();
 }
 
-export async function listCoordinates(): Promise<SavedCoordinateResponse[]> {
-  const response = await fetch(`${KG_API_BASE_URL}/coordinates`, {
+export async function listStampCoordinates(): Promise<SavedStampCoordinateResponse[]> {
+  const response = await fetch(`${KG_API_BASE_URL}/coordinates/stamp`, {
+    method: 'GET',
+    headers: { accept: '*/*' },
+  });
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function saveNavigationCoordinate(
+  settings: NavigationCoordinateSettings,
+): Promise<SavedNavigationCoordinateResponse> {
+  const response = await fetch(`${KG_API_BASE_URL}/coordinates/navigation`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', accept: '*/*' },
+    body: JSON.stringify(settings),
+  });
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function listNavigationCoordinates(): Promise<SavedNavigationCoordinateResponse[]> {
+  const response = await fetch(`${KG_API_BASE_URL}/coordinates/navigation`, {
     method: 'GET',
     headers: { accept: '*/*' },
   });
@@ -414,9 +444,12 @@ export async function listCoordinates(): Promise<SavedCoordinateResponse[]> {
 
 export async function getSemanticsWithCoordinate(
   conceptId: string,
-  coordinateId: string,
+  stampCoordinateId?: string,
+  navigationCoordinateId?: string,
 ): Promise<ConceptSemanticsResponse> {
-  const params = new URLSearchParams({ conceptId, coordinateId });
+  const params = new URLSearchParams({ conceptId });
+  if (stampCoordinateId) params.set('stampCoordinateId', stampCoordinateId);
+  if (navigationCoordinateId) params.set('navigationCoordinateId', navigationCoordinateId);
 
   const response = await fetch(`${KG_API_BASE_URL}/semantics-by-coordinate?${params}`, {
     method: 'GET',

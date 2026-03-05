@@ -5,9 +5,11 @@ import ai.ica.tinkar.dto.ConceptChangeHistoryResponse;
 import ai.ica.tinkar.dto.ConceptSemanticsResponse;
 import ai.ica.tinkar.dto.CoordinateOverride;
 import ai.ica.tinkar.dto.DescendantOperationResponse;
+import ai.ica.tinkar.dto.NavigationCoordinateDto;
 import ai.ica.tinkar.dto.PremiseType;
-import ai.ica.tinkar.dto.SavedCoordinateRequest;
-import ai.ica.tinkar.dto.SavedCoordinateResponse;
+import ai.ica.tinkar.dto.SavedNavigationCoordinateResponse;
+import ai.ica.tinkar.dto.SavedStampCoordinateResponse;
+import ai.ica.tinkar.dto.StampCoordinateDto;
 import ai.ica.tinkar.dto.TinkarSearchQueryResponse;
 import ai.ica.tinkar.dto.TinkarSearchQueryResponse.Descriptions;
 import ai.ica.tinkar.dto.TinkarSearchQueryResponse.SearchResult;
@@ -256,45 +258,90 @@ public class KnowledgeGraphRestController {
         return ResponseEntity.ok(tinkarService.removeDescendant(parentConceptId, descendantConceptId));
     }
 
-    @Operation(summary = "Save a named coordinate configuration",
-            description = "Saves a coordinate configuration to the loaded dataset and returns its assigned UUID. " +
-                    "The coordinate ID can later be passed to /semantics-by-coordinate instead of individual parameters.")
+    @Operation(summary = "Save a stamp coordinate",
+            description = "Saves a StampCoordinate to the dataset and returns its content-derived UUID. " +
+                    "Identical settings always produce the same UUID (idempotent). " +
+                    "The returned ID can be passed to /semantics-by-coordinate as stampCoordinateId.")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "201", description = "Coordinate saved successfully", content = @Content(schema = @Schema(implementation = SavedCoordinateResponse.class))),
+            @ApiResponse(responseCode = "201", description = "Stamp coordinate saved successfully", content = @Content(schema = @Schema(implementation = SavedStampCoordinateResponse.class))),
             @ApiResponse(responseCode = "400", description = "Invalid request body")
     })
-    @PostMapping("/coordinates")
-    public ResponseEntity<SavedCoordinateResponse> saveCoordinate(@RequestBody SavedCoordinateRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(coordinateStoreService.save(request));
+    @PostMapping("/coordinates/stamp")
+    public ResponseEntity<SavedStampCoordinateResponse> saveStampCoordinate(@RequestBody StampCoordinateDto dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(coordinateStoreService.saveStamp(dto));
     }
 
-    @Operation(summary = "List all saved coordinate configurations",
-            description = "Returns all coordinate configurations that have been saved to the loaded dataset.")
+    @Operation(summary = "List all saved stamp coordinates",
+            description = "Returns all StampCoordinates that have been saved to the loaded dataset.")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Coordinates retrieved successfully", content = @Content(schema = @Schema(implementation = SavedCoordinateResponse.class)))
+            @ApiResponse(responseCode = "200", description = "Stamp coordinates retrieved successfully", content = @Content(schema = @Schema(implementation = SavedStampCoordinateResponse.class)))
     })
-    @GetMapping("/coordinates")
-    public ResponseEntity<List<SavedCoordinateResponse>> listCoordinates() {
-        return ResponseEntity.ok(coordinateStoreService.findAll());
+    @GetMapping("/coordinates/stamp")
+    public ResponseEntity<List<SavedStampCoordinateResponse>> listStampCoordinates() {
+        return ResponseEntity.ok(coordinateStoreService.findAllStamp());
     }
 
-    @Operation(summary = "Get semantics for a concept using a saved coordinate",
-            description = "Retrieves all semantics for a concept using a previously saved coordinate configuration. " +
-                    "Save a coordinate via POST /coordinates to obtain a coordinateId.")
+    @Operation(summary = "Save a navigation coordinate",
+            description = "Saves a NavigationCoordinate to the dataset and returns its content-derived UUID. " +
+                    "Identical settings always produce the same UUID (idempotent). " +
+                    "The returned ID can be passed to /semantics-by-coordinate as navigationCoordinateId.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "201", description = "Navigation coordinate saved successfully", content = @Content(schema = @Schema(implementation = SavedNavigationCoordinateResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid request body")
+    })
+    @PostMapping("/coordinates/navigation")
+    public ResponseEntity<SavedNavigationCoordinateResponse> saveNavigationCoordinate(@RequestBody NavigationCoordinateDto dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(coordinateStoreService.saveNavigation(dto));
+    }
+
+    @Operation(summary = "List all saved navigation coordinates",
+            description = "Returns all NavigationCoordinates that have been saved to the loaded dataset.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Navigation coordinates retrieved successfully", content = @Content(schema = @Schema(implementation = SavedNavigationCoordinateResponse.class)))
+    })
+    @GetMapping("/coordinates/navigation")
+    public ResponseEntity<List<SavedNavigationCoordinateResponse>> listNavigationCoordinates() {
+        return ResponseEntity.ok(coordinateStoreService.findAllNavigation());
+    }
+
+    @Operation(summary = "Get semantics for a concept using saved coordinates",
+            description = "Retrieves all semantics for a concept using previously saved coordinate configurations. " +
+                    "Both stampCoordinateId and navigationCoordinateId are optional; omitted values use server defaults. " +
+                    "Save coordinates via POST /coordinates/stamp and POST /coordinates/navigation.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Semantics retrieved successfully", content = @Content(schema = @Schema(implementation = ConceptSemanticsResponse.class))),
-            @ApiResponse(responseCode = "404", description = "No coordinate found with the given coordinateId"),
-            @ApiResponse(responseCode = "400", description = "Invalid conceptId or coordinateId parameter")
+            @ApiResponse(responseCode = "404", description = "No coordinate found with the given ID"),
+            @ApiResponse(responseCode = "400", description = "Invalid conceptId or coordinate ID parameter")
     })
     @GetMapping("/semantics-by-coordinate")
     public ResponseEntity<ConceptSemanticsResponse> getSemanticsWithCoordinate(
             @Parameter(description = "Concept ID (UUID)", required = true, example = "9fc3832b-a5f8-5504-ba16-7551976841dc") @RequestParam("conceptId") String conceptId,
-            @Parameter(description = "Saved coordinate ID (UUID returned by POST /coordinates)", required = true, example = "3f47a12e-bc94-4b8a-a8f2-1234567890ab") @RequestParam("coordinateId") String coordinateId) {
-        SavedCoordinateResponse coord = coordinateStoreService.findById(coordinateId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "No coordinate found with id: " + coordinateId));
-        ViewCalculatorWithCache calc = CoordinateFactory.buildCalculator(coord.settings());
+            @Parameter(description = "Saved stamp coordinate ID (UUID returned by POST /coordinates/stamp)", example = "3f47a12e-bc94-4b8a-a8f2-1234567890ab") @RequestParam(required = false) String stampCoordinateId,
+            @Parameter(description = "Saved navigation coordinate ID (UUID returned by POST /coordinates/navigation)", example = "4a58b23f-cd05-4b9b-b903-2345678901bc") @RequestParam(required = false) String navigationCoordinateId) {
+        dev.ikm.tinkar.coordinate.stamp.StampCoordinateRecord stampCoord = resolveStampCoordinate(stampCoordinateId);
+        dev.ikm.tinkar.coordinate.navigation.NavigationCoordinateRecord navCoord = resolveNavigationCoordinate(navigationCoordinateId);
+        ViewCalculatorWithCache calc = CoordinateFactory.buildCalculator(stampCoord, navCoord);
         return ResponseEntity.ok(tinkarService.getConceptSemantics(conceptId, calc));
+    }
+
+    private dev.ikm.tinkar.coordinate.stamp.StampCoordinateRecord resolveStampCoordinate(String stampCoordinateId) {
+        if (stampCoordinateId == null) {
+            return CoordinateFactory.buildStampCoordinate(null);
+        }
+        SavedStampCoordinateResponse saved = coordinateStoreService.findStampById(stampCoordinateId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "No stamp coordinate found with id: " + stampCoordinateId));
+        return CoordinateFactory.buildStampCoordinate(saved.settings());
+    }
+
+    private dev.ikm.tinkar.coordinate.navigation.NavigationCoordinateRecord resolveNavigationCoordinate(String navigationCoordinateId) {
+        if (navigationCoordinateId == null) {
+            return CoordinateFactory.buildNavigationCoordinate(null);
+        }
+        SavedNavigationCoordinateResponse saved = coordinateStoreService.findNavigationById(navigationCoordinateId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "No navigation coordinate found with id: " + navigationCoordinateId));
+        return CoordinateFactory.buildNavigationCoordinate(saved.settings());
     }
 
     private ViewCalculatorWithCache buildCalculator(String allowedStates, Long positionTime,
