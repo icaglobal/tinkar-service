@@ -69,6 +69,12 @@ message CoordinateOverride {
    * Order matters — earlier entries take precedence. Empty means server default.
    */
   repeated string module_priority_ids = 7;
+
+  /*
+   * Language coordinate preset controlling description type and dialect preference.
+   * Default (US_ENGLISH_REGULAR_NAME = 0) means use server default.
+   */
+  ProtoLanguagePreset language_preset = 8;
 }
 
 // Request message with coordinate support for concept-level queries
@@ -97,6 +103,24 @@ message StampCoordinateSettings {
 // Settings for a saved NavigationCoordinate.
 message NavigationCoordinateSettings {
   ProtoPremiseType premise_type = 1;  // Default: INFERRED
+}
+
+// Language preset — maps to Coordinates.Language.* factory methods
+enum ProtoLanguagePreset {
+  US_ENGLISH_REGULAR_NAME = 0;          // Coordinates.Language.UsEnglishRegularName() (default)
+  US_ENGLISH_FULLY_QUALIFIED_NAME = 1;  // Coordinates.Language.UsEnglishFullyQualifiedName()
+  GB_ENGLISH_PREFERRED_NAME = 2;        // Coordinates.Language.GbEnglishPreferredName()
+  GB_ENGLISH_FULLY_QUALIFIED_NAME = 3;  // Coordinates.Language.GbEnglishFullyQualifiedName()
+  ANY_LANGUAGE_REGULAR_NAME = 4;        // Coordinates.Language.AnyLanguageRegularName()
+  ANY_LANGUAGE_FULLY_QUALIFIED_NAME = 5; // Coordinates.Language.AnyLanguageFullyQualifiedName()
+  ANY_LANGUAGE_DEFINITION = 6;          // Coordinates.Language.AnyLanguageDefinition()
+  SPANISH_PREFERRED_NAME = 7;           // Coordinates.Language.SpanishPreferredName()
+  SPANISH_FULLY_QUALIFIED_NAME = 8;     // Coordinates.Language.SpanishFullyQualifiedName()
+}
+
+// Settings for a saved LanguageCoordinate.
+message LanguageCoordinateSettings {
+  ProtoLanguagePreset language_preset = 1;  // Default: US_ENGLISH_REGULAR_NAME
 }
 
 // Request for saving a StampCoordinate
@@ -139,12 +163,33 @@ message ListNavigationCoordinatesResponse {
   repeated SavedNavigationCoordinateResponse coordinates = 1;
 }
 
+// Request for saving a LanguageCoordinate
+message SaveLanguageCoordinateRequest {
+  LanguageCoordinateSettings settings = 1;
+}
+
+// A saved LanguageCoordinate with its content-derived UUID
+message SavedLanguageCoordinateResponse {
+  string id = 1;                          // Content-derived UUID; pass as language_coordinate_id elsewhere
+  LanguageCoordinateSettings settings = 2;
+  string created_at = 3;                  // ISO-8601 timestamp
+}
+
+// Request for listing all saved LanguageCoordinates (no parameters)
+message ListLanguageCoordinatesRequest {}
+
+// All saved LanguageCoordinates
+message ListLanguageCoordinatesResponse {
+  repeated SavedLanguageCoordinateResponse coordinates = 1;
+}
+
 // Request for getting semantics using previously saved coordinate IDs.
-// Both IDs are optional — omitted values use server defaults.
+// All IDs are optional — omitted values use server defaults.
 message SemanticsWithCoordinateRequest {
   dev.ikm.tinkar.schema.PublicId concept_public_id = 1;
   string stamp_coordinate_id = 2;       // UUID returned by SaveStampCoordinate
   string navigation_coordinate_id = 3;  // UUID returned by SaveNavigationCoordinate
+  string language_coordinate_id = 4;    // UUID returned by SaveLanguageCoordinate
 }
 
 service IkeKnowledgeGraph {
@@ -169,6 +214,12 @@ service IkeKnowledgeGraph {
   // List all saved NavigationCoordinates
   rpc ListNavigationCoordinates(ListNavigationCoordinatesRequest) returns (ListNavigationCoordinatesResponse);
 
-  // Get semantics for a concept using previously saved coordinate IDs (both optional)
+  // Save a LanguageCoordinate to the dataset (idempotent — same settings return same UUID)
+  rpc SaveLanguageCoordinate(SaveLanguageCoordinateRequest) returns (SavedLanguageCoordinateResponse);
+
+  // List all saved LanguageCoordinates
+  rpc ListLanguageCoordinates(ListLanguageCoordinatesRequest) returns (ListLanguageCoordinatesResponse);
+
+  // Get semantics for a concept using previously saved coordinate IDs (all optional)
   rpc GetSemanticsWithCoordinate(SemanticsWithCoordinateRequest) returns (TinkarConceptSemanticsResponse);
 }

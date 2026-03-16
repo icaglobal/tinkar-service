@@ -31,5 +31,8 @@ public record CoordinateOverride(
         List<String> modulePriorityIds,
 
         @Schema(description = "Navigation premise type: STATED or INFERRED. Default: INFERRED.")
-        PremiseType premiseType) {
+        PremiseType premiseType,
+
+        @Schema(description = "Language coordinate preset controlling description type and dialect preference. Default: US_ENGLISH_REGULAR_NAME.")
+        LanguagePreset languagePreset) {
 }

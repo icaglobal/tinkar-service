@@ -16,6 +16,7 @@ import ai.ica.tinkar.dto.DescendantOperationResponse;
 import ai.ica.tinkar.dto.EntityCountSummaryResponse;
 import ai.ica.tinkar.dto.ReasonerResultsResponse;
 import ai.ica.tinkar.dto.SearchSortOption;
+import dev.ikm.tinkar.common.id.IntIdList;
 import dev.ikm.tinkar.common.id.IntIdSet;
 import dev.ikm.tinkar.common.id.IntIds;
 import ai.ica.tinkar.proto.TinkarConceptDescriptions;
@@ -814,10 +815,12 @@ public class TinkarServiceImpl implements TinkarService {
                 return new StampInfo(null, null, null, null, null, null);
             }
 
-            String status = getDescriptionForNid(stampEntity.stateNid(), calc);
-            String author = getDescriptionForNid(stampEntity.authorNid(), calc);
-            String module = getDescriptionForNid(stampEntity.moduleNid(), calc);
-            String path = getDescriptionForNid(stampEntity.pathNid(), calc);
+            // Stamp component NIDs (status/author/module/path) are fixed system concepts
+            // that don't have dialect-specific descriptions — use the default calculator.
+            String status = getDescriptionForNid(stampEntity.stateNid());
+            String author = getDescriptionForNid(stampEntity.authorNid());
+            String module = getDescriptionForNid(stampEntity.moduleNid());
+            String path = getDescriptionForNid(stampEntity.pathNid());
             long time = stampEntity.time();
             String formattedTime = formatTimestamp(time);
 
@@ -831,19 +834,117 @@ public class TinkarServiceImpl implements TinkarService {
     private String getDescriptionForNid(int nid) {
         try {
             var lc = Calculators.View.Default().languageCalculator();
-            return lc.getRegularDescriptionText(nid)
+            String desc = lc.getRegularDescriptionText(nid)
                     .or(() -> lc.getFullyQualifiedNameText(nid))
-                    .orElse("nid: " + nid);
-        } catch (Exception e) {
-            return "nid: " + nid;
-        }
+                    .orElse(null);
+            if (desc != null) return desc;
+        } catch (Exception ignored) {}
+        String raw = getFallbackDescriptionText(nid);
+        return raw.isBlank() ? "nid: " + nid : raw;
     }
 
     private String getDescriptionForNid(int nid, ViewCalculatorWithCache calc) {
-        // Always use the default calculator for name resolution so that
-        // coordinate filters (module, state, time) don't prevent resolving display names.
-        // The filtered calc is only for data queries (latest version, navigation, etc.).
-        return getDescriptionForNid(nid);
+        // First try the provided calculator's language coordinate — this works on a full DB
+        // where patterns have field definitions and returns the dialect-preferred description.
+        try {
+            String desc = calc.languageCalculator().getRegularDescriptionText(nid)
+                    .or(() -> calc.languageCalculator().getFullyQualifiedNameText(nid))
+                    .orElse(null);
+            if (desc != null) return desc;
+        } catch (Exception e) {
+            log.debug("Language calculator failed for nid {}, trying hardcoded fallback: {}", nid, e.getMessage());
+        }
+        // Hardcoded-index fallback: works on a fresh DB where PatternChronology stubs have
+        // no field definitions (so indexForMeaning() fails).  Reads field[1]=text, field[3]=type
+        // and walks dialect-acceptability semantics to honour the calc's language coordinate.
+        String langAware = getLanguageAwareFallbackDescription(nid, calc);
+        if (!langAware.isBlank()) return langAware;
+        // Final resort: first string in any semantic (no language awareness)
+        String raw = getFallbackDescriptionText(nid);
+        return raw.isBlank() ? "nid: " + nid : raw;
+    }
+
+    /**
+     * Language-coordinate-aware description lookup using hardcoded field indices.
+     * Used when {@code LanguageCalculator} fails because PatternChronology stubs lack
+     * field definitions (e.g. fresh DB with only bootstrap changesets loaded).
+     *
+     * <p>Field layout assumed for DESCRIPTION_PATTERN semantics:
+     * <pre>[0] language  [1] text  [2] case significance  [3] description type</pre>
+     *
+     * <p>Dialect acceptability semantics (attached to the description semantic):
+     * <pre>[0] acceptability concept (PREFERRED or ACCEPTABLE)</pre>
+     */
+    private String getLanguageAwareFallbackDescription(int nid, ViewCalculatorWithCache calc) {
+        try {
+            var langCoords = calc.languageCoordinateList();
+            IntIdList dialectPreference = langCoords.isEmpty()
+                    ? IntIds.list.empty()
+                    : langCoords.get(0).dialectPatternPreferenceNidList();
+            int descPatternNid = TinkarTerm.DESCRIPTION_PATTERN.nid();
+            int regularNameNid = TinkarTerm.REGULAR_NAME_DESCRIPTION_TYPE.nid();
+            int fqnNid         = TinkarTerm.FULLY_QUALIFIED_NAME_DESCRIPTION_TYPE.nid();
+            int preferredNid   = TinkarTerm.PREFERRED.nid();
+
+            String fqnCandidate = null;
+            // key = position in dialectPreference list (lower = more preferred), value = text
+            TreeMap<Integer, String> dialectMatches = new TreeMap<>();
+
+            for (int semanticNid : EntityService.get().semanticNidsForComponent(nid)) {
+                Entity<?> entity = EntityService.get().getEntityFast(semanticNid);
+                if (!(entity instanceof SemanticEntity<?> semantic) || semantic.versions().isEmpty()) continue;
+                if (semantic.patternNid() != descPatternNid) continue;
+                var version = (SemanticEntityVersion) semantic.versions().get(0);
+                var fields = version.fieldValues();  // ImmutableList<Object>
+                if (fields.size() < 4) continue;
+
+                if (!(fields.get(1) instanceof String text) || text.isBlank()) continue;
+                Object typeField = fields.get(3);
+                int typeNid;
+                if (typeField instanceof PublicId typePid) {
+                    typeNid = EntityService.get().nidForPublicId(typePid);
+                } else {
+                    continue;
+                }
+
+                if (typeNid == fqnNid) {
+                    fqnCandidate = text;
+                    continue;
+                }
+                if (typeNid != regularNameNid) continue;
+
+                // Check dialect acceptability semantics attached to this description semantic
+                for (int dialectSemNid : EntityService.get().semanticNidsForComponent(semanticNid)) {
+                    Entity<?> dEntity = EntityService.get().getEntityFast(dialectSemNid);
+                    if (!(dEntity instanceof SemanticEntity<?> dSem) || dSem.versions().isEmpty()) continue;
+                    int dialectPatNid = dSem.patternNid();
+                    // manual indexOf since IntIdList has no indexOf method
+                    int priority = -1;
+                    for (int i = 0; i < dialectPreference.size(); i++) {
+                        if (dialectPreference.get(i) == dialectPatNid) { priority = i; break; }
+                    }
+                    if (priority < 0) continue;
+                    var dVer = (SemanticEntityVersion) dSem.versions().get(0);
+                    var dFields = dVer.fieldValues();
+                    if (dFields.isEmpty()) continue;
+                    Object accField = dFields.get(0);
+                    int accNid;
+                    if (accField instanceof PublicId accPid) {
+                        accNid = EntityService.get().nidForPublicId(accPid);
+                    } else {
+                        continue;
+                    }
+                    if (accNid == preferredNid) {
+                        dialectMatches.putIfAbsent(priority, text);
+                    }
+                }
+            }
+            if (!dialectMatches.isEmpty()) return dialectMatches.firstEntry().getValue();
+            if (fqnCandidate != null) return fqnCandidate;
+        } catch (Exception e) {
+            log.debug("Language-aware fallback failed for nid {}: {}", nid, e.getMessage());
+        }
+        return "";
     }
 
     /**
@@ -1162,10 +1263,12 @@ public class TinkarServiceImpl implements TinkarService {
                 return stampBuilder.build();
             }
 
-            String status = getDescriptionForNid(stampEntity.stateNid(), calc);
-            String author = getDescriptionForNid(stampEntity.authorNid(), calc);
-            String module = getDescriptionForNid(stampEntity.moduleNid(), calc);
-            String path = getDescriptionForNid(stampEntity.pathNid(), calc);
+            // Stamp component NIDs (status/author/module/path) are fixed system concepts
+            // that don't have dialect-specific descriptions — use the default calculator.
+            String status = getDescriptionForNid(stampEntity.stateNid());
+            String author = getDescriptionForNid(stampEntity.authorNid());
+            String module = getDescriptionForNid(stampEntity.moduleNid());
+            String path = getDescriptionForNid(stampEntity.pathNid());
             long time = stampEntity.time();
             String formattedTime = formatTimestamp(time);
 
@@ -1251,10 +1354,10 @@ public class TinkarServiceImpl implements TinkarService {
                 return new ConceptChangeHistoryResponse.StampInfo(null, null, null, null, null, null);
             }
 
-            String status = getDescriptionForNid(stampEntity.stateNid(), calc);
-            String author = getDescriptionForNid(stampEntity.authorNid(), calc);
-            String module = getDescriptionForNid(stampEntity.moduleNid(), calc);
-            String path = getDescriptionForNid(stampEntity.pathNid(), calc);
+            String status = getDescriptionForNid(stampEntity.stateNid());
+            String author = getDescriptionForNid(stampEntity.authorNid());
+            String module = getDescriptionForNid(stampEntity.moduleNid());
+            String path = getDescriptionForNid(stampEntity.pathNid());
             long time = stampEntity.time();
             String formattedTime = formatTimestamp(time);
 

@@ -1,5 +1,7 @@
 package ai.ica.tinkar.controller.knowledgegraph;
 
+import ai.ica.tinkar.dto.LanguageCoordinateDto;
+import ai.ica.tinkar.dto.LanguagePreset;
 import ai.ica.tinkar.dto.NavigationCoordinateDto;
 import ai.ica.tinkar.dto.PremiseType;
 import ai.ica.tinkar.dto.StampCoordinateDto;
@@ -7,6 +9,7 @@ import ai.ica.tinkar.proto.*;
 import ai.ica.tinkar.service.CoordinateFactory;
 import ai.ica.tinkar.service.CoordinateStoreService;
 import ai.ica.tinkar.service.TinkarService;
+import dev.ikm.tinkar.coordinate.language.LanguageCoordinateRecord;
 import dev.ikm.tinkar.coordinate.navigation.NavigationCoordinateRecord;
 import dev.ikm.tinkar.coordinate.stamp.StampCoordinateRecord;
 import dev.ikm.tinkar.coordinate.view.calculator.ViewCalculatorWithCache;
@@ -114,6 +117,29 @@ public class KnowledgeGraphGrpcController extends IkeKnowledgeGraphGrpc.IkeKnowl
     }
 
     @Override
+    public void saveLanguageCoordinate(SaveLanguageCoordinateRequest request,
+            StreamObserver<SavedLanguageCoordinateResponse> responseObserver) {
+        log.info("IkeKnowledgeGraph saveLanguageCoordinate request");
+        LanguageCoordinateDto dto = protoLangToDto(
+                request.hasSettings() ? request.getSettings() : null);
+        ai.ica.tinkar.dto.SavedLanguageCoordinateResponse saved = coordinateStoreService.saveLanguage(dto);
+        responseObserver.onNext(toProtoLangResponse(saved));
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void listLanguageCoordinates(ListLanguageCoordinatesRequest request,
+            StreamObserver<ListLanguageCoordinatesResponse> responseObserver) {
+        log.info("IkeKnowledgeGraph listLanguageCoordinates request");
+        List<ai.ica.tinkar.dto.SavedLanguageCoordinateResponse> list = coordinateStoreService.findAllLanguage();
+        ListLanguageCoordinatesResponse response = ListLanguageCoordinatesResponse.newBuilder()
+                .addAllCoordinates(list.stream().map(this::toProtoLangResponse).toList())
+                .build();
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    @Override
     public void getSemanticsWithCoordinate(SemanticsWithCoordinateRequest request,
             StreamObserver<TinkarConceptSemanticsResponse> responseObserver) {
         String conceptId = extractConceptId(request.getConceptPublicId());
@@ -121,10 +147,12 @@ public class KnowledgeGraphGrpcController extends IkeKnowledgeGraphGrpc.IkeKnowl
 
         String stampId = request.getStampCoordinateId().isEmpty() ? null : request.getStampCoordinateId();
         String navId = request.getNavigationCoordinateId().isEmpty() ? null : request.getNavigationCoordinateId();
+        String langId = request.getLanguageCoordinateId().isEmpty() ? null : request.getLanguageCoordinateId();
 
         StampCoordinateRecord stampCoord = resolveStampCoordinate(stampId);
+        LanguageCoordinateRecord langCoord = resolveLanguageCoordinate(langId);
         NavigationCoordinateRecord navCoord = resolveNavigationCoordinate(navId);
-        ViewCalculatorWithCache calc = CoordinateFactory.buildCalculator(stampCoord, navCoord);
+        ViewCalculatorWithCache calc = CoordinateFactory.buildCalculator(stampCoord, langCoord, navCoord);
         responseObserver.onNext(tinkarService.getConceptSemanticsProto(conceptId, calc));
         responseObserver.onCompleted();
     }
@@ -167,6 +195,14 @@ public class KnowledgeGraphGrpcController extends IkeKnowledgeGraphGrpc.IkeKnowl
         return builder.build();
     }
 
+    private SavedStampCoordinateResponse toProtoStampResponse(ai.ica.tinkar.dto.SavedStampCoordinateResponse dto) {
+        return SavedStampCoordinateResponse.newBuilder()
+                .setId(dto.id() != null ? dto.id() : "")
+                .setSettings(dtoStampToProto(dto.settings()))
+                .setCreatedAt(dto.createdAt() != null ? dto.createdAt() : "")
+                .build();
+    }
+
     private NavigationCoordinateSettings dtoNavToProto(NavigationCoordinateDto dto) {
         if (dto == null) return NavigationCoordinateSettings.getDefaultInstance();
         var builder = NavigationCoordinateSettings.newBuilder();
@@ -176,18 +212,53 @@ public class KnowledgeGraphGrpcController extends IkeKnowledgeGraphGrpc.IkeKnowl
         return builder.build();
     }
 
-    private SavedStampCoordinateResponse toProtoStampResponse(ai.ica.tinkar.dto.SavedStampCoordinateResponse dto) {
-        return SavedStampCoordinateResponse.newBuilder()
-                .setId(dto.id() != null ? dto.id() : "")
-                .setSettings(dtoStampToProto(dto.settings()))
-                .setCreatedAt(dto.createdAt() != null ? dto.createdAt() : "")
-                .build();
-    }
-
     private SavedNavigationCoordinateResponse toProtoNavResponse(ai.ica.tinkar.dto.SavedNavigationCoordinateResponse dto) {
         return SavedNavigationCoordinateResponse.newBuilder()
                 .setId(dto.id() != null ? dto.id() : "")
                 .setSettings(dtoNavToProto(dto.settings()))
+                .setCreatedAt(dto.createdAt() != null ? dto.createdAt() : "")
+                .build();
+    }
+
+    private LanguageCoordinateDto protoLangToDto(LanguageCoordinateSettings proto) {
+        if (proto == null) return null;
+        LanguagePreset preset = switch (proto.getLanguagePreset()) {
+            case US_ENGLISH_FULLY_QUALIFIED_NAME -> LanguagePreset.US_ENGLISH_FULLY_QUALIFIED_NAME;
+            case GB_ENGLISH_PREFERRED_NAME -> LanguagePreset.GB_ENGLISH_PREFERRED_NAME;
+            case GB_ENGLISH_FULLY_QUALIFIED_NAME -> LanguagePreset.GB_ENGLISH_FULLY_QUALIFIED_NAME;
+            case ANY_LANGUAGE_REGULAR_NAME -> LanguagePreset.ANY_LANGUAGE_REGULAR_NAME;
+            case ANY_LANGUAGE_FULLY_QUALIFIED_NAME -> LanguagePreset.ANY_LANGUAGE_FULLY_QUALIFIED_NAME;
+            case ANY_LANGUAGE_DEFINITION -> LanguagePreset.ANY_LANGUAGE_DEFINITION;
+            case SPANISH_PREFERRED_NAME -> LanguagePreset.SPANISH_PREFERRED_NAME;
+            case SPANISH_FULLY_QUALIFIED_NAME -> LanguagePreset.SPANISH_FULLY_QUALIFIED_NAME;
+            default -> LanguagePreset.US_ENGLISH_REGULAR_NAME;
+        };
+        return new LanguageCoordinateDto(preset);
+    }
+
+    private LanguageCoordinateSettings dtoLangToProto(LanguageCoordinateDto dto) {
+        if (dto == null) return LanguageCoordinateSettings.getDefaultInstance();
+        var builder = LanguageCoordinateSettings.newBuilder();
+        if (dto.languagePreset() != null) {
+            builder.setLanguagePreset(switch (dto.languagePreset()) {
+                case US_ENGLISH_REGULAR_NAME -> ProtoLanguagePreset.US_ENGLISH_REGULAR_NAME;
+                case US_ENGLISH_FULLY_QUALIFIED_NAME -> ProtoLanguagePreset.US_ENGLISH_FULLY_QUALIFIED_NAME;
+                case GB_ENGLISH_PREFERRED_NAME -> ProtoLanguagePreset.GB_ENGLISH_PREFERRED_NAME;
+                case GB_ENGLISH_FULLY_QUALIFIED_NAME -> ProtoLanguagePreset.GB_ENGLISH_FULLY_QUALIFIED_NAME;
+                case ANY_LANGUAGE_REGULAR_NAME -> ProtoLanguagePreset.ANY_LANGUAGE_REGULAR_NAME;
+                case ANY_LANGUAGE_FULLY_QUALIFIED_NAME -> ProtoLanguagePreset.ANY_LANGUAGE_FULLY_QUALIFIED_NAME;
+                case ANY_LANGUAGE_DEFINITION -> ProtoLanguagePreset.ANY_LANGUAGE_DEFINITION;
+                case SPANISH_PREFERRED_NAME -> ProtoLanguagePreset.SPANISH_PREFERRED_NAME;
+                case SPANISH_FULLY_QUALIFIED_NAME -> ProtoLanguagePreset.SPANISH_FULLY_QUALIFIED_NAME;
+            });
+        }
+        return builder.build();
+    }
+
+    private SavedLanguageCoordinateResponse toProtoLangResponse(ai.ica.tinkar.dto.SavedLanguageCoordinateResponse dto) {
+        return SavedLanguageCoordinateResponse.newBuilder()
+                .setId(dto.id() != null ? dto.id() : "")
+                .setSettings(dtoLangToProto(dto.settings()))
                 .setCreatedAt(dto.createdAt() != null ? dto.createdAt() : "")
                 .build();
     }
@@ -214,6 +285,17 @@ public class KnowledgeGraphGrpcController extends IkeKnowledgeGraphGrpc.IkeKnowl
         return CoordinateFactory.buildNavigationCoordinate(saved.settings());
     }
 
+    private LanguageCoordinateRecord resolveLanguageCoordinate(String languageCoordinateId) {
+        if (languageCoordinateId == null) {
+            return CoordinateFactory.buildLanguageCoordinate(null);
+        }
+        ai.ica.tinkar.dto.SavedLanguageCoordinateResponse saved = coordinateStoreService.findLanguageById(languageCoordinateId)
+                .orElseThrow(() -> Status.NOT_FOUND
+                        .withDescription("No language coordinate found with id: " + languageCoordinateId)
+                        .asRuntimeException());
+        return CoordinateFactory.buildLanguageCoordinate(saved.settings());
+    }
+
     private ViewCalculatorWithCache buildCalculator(ai.ica.tinkar.proto.CoordinateOverride protoOverride) {
         if (protoOverride == null || protoOverride.equals(ai.ica.tinkar.proto.CoordinateOverride.getDefaultInstance())) {
             return CoordinateFactory.defaultCalculator();
@@ -226,8 +308,12 @@ public class KnowledgeGraphGrpcController extends IkeKnowledgeGraphGrpc.IkeKnowl
         List<String> excludedModuleIds = protoOverride.getExcludedModuleIdsList().isEmpty() ? null : protoOverride.getExcludedModuleIdsList();
         List<String> modulePriorityIds = protoOverride.getModulePriorityIdsList().isEmpty() ? null : protoOverride.getModulePriorityIdsList();
         PremiseType premiseType = protoOverride.getPremiseType() == ProtoPremiseType.STATED ? PremiseType.STATED : null;
+        // US_ENGLISH_REGULAR_NAME is proto3 default (0) — treat as "use server default" (null)
+        LanguagePreset languagePreset = protoOverride.getLanguagePreset() == ProtoLanguagePreset.US_ENGLISH_REGULAR_NAME
+                ? null : protoLangToDto(LanguageCoordinateSettings.newBuilder()
+                        .setLanguagePreset(protoOverride.getLanguagePreset()).build()).languagePreset();
         return CoordinateFactory.buildCalculator(new ai.ica.tinkar.dto.CoordinateOverride(
-                allowedStates, positionTime, positionPathId, moduleIds, excludedModuleIds, modulePriorityIds, premiseType));
+                allowedStates, positionTime, positionPathId, moduleIds, excludedModuleIds, modulePriorityIds, premiseType, languagePreset));
     }
 
     private String extractConceptId(PublicId publicId) {

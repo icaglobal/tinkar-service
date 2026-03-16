@@ -5,8 +5,10 @@ import ai.ica.tinkar.dto.ConceptChangeHistoryResponse;
 import ai.ica.tinkar.dto.ConceptSemanticsResponse;
 import ai.ica.tinkar.dto.CoordinateOverride;
 import ai.ica.tinkar.dto.DescendantOperationResponse;
+import ai.ica.tinkar.dto.LanguageCoordinateDto;
 import ai.ica.tinkar.dto.NavigationCoordinateDto;
 import ai.ica.tinkar.dto.PremiseType;
+import ai.ica.tinkar.dto.SavedLanguageCoordinateResponse;
 import ai.ica.tinkar.dto.SavedNavigationCoordinateResponse;
 import ai.ica.tinkar.dto.SavedStampCoordinateResponse;
 import ai.ica.tinkar.dto.StampCoordinateDto;
@@ -80,8 +82,9 @@ public class KnowledgeGraphRestController {
             @Parameter(description = "UUIDs of module concepts to include") @RequestParam(required = false) List<String> modules,
             @Parameter(description = "UUIDs of module concepts to exclude") @RequestParam(required = false) List<String> excludedModules,
             @Parameter(description = "Ordered UUIDs of module concepts for priority") @RequestParam(required = false) List<String> modulePriority,
-            @Parameter(description = "Navigation premise type: STATED or INFERRED") @RequestParam(required = false) PremiseType premiseType) {
-        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, excludedModules, modulePriority, premiseType);
+            @Parameter(description = "Navigation premise type: STATED or INFERRED") @RequestParam(required = false) PremiseType premiseType,
+            @Parameter(description = "Language coordinate preset controlling description type and dialect preference") @RequestParam(required = false) ai.ica.tinkar.dto.LanguagePreset languagePreset) {
+        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, excludedModules, modulePriority, premiseType, languagePreset);
         return ResponseEntity.ok(tinkarService.getConceptSemantics(conceptId, calc));
     }
 
@@ -102,7 +105,7 @@ public class KnowledgeGraphRestController {
             @Parameter(description = "UUIDs of module concepts to exclude") @RequestParam(required = false) List<String> excludedModules,
             @Parameter(description = "Ordered UUIDs of module concepts for priority") @RequestParam(required = false) List<String> modulePriority,
             @Parameter(description = "Navigation premise type: STATED or INFERRED") @RequestParam(required = false) PremiseType premiseType) {
-        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, excludedModules, modulePriority, premiseType);
+        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, excludedModules, modulePriority, premiseType, null);
         return ResponseEntity.ok(tinkarService.getConceptComments(conceptId, calc));
     }
 
@@ -123,7 +126,7 @@ public class KnowledgeGraphRestController {
             @Parameter(description = "UUIDs of module concepts to exclude") @RequestParam(required = false) List<String> excludedModules,
             @Parameter(description = "Ordered UUIDs of module concepts for priority") @RequestParam(required = false) List<String> modulePriority,
             @Parameter(description = "Navigation premise type: STATED or INFERRED") @RequestParam(required = false) PremiseType premiseType) {
-        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, excludedModules, modulePriority, premiseType);
+        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, excludedModules, modulePriority, premiseType, null);
         return ResponseEntity.ok(tinkarService.getChangeHistory(entityId, calc));
     }
 
@@ -144,7 +147,7 @@ public class KnowledgeGraphRestController {
             @Parameter(description = "UUIDs of module concepts to exclude") @RequestParam(required = false) List<String> excludedModules,
             @Parameter(description = "Ordered UUIDs of module concepts for priority") @RequestParam(required = false) List<String> modulePriority,
             @Parameter(description = "Navigation premise type: STATED or INFERRED") @RequestParam(required = false) PremiseType premiseType) {
-        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, excludedModules, modulePriority, premiseType);
+        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, excludedModules, modulePriority, premiseType, null);
         return ResponseEntity.ok(tinkarService.getConceptChangeHistory(conceptId, calc));
     }
 
@@ -165,7 +168,7 @@ public class KnowledgeGraphRestController {
             @Parameter(description = "UUIDs of module concepts to exclude") @RequestParam(required = false) List<String> excludedModules,
             @Parameter(description = "Ordered UUIDs of module concepts for priority") @RequestParam(required = false) List<String> modulePriority,
             @Parameter(description = "Navigation premise type: STATED or INFERRED") @RequestParam(required = false) PremiseType premiseType) {
-        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, excludedModules, modulePriority, premiseType);
+        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, excludedModules, modulePriority, premiseType, null);
         return ResponseEntity.ok(toDto(tinkarService.getChildConcepts(conceptId, calc)));
     }
 
@@ -186,7 +189,7 @@ public class KnowledgeGraphRestController {
             @Parameter(description = "UUIDs of module concepts to exclude") @RequestParam(required = false) List<String> excludedModules,
             @Parameter(description = "Ordered UUIDs of module concepts for priority") @RequestParam(required = false) List<String> modulePriority,
             @Parameter(description = "Navigation premise type: STATED or INFERRED") @RequestParam(required = false) PremiseType premiseType) {
-        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, excludedModules, modulePriority, premiseType);
+        ViewCalculatorWithCache calc = buildCalculator(allowedStates, positionTime, positionPath, modules, excludedModules, modulePriority, premiseType, null);
         return ResponseEntity.ok(toDto(tinkarService.getDescendantConcepts(conceptId, calc)));
     }
 
@@ -304,10 +307,33 @@ public class KnowledgeGraphRestController {
         return ResponseEntity.ok(coordinateStoreService.findAllNavigation());
     }
 
+    @Operation(summary = "Save a language coordinate",
+            description = "Saves a LanguageCoordinate to the dataset and returns its content-derived UUID. " +
+                    "Identical settings always produce the same UUID (idempotent). " +
+                    "The returned ID can be passed to /semantics-by-coordinate as languageCoordinateId.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "201", description = "Language coordinate saved successfully", content = @Content(schema = @Schema(implementation = SavedLanguageCoordinateResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid request body")
+    })
+    @PostMapping("/coordinates/language")
+    public ResponseEntity<SavedLanguageCoordinateResponse> saveLanguageCoordinate(@RequestBody LanguageCoordinateDto dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(coordinateStoreService.saveLanguage(dto));
+    }
+
+    @Operation(summary = "List all saved language coordinates",
+            description = "Returns all LanguageCoordinates that have been saved to the loaded dataset.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Language coordinates retrieved successfully", content = @Content(schema = @Schema(implementation = SavedLanguageCoordinateResponse.class)))
+    })
+    @GetMapping("/coordinates/language")
+    public ResponseEntity<List<SavedLanguageCoordinateResponse>> listLanguageCoordinates() {
+        return ResponseEntity.ok(coordinateStoreService.findAllLanguage());
+    }
+
     @Operation(summary = "Get semantics for a concept using saved coordinates",
             description = "Retrieves all semantics for a concept using previously saved coordinate configurations. " +
-                    "Both stampCoordinateId and navigationCoordinateId are optional; omitted values use server defaults. " +
-                    "Save coordinates via POST /coordinates/stamp and POST /coordinates/navigation.")
+                    "All coordinate IDs are optional; omitted values use server defaults. " +
+                    "Save coordinates via POST /coordinates/stamp, /coordinates/navigation, and /coordinates/language.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Semantics retrieved successfully", content = @Content(schema = @Schema(implementation = ConceptSemanticsResponse.class))),
             @ApiResponse(responseCode = "404", description = "No coordinate found with the given ID"),
@@ -317,10 +343,12 @@ public class KnowledgeGraphRestController {
     public ResponseEntity<ConceptSemanticsResponse> getSemanticsWithCoordinate(
             @Parameter(description = "Concept ID (UUID)", required = true, example = "9fc3832b-a5f8-5504-ba16-7551976841dc") @RequestParam("conceptId") String conceptId,
             @Parameter(description = "Saved stamp coordinate ID (UUID returned by POST /coordinates/stamp)", example = "3f47a12e-bc94-4b8a-a8f2-1234567890ab") @RequestParam(required = false) String stampCoordinateId,
-            @Parameter(description = "Saved navigation coordinate ID (UUID returned by POST /coordinates/navigation)", example = "4a58b23f-cd05-4b9b-b903-2345678901bc") @RequestParam(required = false) String navigationCoordinateId) {
+            @Parameter(description = "Saved navigation coordinate ID (UUID returned by POST /coordinates/navigation)", example = "4a58b23f-cd05-4b9b-b903-2345678901bc") @RequestParam(required = false) String navigationCoordinateId,
+            @Parameter(description = "Saved language coordinate ID (UUID returned by POST /coordinates/language)", example = "5b69c34g-de16-4b0c-c014-3456789012cd") @RequestParam(required = false) String languageCoordinateId) {
         dev.ikm.tinkar.coordinate.stamp.StampCoordinateRecord stampCoord = resolveStampCoordinate(stampCoordinateId);
+        dev.ikm.tinkar.coordinate.language.LanguageCoordinateRecord langCoord = resolveLanguageCoordinate(languageCoordinateId);
         dev.ikm.tinkar.coordinate.navigation.NavigationCoordinateRecord navCoord = resolveNavigationCoordinate(navigationCoordinateId);
-        ViewCalculatorWithCache calc = CoordinateFactory.buildCalculator(stampCoord, navCoord);
+        ViewCalculatorWithCache calc = CoordinateFactory.buildCalculator(stampCoord, langCoord, navCoord);
         return ResponseEntity.ok(tinkarService.getConceptSemantics(conceptId, calc));
     }
 
@@ -344,18 +372,29 @@ public class KnowledgeGraphRestController {
         return CoordinateFactory.buildNavigationCoordinate(saved.settings());
     }
 
+    private dev.ikm.tinkar.coordinate.language.LanguageCoordinateRecord resolveLanguageCoordinate(String languageCoordinateId) {
+        if (languageCoordinateId == null) {
+            return CoordinateFactory.buildLanguageCoordinate(null);
+        }
+        SavedLanguageCoordinateResponse saved = coordinateStoreService.findLanguageById(languageCoordinateId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "No language coordinate found with id: " + languageCoordinateId));
+        return CoordinateFactory.buildLanguageCoordinate(saved.settings());
+    }
+
     private ViewCalculatorWithCache buildCalculator(String allowedStates, Long positionTime,
             String positionPath, List<String> modules, List<String> excludedModules,
-            List<String> modulePriority, PremiseType premiseType) {
+            List<String> modulePriority, PremiseType premiseType,
+            ai.ica.tinkar.dto.LanguagePreset languagePreset) {
         if (allowedStates == null && positionTime == null && positionPath == null
                 && (modules == null || modules.isEmpty())
                 && (excludedModules == null || excludedModules.isEmpty())
                 && (modulePriority == null || modulePriority.isEmpty())
-                && premiseType == null) {
+                && premiseType == null && languagePreset == null) {
             return CoordinateFactory.defaultCalculator();
         }
         CoordinateOverride override = new CoordinateOverride(
-                allowedStates, positionTime, positionPath, modules, excludedModules, modulePriority, premiseType);
+                allowedStates, positionTime, positionPath, modules, excludedModules, modulePriority, premiseType, languagePreset);
         return CoordinateFactory.buildCalculator(override);
     }
 

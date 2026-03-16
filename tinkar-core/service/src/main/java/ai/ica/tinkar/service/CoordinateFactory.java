@@ -1,6 +1,8 @@
 package ai.ica.tinkar.service;
 
 import ai.ica.tinkar.dto.CoordinateOverride;
+import ai.ica.tinkar.dto.LanguageCoordinateDto;
+import ai.ica.tinkar.dto.LanguagePreset;
 import ai.ica.tinkar.dto.NavigationCoordinateDto;
 import ai.ica.tinkar.dto.PremiseType;
 import ai.ica.tinkar.dto.StampCoordinateDto;
@@ -11,6 +13,7 @@ import dev.ikm.tinkar.common.id.PublicId;
 import dev.ikm.tinkar.common.id.PublicIds;
 import dev.ikm.tinkar.coordinate.Calculators;
 import dev.ikm.tinkar.coordinate.Coordinates;
+import dev.ikm.tinkar.coordinate.language.LanguageCoordinateRecord;
 import dev.ikm.tinkar.coordinate.navigation.NavigationCoordinateRecord;
 import dev.ikm.tinkar.coordinate.stamp.StampCoordinateRecord;
 import dev.ikm.tinkar.coordinate.stamp.StampPositionRecord;
@@ -67,18 +70,39 @@ public class CoordinateFactory {
     }
 
     /**
+     * Builds a {@link LanguageCoordinateRecord} from a {@link LanguageCoordinateDto}.
+     * A null dto or null languagePreset defaults to US_ENGLISH_REGULAR_NAME.
+     */
+    public static LanguageCoordinateRecord buildLanguageCoordinate(LanguageCoordinateDto dto) {
+        if (dto == null) {
+            return Coordinates.Language.UsEnglishRegularName();
+        }
+        return resolveLanguage(dto.languagePreset());
+    }
+
+    /**
+     * Builds a calculator from explicit stamp, language, and navigation coordinates.
+     * Logic and edit coordinates use server defaults.
+     */
+    public static ViewCalculatorWithCache buildCalculator(StampCoordinateRecord stampCoordinate,
+                                                          LanguageCoordinateRecord languageCoordinate,
+                                                          NavigationCoordinateRecord navigationCoordinate) {
+        ViewCoordinateRecord viewCoordinate = ViewCoordinateRecord.make(
+                stampCoordinate,
+                languageCoordinate,
+                Coordinates.Logic.ElPlusPlus(),
+                navigationCoordinate,
+                Coordinates.Edit.Default());
+        return ViewCalculatorWithCache.getCalculator(viewCoordinate);
+    }
+
+    /**
      * Builds a calculator from explicit stamp and navigation coordinates.
      * Language, logic, and edit coordinates use server defaults.
      */
     public static ViewCalculatorWithCache buildCalculator(StampCoordinateRecord stampCoordinate,
                                                           NavigationCoordinateRecord navigationCoordinate) {
-        ViewCoordinateRecord viewCoordinate = ViewCoordinateRecord.make(
-                stampCoordinate,
-                Coordinates.Language.UsEnglishRegularName(),
-                Coordinates.Logic.ElPlusPlus(),
-                navigationCoordinate,
-                Coordinates.Edit.Default());
-        return ViewCalculatorWithCache.getCalculator(viewCoordinate);
+        return buildCalculator(stampCoordinate, buildLanguageCoordinate(null), navigationCoordinate);
     }
 
     /**
@@ -96,7 +120,9 @@ public class CoordinateFactory {
                 override.allowedStates(), override.positionTime(), override.positionPathId(),
                 override.moduleIds(), override.excludedModuleIds(), override.modulePriorityIds());
         NavigationCoordinateDto navDto = new NavigationCoordinateDto(override.premiseType());
-        return buildCalculator(buildStampCoordinate(stampDto), buildNavigationCoordinate(navDto));
+        LanguageCoordinateDto langDto = override.languagePreset() != null
+                ? new LanguageCoordinateDto(override.languagePreset()) : null;
+        return buildCalculator(buildStampCoordinate(stampDto), buildLanguageCoordinate(langDto), buildNavigationCoordinate(navDto));
     }
 
     private static StateSet resolveAllowedStates(String allowedStates) {
@@ -172,6 +198,23 @@ public class CoordinateFactory {
         return switch (premiseType) {
             case STATED -> NavigationCoordinateRecord.makeStated();
             case INFERRED -> NavigationCoordinateRecord.makeInferred();
+        };
+    }
+
+    private static LanguageCoordinateRecord resolveLanguage(LanguagePreset preset) {
+        if (preset == null) {
+            return Coordinates.Language.UsEnglishRegularName();
+        }
+        return switch (preset) {
+            case US_ENGLISH_REGULAR_NAME -> Coordinates.Language.UsEnglishRegularName();
+            case US_ENGLISH_FULLY_QUALIFIED_NAME -> Coordinates.Language.UsEnglishFullyQualifiedName();
+            case GB_ENGLISH_PREFERRED_NAME -> Coordinates.Language.GbEnglishPreferredName();
+            case GB_ENGLISH_FULLY_QUALIFIED_NAME -> Coordinates.Language.GbEnglishFullyQualifiedName();
+            case ANY_LANGUAGE_REGULAR_NAME -> Coordinates.Language.AnyLanguageRegularName();
+            case ANY_LANGUAGE_FULLY_QUALIFIED_NAME -> Coordinates.Language.AnyLanguageFullyQualifiedName();
+            case ANY_LANGUAGE_DEFINITION -> Coordinates.Language.AnyLanguageDefinition();
+            case SPANISH_PREFERRED_NAME -> Coordinates.Language.SpanishPreferredName();
+            case SPANISH_FULLY_QUALIFIED_NAME -> Coordinates.Language.SpanishFullyQualifiedName();
         };
     }
 }
