@@ -1,0 +1,22 @@
+type: grpc_request
+model: grpc_request
+id: gr_eARDYvqr48
+createdAt: 2026-03-04T20:09:06.087568
+updatedAt: 2026-03-04T20:27:17.320709
+workspaceId: wk_F4TtaH4LNi
+folderId: fl_S6LmWLxfJ7
+authenticationType: null
+authentication: {}
+description: ''
+message: |-
+  {
+    "settings": {
+      "premiseType": "INFERRED"
+    }
+  }
+metadata: []
+method: SaveNavigationCoordinate
+name: Navigation Save
+service: ai.ica.tinkar.IkeKnowledgeGraph
+sortPriority: 11000.0
+url: localhost:9095

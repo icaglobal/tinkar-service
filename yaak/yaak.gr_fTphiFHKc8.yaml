@@ -1,0 +1,17 @@
+type: grpc_request
+model: grpc_request
+id: gr_fTphiFHKc8
+createdAt: 2026-03-04T20:27:39.537401
+updatedAt: 2026-03-04T20:27:50.557904
+workspaceId: wk_F4TtaH4LNi
+folderId: fl_S6LmWLxfJ7
+authenticationType: null
+authentication: {}
+description: ''
+message: ''
+metadata: []
+method: ListNavigationCoordinates
+name: List Navigation
+service: ai.ica.tinkar.IkeKnowledgeGraph
+sortPriority: 11000.001
+url: localhost:9095

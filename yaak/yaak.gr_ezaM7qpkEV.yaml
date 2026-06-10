@@ -1,0 +1,25 @@
+type: grpc_request
+model: grpc_request
+id: gr_ezaM7qpkEV
+createdAt: 2026-02-27T19:11:36.608481
+updatedAt: 2026-03-04T20:09:07.826803
+workspaceId: wk_F4TtaH4LNi
+folderId: fl_S6LmWLxfJ7
+authenticationType: null
+authentication: {}
+description: ''
+message: |-
+  {
+    "concept_public_id": {
+      "uuids": [
+        "52d02a6d-eaad-57ff-9cd4-82fae97fb044"
+      ]
+    },
+    "stamp_coordinate_id": "accb90de-fb2b-330b-950d-b7c33e997872"
+  }
+metadata: []
+method: GetSemanticsWithCoordinate
+name: Diabetes by Coordinate
+service: ai.ica.tinkar.IkeKnowledgeGraph
+sortPriority: 13000.0
+url: localhost:9095

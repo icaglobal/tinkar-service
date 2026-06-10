@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
 #
 # Test script for gRPC services against the Tinkar gRPC API using grpcurl.
-# Usage: ./test-grpc-scenarios.sh [HOST:PORT]
-#   HOST:PORT defaults to localhost:9095
+# Usage: ./test-grpc-scenarios.sh [GRPC_HOST:PORT] [REST_HOST:PORT]
+#   GRPC_HOST:PORT defaults to localhost:9095
+#   REST_HOST:PORT defaults to localhost:8085
 #
-# Tests all three gRPC services:
+# Tests gRPC and REST services:
 #   - IkeGraphRAG (Tier 1: simple, opinionated API)
-#   - IkeKnowledgeGraph (Tier 2: coordinate-aware knowledge graph)
+#   - IkeKnowledgeGraph (Tier 2: coordinate-aware knowledge graph, gRPC + REST)
 #   - TinkarSearchService (deprecated, backward compatibility)
 #
 
 set -euo pipefail
 
 GRPC_HOST="${1:-localhost:9095}"
+REST_HOST="${2:-localhost:8085}"
 
 # ── Counters ──────────────────────────────────────────────────────────
 PASS=0
@@ -250,7 +252,7 @@ else
   exit 1
 fi
 
-# Verify all three services are registered
+# Verify services are registered
 for svc in "ai.ica.tinkar.IkeGraphRAG" "ai.ica.tinkar.IkeKnowledgeGraph" "ai.ica.tinkar.TinkarSearchService"; do
   TOTAL=$((TOTAL + 1))
   if grpcurl -plaintext "$GRPC_HOST" list 2>/dev/null | grep -q "$svc"; then
@@ -452,8 +454,8 @@ KG_SVC="ai.ica.tinkar.IkeKnowledgeGraph/GetConceptSemantics"
   assert_count_gt0 "semantics (default) returns results"
   DEFAULT_SEM_COUNT=$(json_total_count)
 
-  grpc_call "$KG_SVC" "$(kg_request "$COORD_TEST_ID" '{"allowed_states":"ACTIVE_ONLY"}')"
-  assert_grpc_ok "semantics (allowed_states=ACTIVE_ONLY)"
+  grpc_call "$KG_SVC" "$(kg_request "$COORD_TEST_ID" '{"allowed_states":"ACTIVE"}')"
+  assert_grpc_ok "semantics (allowed_states=ACTIVE)"
   ACTIVE_SEM_COUNT=$(json_total_count)
 
   # ACTIVE count must be less than DEFAULT
@@ -481,8 +483,8 @@ print(sum(1 for s in data.get('semantics', []) if s.get('stamp', {}).get('status
     FAIL=$((FAIL + 1))
   fi
 
-  grpc_call "$KG_SVC" "$(kg_request "$COORD_TEST_ID" '{"allowed_states":"INACTIVE_ONLY"}')"
-  assert_grpc_ok "semantics (allowed_states=INACTIVE_ONLY)"
+  grpc_call "$KG_SVC" "$(kg_request "$COORD_TEST_ID" '{"allowed_states":"INACTIVE"}')"
+  assert_grpc_ok "semantics (allowed_states=INACTIVE)"
   INACTIVE_SEM_COUNT=$(json_total_count)
 
   # ACTIVE + INACTIVE = DEFAULT
@@ -562,7 +564,7 @@ print(sum(1 for s in data.get('semantics', []) if s.get('stamp', {}).get('status
 
   subheader "GetConceptSemantics — combined overrides"
 
-  grpc_call "$KG_SVC" "$(kg_request "$COORD_TEST_ID" '{"allowed_states":"ACTIVE_ONLY","premise_type":"STATED"}')"
+  grpc_call "$KG_SVC" "$(kg_request "$COORD_TEST_ID" '{"allowed_states":"ACTIVE","premise_type":"STATED"}')"
   assert_grpc_ok "semantics (ACTIVE + STATED)"
   COMBINED_COUNT=$(json_total_count)
   assert_count_gt0 "semantics (ACTIVE + STATED) returns results"
@@ -784,6 +786,227 @@ print(len(modules))
   assert_count_gt0 "TinkarSearchService.GetConceptSemantics returns results"
 
 # ══════════════════════════════════════════════════════════════════════
+#  TIER 2: REST — Coordinate Save & Retrieve
+# ══════════════════════════════════════════════════════════════════════
+header "Tier 2 (REST): Coordinate Save & Retrieve"
+
+# "Diabetes insipidus, NOS" — reuses COORD_TEST_ID and DEFAULT_SEM_COUNT from Tier 2 gRPC section above
+
+subheader "Save Stamp Coordinate (ACTIVE filter)"
+STAMP_SAVE_RESPONSE=$(curl -s -X POST "http://$REST_HOST/api/ike/knowledgegraph/coordinates/stamp" \
+  -H "Content-Type: application/json" \
+  -d '{"allowedStates":"ACTIVE"}')
+
+SAVED_STAMP_ID=$(echo "$STAMP_SAVE_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    print(data.get('id', ''))
+except:
+    print('')
+" 2>/dev/null) || SAVED_STAMP_ID=""
+
+TOTAL=$((TOTAL + 1))
+if [ -n "$SAVED_STAMP_ID" ]; then
+  echo -e "  ${GREEN}PASS${NC}  Stamp coordinate saved (id=$SAVED_STAMP_ID)"
+  PASS=$((PASS + 1))
+else
+  echo -e "  ${RED}FAIL${NC}  Stamp coordinate save returned no id (response: $STAMP_SAVE_RESPONSE)"
+  FAIL=$((FAIL + 1))
+fi
+
+subheader "Save Stamp Coordinate — Idempotency"
+STAMP_SAVE_RESPONSE2=$(curl -s -X POST "http://$REST_HOST/api/ike/knowledgegraph/coordinates/stamp" \
+  -H "Content-Type: application/json" \
+  -d '{"allowedStates":"ACTIVE"}')
+
+SAVED_STAMP_ID2=$(echo "$STAMP_SAVE_RESPONSE2" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    print(data.get('id', ''))
+except:
+    print('')
+" 2>/dev/null) || SAVED_STAMP_ID2=""
+
+TOTAL=$((TOTAL + 1))
+if [ -n "$SAVED_STAMP_ID" ] && [ "$SAVED_STAMP_ID" = "$SAVED_STAMP_ID2" ]; then
+  echo -e "  ${GREEN}PASS${NC}  Idempotent save returned same id ($SAVED_STAMP_ID)"
+  PASS=$((PASS + 1))
+else
+  echo -e "  ${RED}FAIL${NC}  Idempotency check failed: first=$SAVED_STAMP_ID second=$SAVED_STAMP_ID2"
+  FAIL=$((FAIL + 1))
+fi
+
+subheader "List Stamp Coordinates"
+STAMP_LIST_RESPONSE=$(curl -s "http://$REST_HOST/api/ike/knowledgegraph/coordinates/stamp")
+
+STAMP_LIST_COUNT=$(echo "$STAMP_LIST_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    print(len(data))
+except:
+    print(0)
+" 2>/dev/null) || STAMP_LIST_COUNT="0"
+
+TOTAL=$((TOTAL + 1))
+if [ "$STAMP_LIST_COUNT" -gt 0 ] 2>/dev/null; then
+  echo -e "  ${GREEN}PASS${NC}  Stamp coordinate list returned $STAMP_LIST_COUNT item(s)"
+  PASS=$((PASS + 1))
+else
+  echo -e "  ${RED}FAIL${NC}  Stamp coordinate list is empty"
+  FAIL=$((FAIL + 1))
+fi
+
+TOTAL=$((TOTAL + 1))
+if [ -n "$SAVED_STAMP_ID" ]; then
+  STAMP_IN_LIST=$(echo "$STAMP_LIST_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    target = '${SAVED_STAMP_ID}'
+    print('true' if any(c.get('id') == target for c in data) else 'false')
+except:
+    print('false')
+" 2>/dev/null) || STAMP_IN_LIST="false"
+
+  if [ "$STAMP_IN_LIST" = "true" ]; then
+    echo -e "  ${GREEN}PASS${NC}  Saved stamp coordinate found in list"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  Saved stamp coordinate (id=$SAVED_STAMP_ID) not found in list"
+    FAIL=$((FAIL + 1))
+  fi
+else
+  echo -e "  ${YELLOW}SKIP${NC}  Skipping list check (no saved stamp coordinate ID)"
+  SKIP=$((SKIP + 1))
+fi
+
+subheader "Save Navigation Coordinate (STATED)"
+NAV_SAVE_RESPONSE=$(curl -s -X POST "http://$REST_HOST/api/ike/knowledgegraph/coordinates/navigation" \
+  -H "Content-Type: application/json" \
+  -d '{"premiseType":"STATED"}')
+
+SAVED_NAV_ID=$(echo "$NAV_SAVE_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    print(data.get('id', ''))
+except:
+    print('')
+" 2>/dev/null) || SAVED_NAV_ID=""
+
+TOTAL=$((TOTAL + 1))
+if [ -n "$SAVED_NAV_ID" ]; then
+  echo -e "  ${GREEN}PASS${NC}  Navigation coordinate saved (id=$SAVED_NAV_ID)"
+  PASS=$((PASS + 1))
+else
+  echo -e "  ${RED}FAIL${NC}  Navigation coordinate save returned no id (response: $NAV_SAVE_RESPONSE)"
+  FAIL=$((FAIL + 1))
+fi
+
+subheader "List Navigation Coordinates"
+NAV_LIST_RESPONSE=$(curl -s "http://$REST_HOST/api/ike/knowledgegraph/coordinates/navigation")
+
+NAV_LIST_COUNT=$(echo "$NAV_LIST_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    print(len(data))
+except:
+    print(0)
+" 2>/dev/null) || NAV_LIST_COUNT="0"
+
+TOTAL=$((TOTAL + 1))
+if [ "$NAV_LIST_COUNT" -gt 0 ] 2>/dev/null; then
+  echo -e "  ${GREEN}PASS${NC}  Navigation coordinate list returned $NAV_LIST_COUNT item(s)"
+  PASS=$((PASS + 1))
+else
+  echo -e "  ${RED}FAIL${NC}  Navigation coordinate list is empty"
+  FAIL=$((FAIL + 1))
+fi
+
+TOTAL=$((TOTAL + 1))
+if [ -n "$SAVED_NAV_ID" ]; then
+  NAV_IN_LIST=$(echo "$NAV_LIST_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    target = '${SAVED_NAV_ID}'
+    print('true' if any(c.get('id') == target for c in data) else 'false')
+except:
+    print('false')
+" 2>/dev/null) || NAV_IN_LIST="false"
+
+  if [ "$NAV_IN_LIST" = "true" ]; then
+    echo -e "  ${GREEN}PASS${NC}  Saved navigation coordinate found in list"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  Saved navigation coordinate (id=$SAVED_NAV_ID) not found in list"
+    FAIL=$((FAIL + 1))
+  fi
+else
+  echo -e "  ${YELLOW}SKIP${NC}  Skipping list check (no saved navigation coordinate ID)"
+  SKIP=$((SKIP + 1))
+fi
+
+subheader "Get Semantics by Stamp Coordinate ID (Diabetes insipidus, NOS)"
+
+if [ -n "$SAVED_STAMP_ID" ]; then
+  SEMANTICS_BY_COORD=$(curl -s \
+    "http://$REST_HOST/api/ike/knowledgegraph/semantics-by-coordinate?conceptId=${COORD_TEST_ID}&stampCoordinateId=${SAVED_STAMP_ID}")
+
+  SBC_COUNT=$(echo "$SEMANTICS_BY_COORD" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    print(len(data.get('semantics', [])))
+except:
+    print(0)
+" 2>/dev/null) || SBC_COUNT="0"
+
+  TOTAL=$((TOTAL + 1))
+  if [ "$SBC_COUNT" -gt 0 ] 2>/dev/null; then
+    echo -e "  ${GREEN}PASS${NC}  semantics-by-coordinate returned $SBC_COUNT semantics"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  semantics-by-coordinate returned 0 semantics"
+    FAIL=$((FAIL + 1))
+  fi
+
+  # ACTIVE-only via saved coordinate should be fewer than the default (all states)
+  TOTAL=$((TOTAL + 1))
+  if [ "$SBC_COUNT" -lt "${DEFAULT_SEM_COUNT:-0}" ] && [ "$SBC_COUNT" -gt 0 ] 2>/dev/null; then
+    echo -e "  ${GREEN}PASS${NC}  Active-only via stamp coordinate ($SBC_COUNT) < default (${DEFAULT_SEM_COUNT}) — filtering works"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  Expected active-only ($SBC_COUNT) < default (${DEFAULT_SEM_COUNT:-?})"
+    FAIL=$((FAIL + 1))
+  fi
+
+  # All returned semantics should have Active status
+  INACTIVE_IN_SBC=$(echo "$SEMANTICS_BY_COORD" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+print(sum(1 for s in data.get('semantics', []) if s.get('stamp', {}).get('status') != 'Active'))
+" 2>/dev/null || echo "-1")
+
+  TOTAL=$((TOTAL + 1))
+  if [ "$INACTIVE_IN_SBC" = "0" ]; then
+    echo -e "  ${GREEN}PASS${NC}  All $SBC_COUNT semantics have Active status"
+    PASS=$((PASS + 1))
+  else
+    echo -e "  ${RED}FAIL${NC}  Found $INACTIVE_IN_SBC non-Active semantics in ACTIVE-filtered response"
+    FAIL=$((FAIL + 1))
+  fi
+else
+  TOTAL=$((TOTAL + 1))
+  echo -e "  ${YELLOW}SKIP${NC}  Skipping semantics-by-coordinate (no saved stamp coordinate ID)"
+  SKIP=$((SKIP + 1))
+fi
+
+# ══════════════════════════════════════════════════════════════════════
 #  RPC METHOD COVERAGE
 # ══════════════════════════════════════════════════════════════════════
 header "RPC Method Coverage"
@@ -832,6 +1055,91 @@ assert_count_gt0 "GetChildConcepts (Tier 2) returns results"
 grpc_call "ai.ica.tinkar.IkeKnowledgeGraph/GetDescendantConcepts" "$(kg_request "$ABSCESS_TEST_ID")"
 assert_grpc_ok "GetDescendantConcepts (Tier 2)"
 assert_count_gt0 "GetDescendantConcepts (Tier 2) returns results"
+
+grpc_call "ai.ica.tinkar.IkeKnowledgeGraph/SaveStampCoordinate" \
+  '{"settings":{"allowed_states":"ACTIVE"}}'
+assert_grpc_ok "SaveStampCoordinate"
+GRPC_STAMP_ID=$(echo "$RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    print(data.get('id', ''))
+except:
+    print('')
+" 2>/dev/null) || GRPC_STAMP_ID=""
+TOTAL=$((TOTAL + 1))
+if [ -n "$GRPC_STAMP_ID" ]; then
+  echo -e "  ${GREEN}PASS${NC}  SaveStampCoordinate returned id ($GRPC_STAMP_ID)"
+  PASS=$((PASS + 1))
+else
+  echo -e "  ${RED}FAIL${NC}  SaveStampCoordinate returned no id"
+  FAIL=$((FAIL + 1))
+fi
+
+grpc_call "ai.ica.tinkar.IkeKnowledgeGraph/ListStampCoordinates" '{}'
+assert_grpc_ok "ListStampCoordinates"
+TOTAL=$((TOTAL + 1))
+STAMP_LIST_GRPC_COUNT=$(echo "$RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    print(len(data.get('coordinates', [])))
+except:
+    print(0)
+" 2>/dev/null) || STAMP_LIST_GRPC_COUNT="0"
+if [ "$STAMP_LIST_GRPC_COUNT" -gt 0 ] 2>/dev/null; then
+  echo -e "  ${GREEN}PASS${NC}  ListStampCoordinates returns results (count=$STAMP_LIST_GRPC_COUNT)"
+  PASS=$((PASS + 1))
+else
+  echo -e "  ${RED}FAIL${NC}  ListStampCoordinates returned empty list"
+  FAIL=$((FAIL + 1))
+fi
+
+grpc_call "ai.ica.tinkar.IkeKnowledgeGraph/SaveNavigationCoordinate" \
+  '{"settings":{"premise_type":"STATED"}}'
+assert_grpc_ok "SaveNavigationCoordinate"
+GRPC_NAV_ID=$(echo "$RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    print(data.get('id', ''))
+except:
+    print('')
+" 2>/dev/null) || GRPC_NAV_ID=""
+TOTAL=$((TOTAL + 1))
+if [ -n "$GRPC_NAV_ID" ]; then
+  echo -e "  ${GREEN}PASS${NC}  SaveNavigationCoordinate returned id ($GRPC_NAV_ID)"
+  PASS=$((PASS + 1))
+else
+  echo -e "  ${RED}FAIL${NC}  SaveNavigationCoordinate returned no id"
+  FAIL=$((FAIL + 1))
+fi
+
+grpc_call "ai.ica.tinkar.IkeKnowledgeGraph/ListNavigationCoordinates" '{}'
+assert_grpc_ok "ListNavigationCoordinates"
+TOTAL=$((TOTAL + 1))
+NAV_LIST_GRPC_COUNT=$(echo "$RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    print(len(data.get('coordinates', [])))
+except:
+    print(0)
+" 2>/dev/null) || NAV_LIST_GRPC_COUNT="0"
+if [ "$NAV_LIST_GRPC_COUNT" -gt 0 ] 2>/dev/null; then
+  echo -e "  ${GREEN}PASS${NC}  ListNavigationCoordinates returns results (count=$NAV_LIST_GRPC_COUNT)"
+  PASS=$((PASS + 1))
+else
+  echo -e "  ${RED}FAIL${NC}  ListNavigationCoordinates returned empty list"
+  FAIL=$((FAIL + 1))
+fi
+
+if [ -n "$GRPC_STAMP_ID" ]; then
+  grpc_call "ai.ica.tinkar.IkeKnowledgeGraph/GetSemanticsWithCoordinate" \
+    "{\"concept_public_id\":{\"uuids\":[\"${COORD_TEST_ID}\"]},\"stamp_coordinate_id\":\"${GRPC_STAMP_ID}\"}"
+  assert_grpc_ok "GetSemanticsWithCoordinate (with stamp coordinate)"
+  assert_count_gt0 "GetSemanticsWithCoordinate returns results"
+fi
 
 subheader "TinkarSearchService (Deprecated)"
 

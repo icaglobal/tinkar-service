@@ -1,0 +1,91 @@
+= Architecture Diagram
+
+[plantuml]
+----
+@startuml
+skinparam defaultTextAlignment center
+skinparam packageStyle Rectangle
+skinparam rectangle {
+  BackgroundColor White
+  BorderColor #888888
+}
+skinparam rectangle<<eliminated>> {
+  BackgroundColor #f8d7da
+  BorderColor #888888
+}
+skinparam package<<new-feature>> {
+  BackgroundColor #d1e7dd
+  BorderColor #28a745
+}
+
+package "tinkar-core" as TC {
+  package "① service module — standalone server" as SVC {
+    rectangle "TinkarSearchGrpcController\ngRPC Server · port 9095" as GS
+    rectangle "TinkarSearchController\nKnowledgeGraphRestController\nREST API · port 8085" as RS
+    rectangle "TinkarServiceImpl\nbusiness logic" as IMPL
+    rectangle "EntityService\n(static singleton)" as ES_S
+    rectangle "RocksProvider · Open Rocks KB\nloaded dataset from defined path" as RKS
+    GS --> IMPL
+    RS --> IMPL
+    IMPL --> ES_S
+    ES_S --> RKS
+  }
+
+  package "② grpc-search-provider module" as CLIB {
+    rectangle "GrpcSearchClient\ngRPC channel + blocking stub" as GCC
+    rectangle "GrpcSearchService\nsearch operations" as GSS
+    GSS --> GCC
+
+    package "GrpcPrimitiveDataService" <<new-feature>> as GPDS {
+      rectangle "nidComponentMap\nNID -> entity bytes  (primary store)" as NMAP
+      rectangle "uuidNidMap + nidToUuidsMap\nbidirectional UUID↔NID index\nenables gRPC fallback by UUID" as UMAP
+      rectangle "notFoundNids\nnegative cache — skip retry\nfor entities absent from server" as NFOUND
+      rectangle "inFlightFetches\nNID -> CompletableFuture\nthundering-herd guard" as INFLIGHT
+    }
+    GCC --> GPDS
+  }
+
+  package "③ entity-provider module" as EPMOD {
+    rectangle "EntityProvider\ngetEntityFast(nid)\n-> ENTITY_CACHE.get(nid, loader)\nloader: PrimitiveData.get().getBytes(nid)" as EP
+    rectangle "Caffeine ENTITY_CACHE\nentity object cache" as ECACHE
+    EP --> ECACHE
+  }
+}
+
+package "Komet" as KOMET {
+  package "On user search" as SEARCH {
+    rectangle "NextGenSearchController\n.doSearch()" as NSC
+    rectangle "Search results list\nNID=0, UUIDs + display text only" as RLIST
+  }
+
+  package "On result row render" as CELL {
+    rectangle "SearchCellTopComponent\n.updateItem()" as SCTC
+    rectangle "SortResultConceptEntryController\n.openGrpcConcept() — virtual thread" as SRCC
+  }
+
+  package "On concept selection" as CLICK {
+    rectangle "Concept Detail Window\nGeneral · Axioms · Hierarchy · History tabs" as CW
+    rectangle "Calculators\nNavigationCalculatorWithCache\nStampCalculator" as CALC
+    CW --> CALC
+  }
+}
+
+package "tinkar-ui" as WEB {
+  rectangle "React/TypeScript\nSearch + detail view" as REACT
+}
+
+NSC --> GSS : searchGrouped() / searchFlat()
+NSC --> RLIST : results displayed
+RLIST --> SCTC
+SCTC --> SRCC : setData(null)\nsetGrpcPublicIds(uuids)
+SRCC --> GSS : ① loadConceptWithSemantics(publicIds)
+SRCC --> CW : ③ MakeConceptWindowEvent\n(Platform.runLater, after ② completes)
+CALC --> EP : EntityService.get().*\ngetEntityFast · getStampFast\nforEachSemanticNid · etc.
+EP --> GPDS : PrimitiveData.get().getBytes(nid)
+GSS --> NMAP : ② LoadConceptEntityGraph\n(concept + semantics + patterns + stamps)\ntransformer calls merge() directly\nbypasses EntityService to avoid\nCaffeine re-entrance
+GCC ..> GS : ConceptSearchWithSort\n(on user search)
+GCC --> GS : ② LoadConceptEntityGraph\n(on concept selection)
+GPDS ..> GS : ⑤ GetEntityByPublicId\non cache miss for global metadata\n(navigation pattern, status concepts…)\nguarded by inFlightFetches\nnegative-cached in notFoundNids
+REACT ..> RS : HTTP REST
+@enduml
+----
