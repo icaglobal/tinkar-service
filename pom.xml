@@ -22,9 +22,8 @@
         <grpc-spring-boot-starter.version>3.1.0.RELEASE</grpc-spring-boot-starter.version>
         <springdoc-openapi.version>2.6.0</springdoc-openapi.version>
 
-        <!-- Tinkar Core dependency version (must be installed to local Maven repo first;
-             run: cd tinkar-core && ./mvnw install -DskipTests) -->
-        <tinkar-core.version>1.127.1</tinkar-core.version>
+        <!-- Tinkar Core dependency version -->
+        <tinkar-core.version>1.127.2-SNAPSHOT</tinkar-core.version>
         <!-- tinkar-schema must include Tinkar.proto in the jar (added in 1.43.0).
              Run: cd tinkar-schema && ./mvnw install -DskipTests -->
         <tinkar-schema.version>1.43.0-SNAPSHOT</tinkar-schema.version>
