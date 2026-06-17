@@ -27,7 +27,7 @@ Build and run tests:
 
 Manually compile proto files:
 ```bash
-./mvnw protobuf:compile protobuf:compile-custom compile
+./mvnw protobuf:generate compile
 ```
 
 Run the application:

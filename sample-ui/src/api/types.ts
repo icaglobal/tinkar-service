@@ -121,12 +121,45 @@ export type ConceptSemanticsResponse = {
   errorMessage: string | null;
 };
 
+// Field-level change within a version
+export type FieldChange = {
+  fieldName: string;
+  fieldIndex: number;
+  priorValue: string | null;
+  currentValue: string;
+  changeType: 'ADDED' | 'MODIFIED' | 'REMOVED';
+};
+
+// STAMP info attached to a historical version
+export type StampHistoryInfo = {
+  status: string;
+  author: string;
+  module: string;
+  path: string;
+  time: number;
+  formattedTime: string;
+};
+
+// One version snapshot with its STAMP and field deltas
+export type VersionChange = {
+  stamp: StampHistoryInfo;
+  fieldChanges: FieldChange[];
+};
+
+// Change history for a single semantic across its versions
+export type SemanticChangeHistory = {
+  semanticId: string;
+  patternName: string;
+  summary: string;
+  versionChanges: VersionChange[];
+};
+
 // Response for /change-history endpoint
 export type ChangeHistoryResponse = {
   entityId: string;
   entityDescription: string | null;
   totalVersions: number;
-  versionChanges: unknown[];
+  versionChanges: VersionChange[];
   success: boolean;
   errorMessage: string | null;
 };
@@ -135,10 +168,11 @@ export type ChangeHistoryResponse = {
 export type ConceptChangeHistoryResponse = {
   conceptId: string;
   conceptDescription: string | null;
-  conceptChanges: unknown[];
-  semanticChanges: unknown[];
+  conceptChanges: VersionChange[];
+  semanticChanges: SemanticChangeHistory[];
   totalChanges: number;
   success: boolean;
+  errorMessage?: string | null;
 };
 
 // Optional coordinate overrides for Tier 2 (Knowledge Graph) queries

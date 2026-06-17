@@ -1,3 +1,15 @@
+# Sample Tinkar Web App
+
+## Prerequisite
+Node 24
+
+## Running
+```
+npm install
+npm run dev
+```
+The URL will be displayed to the console
+
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
