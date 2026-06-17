@@ -191,8 +191,7 @@
     </dependencies>
 
     <profiles>
-        <!-- os.detected.classifier replaces kr.motd.maven:os-maven-plugin (incompatible with Maven 4).
-             The protobuf-maven-plugin uses this property to select the right protoc/grpc-java binary. -->
+        <!-- Selects the platform-specific RocksDB native jar classifier. -->
         <profile>
             <id>macos-arm</id>
             <activation>
@@ -202,7 +201,6 @@
                 </os>
             </activation>
             <properties>
-                <os.detected.classifier>osx-aarch_64</os.detected.classifier>
                 <rocksdbjni.classifier>osx</rocksdbjni.classifier>
             </properties>
         </profile>
@@ -215,7 +213,6 @@
                 </os>
             </activation>
             <properties>
-                <os.detected.classifier>osx-x86_64</os.detected.classifier>
                 <rocksdbjni.classifier>osx</rocksdbjni.classifier>
             </properties>
         </profile>
@@ -228,7 +225,6 @@
                 </os>
             </activation>
             <properties>
-                <os.detected.classifier>linux-x86_64</os.detected.classifier>
                 <rocksdbjni.classifier>linux64</rocksdbjni.classifier>
             </properties>
         </profile>
@@ -261,22 +257,29 @@
                 </executions>
             </plugin>
             <plugin>
-                <groupId>org.xolstice.maven.plugins</groupId>
+                <groupId>io.github.ascopes</groupId>
                 <artifactId>protobuf-maven-plugin</artifactId>
-                <version>0.6.1</version>
+                <version>3.2.0</version>
                 <configuration>
-                    <protocArtifact>com.google.protobuf:protoc:4.30.2:exe:${os.detected.classifier}</protocArtifact>
-                    <pluginId>grpc-java</pluginId>
-                    <pluginArtifact>io.grpc:protoc-gen-grpc-java:${grpc.version}:exe:${os.detected.classifier}</pluginArtifact>
-                    <additionalProtoPathElements>
-                        <additionalProtoPathElement>${project.build.directory}/proto-deps</additionalProtoPathElement>
-                    </additionalProtoPathElements>
+                    <protocVersion>4.30.2</protocVersion>
+                    <sourceDirectories>
+                        <sourceDirectory>${project.basedir}/src/main/proto</sourceDirectory>
+                    </sourceDirectories>
+                    <importPaths>
+                        <importPath>${project.build.directory}/proto-deps</importPath>
+                    </importPaths>
+                    <binaryMavenPlugins>
+                        <binaryMavenPlugin>
+                            <groupId>io.grpc</groupId>
+                            <artifactId>protoc-gen-grpc-java</artifactId>
+                            <version>${grpc.version}</version>
+                        </binaryMavenPlugin>
+                    </binaryMavenPlugins>
                 </configuration>
                 <executions>
                     <execution>
                         <goals>
-                            <goal>compile</goal>
-                            <goal>compile-custom</goal>
+                            <goal>generate</goal>
                         </goals>
                     </execution>
                 </executions>
