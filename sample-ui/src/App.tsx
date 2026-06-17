@@ -5,11 +5,12 @@ import { ResultsTable } from './components/ResultsTable';
 import { SortedResultsTable } from './components/SortedResultsTable';
 import { SemanticsView } from './components/SemanticsView';
 import { TestRunner } from './components/TestRunner/TestRunner';
+import { CoordinatesPanel } from './components/CoordinatesPanel';
 import { conceptSearchWithSort, getDescendants, getSemantics, removeDescendant, createAndAddDescendant } from './api/tinkarApi';
 import type { SearchSortOption } from './api/types';
 import './App.css';
 
-type ViewMode = 'search' | 'descendants' | 'semantics' | 'test-runner';
+type ViewMode = 'search' | 'descendants' | 'semantics' | 'test-runner' | 'coordinates';
 
 const SORT_OPTIONS: { value: SearchSortOption; label: string }[] = [
   { value: 'TOP_COMPONENT', label: 'Top Component (by score)' },
@@ -134,17 +135,25 @@ function App() {
       <header className="app-header">
         <div className="header-row">
           <h1>Tinkar Search</h1>
-          <button
-            className={`test-runner-button ${viewMode === 'test-runner' ? 'active' : ''}`}
-            onClick={() => setViewMode('test-runner')}
-          >
-            Run DeX Tests
-          </button>
+          <div className="header-buttons">
+            <button
+              className={`coordinates-button ${viewMode === 'coordinates' ? 'active' : ''}`}
+              onClick={() => setViewMode('coordinates')}
+            >
+              Coordinates
+            </button>
+            <button
+              className={`test-runner-button ${viewMode === 'test-runner' ? 'active' : ''}`}
+              onClick={() => setViewMode('test-runner')}
+            >
+              Run DeX Tests
+            </button>
+          </div>
         </div>
       </header>
 
       <main className="app-main">
-        {viewMode !== 'test-runner' && (
+        {viewMode !== 'test-runner' && viewMode !== 'coordinates' && (
           <SearchBox onSearch={handleSearch} isLoading={isLoading} />
         )}
 
@@ -251,6 +260,7 @@ function App() {
               <SemanticsView
                 data={semanticsData}
                 conceptName={selectedConceptName}
+                conceptId={selectedConceptId!}
                 onBack={handleBack}
               />
             )}
@@ -283,6 +293,10 @@ function App() {
 
         {viewMode === 'test-runner' && (
           <TestRunner onBack={handleBack} />
+        )}
+
+        {viewMode === 'coordinates' && (
+          <CoordinatesPanel onBack={handleBack} />
         )}
       </main>
     </div>
