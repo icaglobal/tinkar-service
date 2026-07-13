@@ -228,6 +228,17 @@
                 <rocksdbjni.classifier>linux64</rocksdbjni.classifier>
             </properties>
         </profile>
+        <profile>
+            <id>windows</id>
+            <activation>
+                <os>
+                    <family>windows</family>
+                </os>
+            </activation>
+            <properties>
+                <rocksdbjni.classifier>win64</rocksdbjni.classifier>
+            </properties>
+        </profile>
     </profiles>
 
     <build>
@@ -235,6 +246,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.8.1</version>
                 <executions>
                     <execution>
                         <id>unpack-tinkar-schema-proto</id>
