@@ -52,6 +52,37 @@ grpcurl -d '{"query":"chronic lung","max_results":200}' \
 
 ---
 
+## Docker
+
+### Dataset Placement
+
+Dataset is mounted into the container at runtime. Unzip your dataset into `data/<folder-name>` in this repo (e.g. `data/gudid`), matching the
+`data.path.parent`/`data.path.child` values in `application.properties`.
+
+### Build
+
+```bash
+docker build -t tinkar-service .
+```
+
+To force a fresh build (no cache):
+```bash
+docker build --no-cache -t tinkar-service .
+```
+
+### Run
+
+Mount your local dataset folder to `/app/data/<folder-name>` inside the container, matching the
+`data.path.child` the app is configured to use (`gudid` by default):
+
+```bash
+docker run -p 8085:8085 -p 9095:9095 \
+  -v "$(pwd)/data/gudid:/app/data/gudid" \
+  tinkar-service
+```
+
+---
+
 ## Architecture
 
 See [docs/architecture.adoc](docs/architecture.adoc) for the full PlantUML component diagram.
