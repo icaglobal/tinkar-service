@@ -18,6 +18,9 @@ A standalone Spring Boot service that exposes a gRPC and REST API for Tinkar.
 2. In `application.properties`, set the dataset folder name and the controller to use.
    Defaults are `data.controller.name=Open Rocks KB` and folder `data/gudid`.
 
+Alternatively, see [Dataset Auto-Provisioning](#dataset-auto-provisioning) below to have a
+dataset downloaded automatically from Nexus instead of manually unzipping one.
+
 ### Building and Running
 
 Build and run tests:
@@ -86,6 +89,76 @@ docker run -p 8085:8085 -p 9095:9095 \
 ## Architecture
 
 See [docs/architecture.adoc](docs/architecture.adoc) for the full PlantUML component diagram.
+
+---
+
+## Dataset Auto-Provisioning
+
+Instead of manually unzipping a dataset into `data/<name>`, pass `dataset.name` and the
+service will download the that dataset from the repository on
+startup, skipping the download if `data/<name>` already exists locally.
+
+```bash
+./mvnw spring-boot:run -Dspring-boot.run.arguments="--dataset.name=gudid"
+```
+
+Note: pass this as a Spring Boot *program* argument (`-Dspring-boot.run.arguments=...`), not
+a JVM argument — `jvmArguments` is hardcoded in `pom.xml` for `--enable-preview` and won't
+pick up a command-line override.
+
+### Credentials
+
+The dataset repository requires authentication. Either export these in your shell:
+
+```bash
+export NEXUS_USERNAME=your-username
+export NEXUS_PASSWORD=your-password
+```
+
+or copy `.env.example` to `.env` (gitignored) and fill in the same two values there instead —
+`spring.config.import` picks it up automatically, no export needed:
+
+```bash
+cp .env.example .env
+# edit .env with your credentials
+```
+
+### Configuration
+
+In `application.properties`:
+
+```properties
+dataset.nexus.baseUrl=https://nexus.tinkar.org/repository/<repo-id>/
+```
+
+### Adding a new dataset
+
+`dataset.name` is resolved against a small registry in `application.properties` mapping a
+short name to the Nexus artifact and the controller that the dataset
+uses (`data.controller.name` follows `dataset.name` automatically, the same way
+`data.path.child` does, so you don't have to flip it by hand per dataset):
+
+```properties
+dataset.registry.gudid.groupId=dev.ikm.tinkar.data
+dataset.registry.gudid.artifactId=SOLOR-GUDID
+dataset.registry.gudid.classifier=reasoned-sa
+dataset.registry.gudid.controllerName=Open SpinedArrayStore
+
+# Smaller dataset for fast local iteration
+dataset.registry.gudidsubset.groupId=dev.ikm.tinkar.data
+dataset.registry.gudidsubset.artifactId=gudid
+dataset.registry.gudidsubset.version=20250804-subset+1.0.0-SNAPSHOT
+dataset.registry.gudidsubset.classifier=reasoned-sa
+dataset.registry.gudidsubset.controllerName=Open SpinedArrayStore
+```
+
+`version` is optional — omitted, the latest base version is auto-resolved (by comparing
+`<version>` strings in the artifact's `maven-metadata.xml`, which only reflects true recency
+when versions are date-prefixed). Pin `version` explicitly when an artifactId publishes
+multiple variants under the same date (as `gudidsubset`'s `gudid` artifactId does, with `ALL`
+and `subset` builds sharing a date but not an ordering).
+
+Add a new `dataset.registry.<name>.*` block to register another dataset.
 
 ---
 
