@@ -21,6 +21,9 @@
         <grpc.version>1.78.0</grpc.version>
         <grpc-spring-boot-starter.version>3.1.0.RELEASE</grpc-spring-boot-starter.version>
         <springdoc-openapi.version>2.6.0</springdoc-openapi.version>
+        <!-- Must match the lucene-core version resolved transitively via tinkar-core's
+             search-provider module -->
+        <lucene.version>10.4.0</lucene.version>
 
         <!-- Tinkar Core dependency version -->
         <tinkar-core.version>1.127.2-SNAPSHOT</tinkar-core.version>
@@ -139,6 +142,16 @@
             <groupId>dev.ikm.tinkar</groupId>
             <artifactId>data-spinedarray-provider</artifactId>
             <version>${tinkar-core.version}</version>
+        </dependency>
+
+        <!-- Lets SearchProvider open Lucene indexes written by the previous major Lucene
+             version (e.g. codec Lucene912) instead of deleting and rebuilding them at
+             startup. Must stay in step with ${lucene.version}. -->
+        <dependency>
+            <groupId>org.apache.lucene</groupId>
+            <artifactId>lucene-backward-codecs</artifactId>
+            <version>${lucene.version}</version>
+            <scope>runtime</scope>
         </dependency>
 
         <!-- Rocks KB Engine (install rocks-kb to local Maven repo first) -->
