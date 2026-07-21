@@ -1184,6 +1184,42 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     @Override
+    public TinkarSemanticInfoResponse getSemanticInfo(String semanticId) {
+        return getSemanticInfo(semanticId, null);
+    }
+
+    @Override
+    public TinkarSemanticInfoResponse getSemanticInfo(String semanticId, ViewCalculatorWithCache viewCalculator) {
+        ViewCalculatorWithCache calc = resolveCalculator(viewCalculator);
+        try {
+            PublicId publicId = primitive.getPublicId(semanticId);
+            int semanticNid = EntityService.get().nidForPublicId(publicId);
+
+            TinkarConceptSemanticInfo semanticInfo = buildSemanticInfoProto(semanticNid, calc);
+            if (semanticInfo == null) {
+                return TinkarSemanticInfoResponse.newBuilder()
+                        .setSuccess(false)
+                        .setErrorMessage("No semantic found (or no version visible under the current "
+                                + "coordinates) for: " + semanticId)
+                        .setCreatedAt(System.currentTimeMillis())
+                        .build();
+            }
+            return TinkarSemanticInfoResponse.newBuilder()
+                    .setSuccess(true)
+                    .setSemantic(semanticInfo)
+                    .setCreatedAt(System.currentTimeMillis())
+                    .build();
+        } catch (Exception e) {
+            log.error("Failed to get semantic info for {}: {}", semanticId, e.getMessage(), e);
+            return TinkarSemanticInfoResponse.newBuilder()
+                    .setSuccess(false)
+                    .setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName())
+                    .setCreatedAt(System.currentTimeMillis())
+                    .build();
+        }
+    }
+
+    @Override
     public TinkarConceptEntityResponse loadConceptEntityGraph(String conceptId) {
         try {
             EntityToTinkarSchemaTransformer transformer = EntityToTinkarSchemaTransformer.getInstance();
