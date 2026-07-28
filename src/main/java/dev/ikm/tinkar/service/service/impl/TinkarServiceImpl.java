@@ -1492,6 +1492,28 @@ public class TinkarServiceImpl implements TinkarService {
         }
     }
 
+    /**
+     * The field names of a pattern, in field-definition order — each the description of the
+     * field definition's <em>meaning</em> concept (e.g. "Limit of detection"). Returns an empty
+     * list when the pattern has no version visible under the current coordinates, so callers
+     * fall back to positional naming rather than failing.
+     */
+    private List<String> fieldNamesForPattern(int patternNid, ViewCalculatorWithCache calc) {
+        try {
+            Latest<PatternEntityVersion> latestPattern = calc.stampCalculator().latest(patternNid);
+            if (!latestPattern.isPresent()) {
+                return List.of();
+            }
+            List<String> names = new ArrayList<>();
+            latestPattern.get().fieldDefinitions()
+                    .forEach(fd -> names.add(getDescriptionForNid(fd.meaningNid(), calc)));
+            return names;
+        } catch (Exception e) {
+            log.debug("Could not resolve field names for pattern {}: {}", patternNid, e.getMessage());
+            return List.of();
+        }
+    }
+
     private TinkarConceptSemanticInfo buildSemanticInfoProto(int semanticNid, ViewCalculatorWithCache calc) {
         try {
             Entity<?> entity = EntityService.get().getEntityFast(semanticNid);
@@ -1527,6 +1549,19 @@ public class TinkarServiceImpl implements TinkarService {
                                     .setStringValue(value)
                                     .build());
                 }
+            }
+
+            // Build named field values. Indexed (not filtered like `fields` above) so each value
+            // stays aligned with the pattern's field definition that names it.
+            List<String> fieldNames = fieldNamesForPattern(semanticEntity.patternNid(), calc);
+            for (int i = 0; i < fieldValues.length; i++) {
+                String value = formatFieldValue(fieldValues[i], calc);
+                String name = i < fieldNames.size() ? fieldNames.get(i) : "field " + i;
+                semanticBuilder.addNamedFields(
+                        TinkarSemanticField.newBuilder()
+                                .setName(name)
+                                .setValue(value == null ? "" : value)
+                                .build());
             }
 
             // Build stamp info

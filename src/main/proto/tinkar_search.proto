@@ -254,6 +254,21 @@ message TinkarStampInfo {
   string formatted_time = 6;
 }
 
+// A single semantic field paired with its human-readable name. The name is the field's
+// meaning concept, taken from the governing pattern's field definitions — so a consumer
+// can say "Limit of detection = 3000.0" instead of inferring meaning from field order.
+message TinkarSemanticField {
+  /*
+   * The field's meaning (e.g. "Limit of detection"), or "field N" when the pattern's
+   * field definitions cannot be resolved.
+   */
+  string name = 1;
+  /*
+   * The formatted field value.
+   */
+  string value = 2;
+}
+
 // Information about a single semantic attached to a concept
 message TinkarConceptSemanticInfo {
   /*
@@ -276,6 +291,12 @@ message TinkarConceptSemanticInfo {
    * Human-readable STAMP information.
    */
   TinkarStampInfo stamp = 5;
+  /*
+   * The same field values as `fields`, each paired with its field name from the pattern's
+   * field definitions, and index-aligned with the pattern's field order. Prefer this over
+   * `fields` (which is positional only and retained for backward compatibility).
+   */
+  repeated TinkarSemanticField named_fields = 6;
 }
 
 // Response for concept semantics
