@@ -34,6 +34,7 @@ import dev.ikm.tinkar.service.proto.TinkarSearchQueryResponse;
 import dev.ikm.tinkar.service.service.TinkarPrimitive;
 import dev.ikm.tinkar.service.service.TinkarService;
 import dev.ikm.tinkar.entity.graph.DiTreeEntity;
+import dev.ikm.tinkar.terms.EntityFacade;
 import dev.ikm.tinkar.terms.EntityProxy;
 import dev.ikm.tinkar.terms.TinkarTerm;
 import lombok.extern.slf4j.Slf4j;
@@ -1074,7 +1075,97 @@ public class TinkarServiceImpl implements TinkarService {
                 return publicId.toString();
             }
         }
+        if (value instanceof IntIdCollection idCollection) {
+            return formatIdCollection(idCollection);
+        }
         return value.toString();
+    }
+
+    /**
+     * Renders an {@link IntIdCollection} field value as {@code name [SCTID x]} (or
+     * {@code [UUID x]}) per element.
+     *
+     * <p>Deliberately not {@code IntIdCollection.toString()}, which emits
+     * {@code Detected <134985573>} — a bare, unlabelled <strong>nid</strong>. A nid is a
+     * machine-local, ephemeral identifier, and an unlabelled number next to a clinical concept
+     * name reads like a terminology code: a consumer (including an LLM) will mistake it for an
+     * SCTID and publish it as one. Every identifier emitted here is explicitly typed.
+     *
+     * @param idCollection the field value
+     * @return the rendered collection, e.g. {@code "[Detected [SCTID 260373001], …]"}
+     */
+    private String formatIdCollection(IntIdCollection idCollection) {
+        StringBuilder sb = new StringBuilder("[");
+        int[] nids = idCollection.toArray();
+        for (int i = 0; i < nids.length; i++) {
+            if (i > 0) {
+                sb.append(", ");
+            }
+            sb.append(getDescriptionForNid(nids[i]))
+                    .append(' ')
+                    .append(typedIdentifierFor(nids[i]));
+        }
+        return sb.append(']').toString();
+    }
+
+    /**
+     * An explicitly-typed identifier for a component: its SNOMED SCTID when it carries one,
+     * else its public UUID, else its nid labelled as such. Never a bare number.
+     *
+     * @param nid the component nid
+     * @return the bracketed identifier, e.g. {@code "[SCTID 260373001]"}
+     */
+    private String typedIdentifierFor(int nid) {
+        String sctid = sctidForNid(nid);
+        if (sctid != null) {
+            return "[SCTID " + sctid + "]";
+        }
+        try {
+            UUID[] uuids = PrimitiveData.publicId(nid).asUuidArray();
+            if (uuids.length > 0) {
+                return "[UUID " + uuids[0] + "]";
+            }
+        } catch (Exception ignored) {
+            // fall through to the nid, explicitly labelled
+        }
+        return "[nid " + nid + "]";
+    }
+
+    /**
+     * The SNOMED CT identifier of a component, read from its
+     * {@link TinkarTerm#IDENTIFIER_PATTERN} semantic whose source is {@link TinkarTerm#SCTID}.
+     *
+     * @param nid the component nid
+     * @return the SCTID, or {@code null} when the component carries none
+     */
+    private String sctidForNid(int nid) {
+        try {
+            int[] identifierSemantics = EntityService.get()
+                    .semanticNidsForComponentOfPattern(nid, TinkarTerm.IDENTIFIER_PATTERN.nid());
+            for (int identifierSemanticNid : identifierSemantics) {
+                Entity<?> entity = EntityService.get().getEntityFast(identifierSemanticNid);
+                if (!(entity instanceof SemanticEntity<?> semantic) || semantic.versions().isEmpty()) {
+                    continue;
+                }
+                SemanticEntityVersion version =
+                        (SemanticEntityVersion) semantic.versions().get(semantic.versions().size() - 1);
+                String identifierValue = null;
+                int sourceNid = 0;
+                for (Object field : version.fieldValues()) {
+                    if (field instanceof String stringField) {
+                        identifierValue = stringField;
+                    } else if (field instanceof EntityFacade facade) {
+                        sourceNid = facade.nid();
+                    }
+                }
+                if (identifierValue != null && sourceNid == TinkarTerm.SCTID.nid()) {
+                    return identifierValue;
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Could not resolve SCTID for nid {}: {}", nid, e.getMessage());
+        }
+        return null;
     }
 
     private String formatFieldValue(Object value, ViewCalculatorWithCache calc) {
@@ -1472,6 +1563,26 @@ public class TinkarServiceImpl implements TinkarService {
             // Include version stamps so the client can render status/author/module/path
             Set<Integer> stampNids = new HashSet<>();
             entity.versions().forEach(v -> stampNids.add(v.stampNid()));
+
+            // Include the entity's DESCRIPTION_PATTERN semantics so the client can resolve a
+            // display NAME for it. Without them the client gets the entity but
+            // getFullyQualifiedNameText() stays empty, so any UI that renders a name falls back
+            // to the raw nid — a machine-local integer shown where a concept name belongs.
+            // This is the on-demand counterpart to loadConceptEntityGraph, which already ships
+            // descriptions; callers of this cheaper single-entity path need a name just as much.
+            int[] descriptionNids = EntityService.get()
+                    .semanticNidsForComponentOfPattern(nid, TinkarTerm.DESCRIPTION_PATTERN.nid());
+            for (int descriptionNid : descriptionNids) {
+                if (includedNids.contains(descriptionNid)) {
+                    continue;
+                }
+                Entity<?> descriptionEntity = EntityService.get().getEntityFast(descriptionNid);
+                if (descriptionEntity != null) {
+                    addToResponse(builder, transformer, includedNids, descriptionEntity);
+                    descriptionEntity.versions().forEach(v -> stampNids.add(v.stampNid()));
+                }
+            }
+
             for (int stampNid : stampNids) {
                 StampEntity<?> stampEntity = EntityService.get().getStampFast(stampNid);
                 if (stampEntity != null) {
