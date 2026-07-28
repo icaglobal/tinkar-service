@@ -847,7 +847,50 @@ public class TinkarServiceImpl implements TinkarService {
         if (!langAware.isBlank()) return langAware;
         // Final resort: first string in any semantic (no language awareness)
         String raw = getFallbackDescriptionText(nid);
-        return raw.isBlank() ? "nid: " + nid : raw;
+        if (!raw.isBlank()) {
+            return raw;
+        }
+        // A semantic instance has no description semantics of its own, so every lookup above
+        // fails for one. Describe what it IS rather than returning a bare nid.
+        String semanticDescription = describeSemanticEntity(nid, calc);
+        return semanticDescription != null ? semanticDescription : "nid: " + nid;
+    }
+
+    /**
+     * A readable description for a semantic instance, rendered as
+     * {@code "<Pattern> semantic on <referenced component>"} — e.g.
+     * {@code "Test Performed Pattern semantic on BioFire® Respiratory Panel 2.1"}. Used as the
+     * last-resort description so a caller that passed a semantic's public ID sees what the
+     * entity is instead of {@code "nid: -1476395007"}.
+     *
+     * <p>When the referenced component is itself a semantic, only its pattern name is used —
+     * deliberately not a recursive description — so a semantic-on-semantic chain (or a cycle)
+     * cannot recurse without bound.
+     *
+     * @param nid  the entity nid
+     * @param calc the view calculator used to resolve pattern and component names
+     * @return the description, or {@code null} when {@code nid} is not a semantic
+     */
+    private String describeSemanticEntity(int nid, ViewCalculatorWithCache calc) {
+        try {
+            Entity<?> entity = EntityService.get().getEntityFast(nid);
+            if (!(entity instanceof SemanticEntity<?> semantic)) {
+                return null;
+            }
+            String patternName = getDescriptionForNid(semantic.patternNid(), calc);
+            int referencedNid = semantic.referencedComponentNid();
+            Entity<?> referenced = EntityService.get().getEntityFast(referencedNid);
+            String referencedName;
+            if (referenced instanceof SemanticEntity<?> referencedSemantic) {
+                referencedName = getDescriptionForNid(referencedSemantic.patternNid(), calc) + " semantic";
+            } else {
+                referencedName = getDescriptionForNid(referencedNid, calc);
+            }
+            return patternName + " semantic on " + referencedName;
+        } catch (Exception e) {
+            log.debug("Could not describe semantic for nid {}: {}", nid, e.getMessage());
+            return null;
+        }
     }
 
     /**
