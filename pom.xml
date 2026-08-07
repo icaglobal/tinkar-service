@@ -1,8 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
+<project xmlns="http://maven.apache.org/POM/4.1.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
+         xsi:schemaLocation="http://maven.apache.org/POM/4.1.0 https://maven.apache.org/xsd/maven-4.1.0.xsd">
+    <modelVersion>4.1.0</modelVersion>
+
+    <parent>
+        <groupId>network.ike.platform</groupId>
+        <artifactId>ike-parent</artifactId>
+        <version>148</version>
+        <relativePath/>
+    </parent>
 
     <groupId>dev.ikm.tinkar</groupId>
     <artifactId>tinkar-service</artifactId>
@@ -10,6 +17,16 @@
     <packaging>jar</packaging>
     <name>Tinkar Service</name>
     <description>Standalone Spring Boot / gRPC service exposing Tinkar knowledge-graph APIs</description>
+
+    <!-- Inheriting ike-parent outside the ike-platform reactor otherwise
+         picks up an in-reactor site URL template; ike-issues#383 fails the
+         build when a consumer leaves it inherited. -->
+    <distributionManagement>
+        <site>
+            <id>ike-site</id>
+            <url>https://ike.network/${project.artifactId}/</url>
+        </site>
+    </distributionManagement>
 
     <properties>
         <java.version>25</java.version>
