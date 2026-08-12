@@ -48,3 +48,5 @@ data/
 
 # Local credentials (see .env.example)
 .env
+# IKE build standards unpacked at validate (build artifacts, never committed)
+.claude
