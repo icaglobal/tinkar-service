@@ -34,6 +34,7 @@ import dev.ikm.tinkar.service.proto.TinkarSearchQueryResponse;
 import dev.ikm.tinkar.service.service.TinkarPrimitive;
 import dev.ikm.tinkar.service.service.TinkarService;
 import dev.ikm.tinkar.entity.graph.DiTreeEntity;
+import dev.ikm.tinkar.terms.EntityFacade;
 import dev.ikm.tinkar.terms.EntityProxy;
 import dev.ikm.tinkar.terms.TinkarTerm;
 import lombok.extern.slf4j.Slf4j;
@@ -847,7 +848,50 @@ public class TinkarServiceImpl implements TinkarService {
         if (!langAware.isBlank()) return langAware;
         // Final resort: first string in any semantic (no language awareness)
         String raw = getFallbackDescriptionText(nid);
-        return raw.isBlank() ? "nid: " + nid : raw;
+        if (!raw.isBlank()) {
+            return raw;
+        }
+        // A semantic instance has no description semantics of its own, so every lookup above
+        // fails for one. Describe what it IS rather than returning a bare nid.
+        String semanticDescription = describeSemanticEntity(nid, calc);
+        return semanticDescription != null ? semanticDescription : "nid: " + nid;
+    }
+
+    /**
+     * A readable description for a semantic instance, rendered as
+     * {@code "<Pattern> semantic on <referenced component>"} — e.g.
+     * {@code "Test Performed Pattern semantic on BioFire® Respiratory Panel 2.1"}. Used as the
+     * last-resort description so a caller that passed a semantic's public ID sees what the
+     * entity is instead of {@code "nid: -1476395007"}.
+     *
+     * <p>When the referenced component is itself a semantic, only its pattern name is used —
+     * deliberately not a recursive description — so a semantic-on-semantic chain (or a cycle)
+     * cannot recurse without bound.
+     *
+     * @param nid  the entity nid
+     * @param calc the view calculator used to resolve pattern and component names
+     * @return the description, or {@code null} when {@code nid} is not a semantic
+     */
+    private String describeSemanticEntity(int nid, ViewCalculatorWithCache calc) {
+        try {
+            Entity<?> entity = EntityService.get().getEntityFast(nid);
+            if (!(entity instanceof SemanticEntity<?> semantic)) {
+                return null;
+            }
+            String patternName = getDescriptionForNid(semantic.patternNid(), calc);
+            int referencedNid = semantic.referencedComponentNid();
+            Entity<?> referenced = EntityService.get().getEntityFast(referencedNid);
+            String referencedName;
+            if (referenced instanceof SemanticEntity<?> referencedSemantic) {
+                referencedName = getDescriptionForNid(referencedSemantic.patternNid(), calc) + " semantic";
+            } else {
+                referencedName = getDescriptionForNid(referencedNid, calc);
+            }
+            return patternName + " semantic on " + referencedName;
+        } catch (Exception e) {
+            log.debug("Could not describe semantic for nid {}: {}", nid, e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -1031,7 +1075,97 @@ public class TinkarServiceImpl implements TinkarService {
                 return publicId.toString();
             }
         }
+        if (value instanceof IntIdCollection idCollection) {
+            return formatIdCollection(idCollection);
+        }
         return value.toString();
+    }
+
+    /**
+     * Renders an {@link IntIdCollection} field value as {@code name [SCTID x]} (or
+     * {@code [UUID x]}) per element.
+     *
+     * <p>Deliberately not {@code IntIdCollection.toString()}, which emits
+     * {@code Detected <134985573>} — a bare, unlabelled <strong>nid</strong>. A nid is a
+     * machine-local, ephemeral identifier, and an unlabelled number next to a clinical concept
+     * name reads like a terminology code: a consumer (including an LLM) will mistake it for an
+     * SCTID and publish it as one. Every identifier emitted here is explicitly typed.
+     *
+     * @param idCollection the field value
+     * @return the rendered collection, e.g. {@code "[Detected [SCTID 260373001], …]"}
+     */
+    private String formatIdCollection(IntIdCollection idCollection) {
+        StringBuilder sb = new StringBuilder("[");
+        int[] nids = idCollection.toArray();
+        for (int i = 0; i < nids.length; i++) {
+            if (i > 0) {
+                sb.append(", ");
+            }
+            sb.append(getDescriptionForNid(nids[i]))
+                    .append(' ')
+                    .append(typedIdentifierFor(nids[i]));
+        }
+        return sb.append(']').toString();
+    }
+
+    /**
+     * An explicitly-typed identifier for a component: its SNOMED SCTID when it carries one,
+     * else its public UUID, else its nid labelled as such. Never a bare number.
+     *
+     * @param nid the component nid
+     * @return the bracketed identifier, e.g. {@code "[SCTID 260373001]"}
+     */
+    private String typedIdentifierFor(int nid) {
+        String sctid = sctidForNid(nid);
+        if (sctid != null) {
+            return "[SCTID " + sctid + "]";
+        }
+        try {
+            UUID[] uuids = PrimitiveData.publicId(nid).asUuidArray();
+            if (uuids.length > 0) {
+                return "[UUID " + uuids[0] + "]";
+            }
+        } catch (Exception ignored) {
+            // fall through to the nid, explicitly labelled
+        }
+        return "[nid " + nid + "]";
+    }
+
+    /**
+     * The SNOMED CT identifier of a component, read from its
+     * {@link TinkarTerm#IDENTIFIER_PATTERN} semantic whose source is {@link TinkarTerm#SCTID}.
+     *
+     * @param nid the component nid
+     * @return the SCTID, or {@code null} when the component carries none
+     */
+    private String sctidForNid(int nid) {
+        try {
+            int[] identifierSemantics = EntityService.get()
+                    .semanticNidsForComponentOfPattern(nid, TinkarTerm.IDENTIFIER_PATTERN.nid());
+            for (int identifierSemanticNid : identifierSemantics) {
+                Entity<?> entity = EntityService.get().getEntityFast(identifierSemanticNid);
+                if (!(entity instanceof SemanticEntity<?> semantic) || semantic.versions().isEmpty()) {
+                    continue;
+                }
+                SemanticEntityVersion version =
+                        (SemanticEntityVersion) semantic.versions().get(semantic.versions().size() - 1);
+                String identifierValue = null;
+                int sourceNid = 0;
+                for (Object field : version.fieldValues()) {
+                    if (field instanceof String stringField) {
+                        identifierValue = stringField;
+                    } else if (field instanceof EntityFacade facade) {
+                        sourceNid = facade.nid();
+                    }
+                }
+                if (identifierValue != null && sourceNid == TinkarTerm.SCTID.nid()) {
+                    return identifierValue;
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Could not resolve SCTID for nid {}: {}", nid, e.getMessage());
+        }
+        return null;
     }
 
     private String formatFieldValue(Object value, ViewCalculatorWithCache calc) {
@@ -1178,6 +1312,42 @@ public class TinkarServiceImpl implements TinkarService {
                     .setSuccess(false)
                     .setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName())
                     .setTotalCount(0)
+                    .setCreatedAt(System.currentTimeMillis())
+                    .build();
+        }
+    }
+
+    @Override
+    public TinkarSemanticInfoResponse getSemanticInfo(String semanticId) {
+        return getSemanticInfo(semanticId, null);
+    }
+
+    @Override
+    public TinkarSemanticInfoResponse getSemanticInfo(String semanticId, ViewCalculatorWithCache viewCalculator) {
+        ViewCalculatorWithCache calc = resolveCalculator(viewCalculator);
+        try {
+            PublicId publicId = primitive.getPublicId(semanticId);
+            int semanticNid = EntityService.get().nidForPublicId(publicId);
+
+            TinkarConceptSemanticInfo semanticInfo = buildSemanticInfoProto(semanticNid, calc);
+            if (semanticInfo == null) {
+                return TinkarSemanticInfoResponse.newBuilder()
+                        .setSuccess(false)
+                        .setErrorMessage("No semantic found (or no version visible under the current "
+                                + "coordinates) for: " + semanticId)
+                        .setCreatedAt(System.currentTimeMillis())
+                        .build();
+            }
+            return TinkarSemanticInfoResponse.newBuilder()
+                    .setSuccess(true)
+                    .setSemantic(semanticInfo)
+                    .setCreatedAt(System.currentTimeMillis())
+                    .build();
+        } catch (Exception e) {
+            log.error("Failed to get semantic info for {}: {}", semanticId, e.getMessage(), e);
+            return TinkarSemanticInfoResponse.newBuilder()
+                    .setSuccess(false)
+                    .setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName())
                     .setCreatedAt(System.currentTimeMillis())
                     .build();
         }
@@ -1393,6 +1563,26 @@ public class TinkarServiceImpl implements TinkarService {
             // Include version stamps so the client can render status/author/module/path
             Set<Integer> stampNids = new HashSet<>();
             entity.versions().forEach(v -> stampNids.add(v.stampNid()));
+
+            // Include the entity's DESCRIPTION_PATTERN semantics so the client can resolve a
+            // display NAME for it. Without them the client gets the entity but
+            // getFullyQualifiedNameText() stays empty, so any UI that renders a name falls back
+            // to the raw nid — a machine-local integer shown where a concept name belongs.
+            // This is the on-demand counterpart to loadConceptEntityGraph, which already ships
+            // descriptions; callers of this cheaper single-entity path need a name just as much.
+            int[] descriptionNids = EntityService.get()
+                    .semanticNidsForComponentOfPattern(nid, TinkarTerm.DESCRIPTION_PATTERN.nid());
+            for (int descriptionNid : descriptionNids) {
+                if (includedNids.contains(descriptionNid)) {
+                    continue;
+                }
+                Entity<?> descriptionEntity = EntityService.get().getEntityFast(descriptionNid);
+                if (descriptionEntity != null) {
+                    addToResponse(builder, transformer, includedNids, descriptionEntity);
+                    descriptionEntity.versions().forEach(v -> stampNids.add(v.stampNid()));
+                }
+            }
+
             for (int stampNid : stampNids) {
                 StampEntity<?> stampEntity = EntityService.get().getStampFast(stampNid);
                 if (stampEntity != null) {
@@ -1456,6 +1646,28 @@ public class TinkarServiceImpl implements TinkarService {
         }
     }
 
+    /**
+     * The field names of a pattern, in field-definition order — each the description of the
+     * field definition's <em>meaning</em> concept (e.g. "Limit of detection"). Returns an empty
+     * list when the pattern has no version visible under the current coordinates, so callers
+     * fall back to positional naming rather than failing.
+     */
+    private List<String> fieldNamesForPattern(int patternNid, ViewCalculatorWithCache calc) {
+        try {
+            Latest<PatternEntityVersion> latestPattern = calc.stampCalculator().latest(patternNid);
+            if (!latestPattern.isPresent()) {
+                return List.of();
+            }
+            List<String> names = new ArrayList<>();
+            latestPattern.get().fieldDefinitions()
+                    .forEach(fd -> names.add(getDescriptionForNid(fd.meaningNid(), calc)));
+            return names;
+        } catch (Exception e) {
+            log.debug("Could not resolve field names for pattern {}: {}", patternNid, e.getMessage());
+            return List.of();
+        }
+    }
+
     private TinkarConceptSemanticInfo buildSemanticInfoProto(int semanticNid, ViewCalculatorWithCache calc) {
         try {
             Entity<?> entity = EntityService.get().getEntityFast(semanticNid);
@@ -1491,6 +1703,19 @@ public class TinkarServiceImpl implements TinkarService {
                                     .setStringValue(value)
                                     .build());
                 }
+            }
+
+            // Build named field values. Indexed (not filtered like `fields` above) so each value
+            // stays aligned with the pattern's field definition that names it.
+            List<String> fieldNames = fieldNamesForPattern(semanticEntity.patternNid(), calc);
+            for (int i = 0; i < fieldValues.length; i++) {
+                String value = formatFieldValue(fieldValues[i], calc);
+                String name = i < fieldNames.size() ? fieldNames.get(i) : "field " + i;
+                semanticBuilder.addNamedFields(
+                        TinkarSemanticField.newBuilder()
+                                .setName(name)
+                                .setValue(value == null ? "" : value)
+                                .build());
             }
 
             // Build stamp info

@@ -1,0 +1,2 @@
+org.springframework.boot.EnvironmentPostProcessor=\
+dev.ikm.tinkar.service.provisioning.DatasetProvisioningEnvironmentPostProcessor

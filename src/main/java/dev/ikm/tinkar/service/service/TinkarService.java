@@ -10,6 +10,7 @@ import dev.ikm.tinkar.service.dto.ReasonerResultsResponse;
 import dev.ikm.tinkar.service.dto.SearchSortOption;
 import dev.ikm.tinkar.service.proto.TinkarConceptSemanticsResponse;
 import dev.ikm.tinkar.service.proto.TinkarSearchQueryResponse;
+import dev.ikm.tinkar.service.proto.TinkarSemanticInfoResponse;
 import dev.ikm.tinkar.coordinate.view.calculator.ViewCalculatorWithCache;
 
 import java.io.File;
@@ -142,6 +143,23 @@ public interface TinkarService {
      * @return TinkarConceptSemanticsResponse proto containing all semantics for this concept
      */
     TinkarConceptSemanticsResponse inspectConceptProto(String conceptId, ViewCalculatorWithCache viewCalculator);
+
+    /**
+     * Gets the field values, pattern name, and STAMP info for a single semantic instance, fetched
+     * by the semantic's own public ID (not the concept it's attached to).
+     * @param semanticId The public ID (UUID) of the semantic instance
+     * @return TinkarSemanticInfoResponse proto containing the semantic's field-level detail
+     */
+    TinkarSemanticInfoResponse getSemanticInfo(String semanticId);
+
+    /**
+     * Gets the field values, pattern name, and STAMP info for a single semantic instance using the
+     * specified view calculator.
+     * @param semanticId The public ID (UUID) of the semantic instance
+     * @param viewCalculator The view calculator with coordinate overrides
+     * @return TinkarSemanticInfoResponse proto containing the semantic's field-level detail
+     */
+    TinkarSemanticInfoResponse getSemanticInfo(String semanticId, ViewCalculatorWithCache viewCalculator);
 
     /**
      * Returns the full entity graph for a concept as a list of serialized {@code TinkarMsg} objects.

@@ -254,6 +254,21 @@ message TinkarStampInfo {
   string formatted_time = 6;
 }
 
+// A single semantic field paired with its human-readable name. The name is the field's
+// meaning concept, taken from the governing pattern's field definitions — so a consumer
+// can say "Limit of detection = 3000.0" instead of inferring meaning from field order.
+message TinkarSemanticField {
+  /*
+   * The field's meaning (e.g. "Limit of detection"), or "field N" when the pattern's
+   * field definitions cannot be resolved.
+   */
+  string name = 1;
+  /*
+   * The formatted field value.
+   */
+  string value = 2;
+}
+
 // Information about a single semantic attached to a concept
 message TinkarConceptSemanticInfo {
   /*
@@ -276,6 +291,12 @@ message TinkarConceptSemanticInfo {
    * Human-readable STAMP information.
    */
   TinkarStampInfo stamp = 5;
+  /*
+   * The same field values as `fields`, each paired with its field name from the pattern's
+   * field definitions, and index-aligned with the pattern's field order. Prefer this over
+   * `fields` (which is positional only and retained for backward compatibility).
+   */
+  repeated TinkarSemanticField named_fields = 6;
 }
 
 // Response for concept semantics
@@ -306,6 +327,25 @@ message TinkarConceptSemanticsResponse {
   string error_message = 6;
   // Unix epoch milliseconds when this response was generated.
   int64 created_at = 7;
+}
+
+// Response for a single semantic's field-level detail, fetched by the semantic's own
+// public ID (not the concept it's attached to).
+message TinkarSemanticInfoResponse {
+  /*
+   * Whether the query was successful.
+   */
+  bool success = 1;
+  /*
+   * Error message if the query failed, or no semantic was found for the given public ID.
+   */
+  string error_message = 2;
+  /*
+   * The semantic's field values, pattern name, and STAMP info.
+   */
+  TinkarConceptSemanticInfo semantic = 3;
+  // Unix epoch milliseconds when this response was generated.
+  int64 created_at = 4;
 }
 
 // Response containing the full entity graph (concept + semantics + stamps + patterns)
@@ -342,6 +382,13 @@ service TinkarSearchService {
   rpc GetAllowedResultConceptsFromResultConformance(TinkarConceptIdRequest) returns (TinkarSearchQueryResponse);
   rpc RebuildSearchIndex(TinkarRebuildIndexRequest) returns (TinkarRebuildIndexResponse);
   rpc InspectConcept(TinkarConceptIdRequest) returns (TinkarConceptSemanticsResponse);
+  /*
+   * Returns the field values, pattern name, and STAMP info for a single semantic instance,
+   * fetched by the semantic's own public ID (e.g. a Test Performed record, a comment, an
+   * identifier) — as opposed to InspectConcept, which lists all semantics attached to a
+   * concept but cannot be addressed by a semantic's own ID.
+   */
+  rpc GetSemanticInfo(TinkarConceptIdRequest) returns (TinkarSemanticInfoResponse);
   /*
    * Returns the full entity graph for a concept (concept + semantics + patterns + stamps)
    * so the caller can load them into a local entity store and display the concept detail view.
