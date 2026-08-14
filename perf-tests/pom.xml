@@ -6,7 +6,7 @@
 
     <groupId>dev.ikm.tinkar</groupId>
     <artifactId>service-perf-tests</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>1.0.0</version>
     <name>Tinkar Service Performance Tests</name>
 
     <properties>
