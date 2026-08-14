@@ -50,3 +50,9 @@ data/
 .env
 # IKE build standards unpacked at validate (build artifacts, never committed)
 .claude
+# IKE goal report receipts (generated, never committed)
+ikeꞱ*.md
+# BEGIN ike-managed
+# IKE local state (never committed)
+.ike/vcs-state
+# END ike-managed
