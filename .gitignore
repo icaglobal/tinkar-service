@@ -50,3 +50,5 @@ data/
 .env
 # IKE build standards unpacked at validate (build artifacts, never committed)
 .claude
+# IKE goal report receipts (generated, never committed)
+ike꞉*.md
