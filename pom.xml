@@ -33,10 +33,9 @@
         <lucene.version>10.4.0</lucene.version>
 
         <!-- Tinkar Core dependency version -->
-        <tinkar-core.version>1.127.2-SNAPSHOT</tinkar-core.version>
-        <!-- tinkar-schema must include Tinkar.proto in the jar (added in 1.43.0).
-             Run: cd tinkar-schema && ./mvnw install -DskipTests -->
-        <tinkar-schema.version>1.43.0-SNAPSHOT</tinkar-schema.version>
+        <tinkar-core.version>1.127.2</tinkar-core.version>
+        <!-- tinkar-schema must include Tinkar.proto in the jar (added in 1.43.0). -->
+        <tinkar-schema.version>1.43.0</tinkar-schema.version>
     </properties>
 
     <repositories>
@@ -171,11 +170,11 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Rocks KB Engine (install rocks-kb to local Maven repo first) -->
+        <!-- Rocks KB Engine -->
         <dependency>
             <groupId>dev.ikm.ike</groupId>
             <artifactId>rocks-kb-engine</artifactId>
-            <version>0.1.0-SNAPSHOT</version>
+            <version>0.1.0</version>
         </dependency>
         <!-- RocksDB platform-specific natives; classifier set by OS profile below -->
         <dependency>
