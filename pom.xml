@@ -7,7 +7,7 @@
     <parent>
         <groupId>network.ike.platform</groupId>
         <artifactId>ike-parent</artifactId>
-        <version>166</version>
+        <version>168</version>
         <relativePath/>
     </parent>
 
@@ -177,7 +177,7 @@
             <!-- rocks-kb sub-module: the release plan tracks member root
                  artifacts only, so this literal never retargets — keep it
                  at the version rocks-kb releases this cycle (1022 gate). -->
-            <version>0.1.2</version>
+            <version>0.1.2-SNAPSHOT</version>
         </dependency>
         <!-- RocksDB platform-specific natives; classifier set by OS profile below -->
         <dependency>
