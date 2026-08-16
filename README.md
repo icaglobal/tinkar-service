@@ -371,3 +371,12 @@ To refresh results after editing code, run `./mvnw compile spotbugs:spotbugs` an
 
 `spotbugs-exclude.xml` suppresses findings in Protobuf-generated classes under `dev.ikm.tinkar.service.proto.*`.
 Add additional suppressions there for acceptable false positives rather than using `@SuppressFBWarnings` inline, so the rationale is centrally documented.
+<!-- BEGIN ike-managed: developer-setup -->
+
+## Developer Setup
+
+New to IKE development? The
+[Developer Environment guide](https://ike.network/ike-tooling/ike-build-standards/developer-environment.html)
+covers IDE configuration, JDK 25 setup, and the tooling conventions
+every IKE workspace expects — start there before your first build.
+<!-- END ike-managed: developer-setup -->

@@ -1,0 +1,25 @@
+schema: 1
+standards-version: '248'
+applied: '2026-08-16T05:18:34.535458Z'
+files:
+  .gitignore:
+    tier: tracked-block
+    template-sha: sha256:cb6eae8aac140a128fcc5bdc2949919776c7c84249b91eb085a3b7e62b9efaac
+    applied-sha: sha256:cb6eae8aac140a128fcc5bdc2949919776c7c84249b91eb085a3b7e62b9efaac
+  .mvn/wrapper/maven-wrapper.properties:
+    tier: tool-owned
+    template-sha: sha256:d4b609014fb33a0e487722bad2ec6d7aad9850250880b2e253d7a71657563256
+  CLAUDE.md:
+    tier: tracked-block
+    template-sha: sha256:af5ca4cbb4bbb0abcf0386f029a0b21e5e342dc48d50101aa5c620ee28834d50
+    applied-sha: sha256:af5ca4cbb4bbb0abcf0386f029a0b21e5e342dc48d50101aa5c620ee28834d50
+  README.md:
+    tier: tracked-block
+    template-sha: sha256:f35d94f35bcaf8ccad88be7b48866bf54a44b9fc2f40eaeab0b466b67b1a0ff7
+    applied-sha: sha256:f35d94f35bcaf8ccad88be7b48866bf54a44b9fc2f40eaeab0b466b67b1a0ff7
+  mvnw:
+    tier: tool-owned
+    template-sha: sha256:cae96cef89ebea3531221f4ae17c23cf8edf67d00eae8306d4186ae1bbed4d02
+  mvnw.cmd:
+    tier: tool-owned
+    template-sha: sha256:46eedb8419bd14fe70d5bb2916d7b6f51806e51b39d5b76a42610384ca929c1c
