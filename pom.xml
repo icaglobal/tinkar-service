@@ -13,7 +13,7 @@
 
     <groupId>dev.ikm.tinkar</groupId>
     <artifactId>tinkar-service</artifactId>
-    <version>1.0.4</version>
+    <version>1.0.5-SNAPSHOT</version>
     <packaging>jar</packaging>
     <name>Tinkar Service</name>
     <description>Standalone Spring Boot / gRPC service exposing Tinkar knowledge-graph APIs</description>
