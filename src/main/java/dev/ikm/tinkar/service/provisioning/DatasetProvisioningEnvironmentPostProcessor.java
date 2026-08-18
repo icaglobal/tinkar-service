@@ -1,7 +1,9 @@
 package dev.ikm.tinkar.service.provisioning;
 
+import org.apache.commons.logging.Log;
 import org.springframework.boot.EnvironmentPostProcessor;
 import org.springframework.boot.SpringApplication;
+import org.springframework.boot.logging.DeferredLogFactory;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.MapPropertySource;
 
@@ -21,12 +23,23 @@ import java.util.Map;
  * Runs before the ApplicationContext is created, so the dataset is guaranteed to exist on
  * disk by the time any bean tries to open it.
  * <p>
- * Uses {@code System.out}/{@code System.err} rather than a logger: this runs before Spring
- * Boot's logging system is initialized, so regular log calls are silently dropped.
+ * Logs through a {@link DeferredLogFactory}-supplied {@link Log}. This runs before Spring
+ * Boot's logging system is initialized, so an ordinary logger obtained at class-init time
+ * would have its output silently dropped; a deferred log buffers instead and replays once
+ * logging is ready. Spring Boot injects the factory into the constructor for
+ * {@code EnvironmentPostProcessor}s registered via {@code META-INF/spring.factories}.
  */
 public class DatasetProvisioningEnvironmentPostProcessor implements EnvironmentPostProcessor {
 
-    private static final String PREFIX = "[dataset-provisioning] ";
+    private final Log log;
+
+    /**
+     * @param logFactory supplied by Spring Boot; yields a log that buffers until the logging
+     *                   system is initialized, then replays
+     */
+    public DatasetProvisioningEnvironmentPostProcessor(DeferredLogFactory logFactory) {
+        this.log = logFactory.getLog(getClass());
+    }
 
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
@@ -50,30 +63,40 @@ public class DatasetProvisioningEnvironmentPostProcessor implements EnvironmentP
         environment.getPropertySources().addFirst(new MapPropertySource("datasetProvisioning", overrides));
 
         if (Files.isDirectory(targetDir) && isNonEmpty(targetDir)) {
-            System.out.println(PREFIX + "Dataset '" + datasetName + "' already present at "
+            log.info("Dataset '" + datasetName + "' already present at "
                     + targetDir.toAbsolutePath() + ", skipping download");
             return;
         }
 
         DatasetCoordinate coordinate = lookupCoordinate(environment, datasetName);
-        String baseUrl = environment.getProperty("dataset.nexus.baseUrl", "");
+        // Datasets do not all live in the same repository: the public group serves some
+        // anonymously while others stay restricted. dataset.registry.<name>.baseUrl
+        // overrides dataset.nexus.baseUrl for one dataset, so a credential-free dataset
+        // does not drag a credential requirement onto every other one.
+        String baseUrl = environment.getProperty(
+                "dataset.registry." + datasetName + ".baseUrl",
+                environment.getProperty("dataset.nexus.baseUrl", ""));
         if (baseUrl.isBlank()) {
             throw new IllegalStateException(
-                    "dataset.name=" + datasetName + " was requested but dataset.nexus.baseUrl is not set. " +
-                            "Set it to the Nexus dataset repository URL, e.g. https://nexus.tinkar.org/repository/<repo-id>/");
+                    "dataset.name=" + datasetName + " was requested but no repository URL is set. " +
+                            "Set dataset.registry." + datasetName + ".baseUrl for this dataset, or " +
+                            "dataset.nexus.baseUrl as the default, e.g. " +
+                            "https://nexus.tinkar.org/repository/<repo-id>/");
         }
         String username = environment.getProperty("dataset.nexus.username", "");
         String password = environment.getProperty("dataset.nexus.password", "");
         if (username.isBlank()) {
-            System.err.println(PREFIX + "dataset.nexus.username is not set; download will be attempted anonymously");
+            // Not a warning: anonymous is the expected path for a dataset published to a
+            // public repository. A restricted repository will fail later with a 401.
+            log.info("No dataset.nexus.username set; downloading anonymously from " + baseUrl);
         }
 
-        System.out.println(PREFIX + "Resolving latest build of " + coordinate.groupId() + ":" + coordinate.artifactId()
+        log.info("Resolving latest build of " + coordinate.groupId() + ":" + coordinate.artifactId()
                 + " (classifier=" + coordinate.classifier() + ") for dataset '" + datasetName + "'");
         try {
             new MavenSnapshotArtifactResolver(baseUrl, username, password)
                     .resolveLatestAndExtract(coordinate, targetDir);
-            System.out.println(PREFIX + "Dataset '" + datasetName + "' downloaded and extracted to " + targetDir.toAbsolutePath());
+            log.info("Dataset '" + datasetName + "' downloaded and extracted to " + targetDir.toAbsolutePath());
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
