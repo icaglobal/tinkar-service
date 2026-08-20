@@ -205,27 +205,23 @@ See [docs/architecture.adoc](docs/architecture.adoc) for the full PlantUML compo
 ## Dataset Auto-Provisioning
 
 Instead of manually unzipping a dataset into `data/<name>`, pass `dataset.name` and the
-service will download the that dataset from the repository on
-startup, skipping the download if `data/<name>` already exists locally.
+service will download that dataset from Nexus on startup, skipping the download if
+`data/<name>` already exists locally.
 
 ```bash
-./mvnw spring-boot:run -Dspring-boot.run.arguments="--dataset.name=gudid"
+./mvnw spring-boot:run -Dspring-boot.run.arguments="--dataset.name=gudidsubset"
 ```
-
-Note: pass this as a Spring Boot *program* argument (`-Dspring-boot.run.arguments=...`), not
-a JVM argument — `jvmArguments` is hardcoded in `pom.xml` for `--enable-preview` and won't
-pick up a command-line override.
 
 ### Credentials
 
-The dataset repository requires authentication. Either export these in your shell:
+For a restricted repository, either export the values in your shell:
 
 ```bash
 export NEXUS_USERNAME=your-username
 export NEXUS_PASSWORD=your-password
 ```
 
-or copy `.env.example` to `.env` (gitignored) and fill in the same two values there instead —
+or copy `.env.example` to `.env` (gitignored) and fill in the values.
 `spring.config.import` picks it up automatically, no export needed:
 
 ```bash
@@ -233,13 +229,30 @@ cp .env.example .env
 # edit .env with your credentials
 ```
 
+Default configured datasets in the `application.properties` are:
+
+| Dataset | Repository | Credentials |
+|---------|-----------|-------------|
+| `gudidsubset` | `ike-public` | **not needed** — served anonymously |
+| `gudid` (full SOLOR-GUDID) | `ike-restricted-snapshots` | required |
+
+
 ### Configuration
 
-In `application.properties`:
+In `application.properties`, `dataset.nexus.baseUrl` is the default repository, and any
+dataset may override it with `dataset.registry.<name>.baseUrl`:
 
 ```properties
-dataset.nexus.baseUrl=https://nexus.tinkar.org/repository/<repo-id>/
+# Default for datasets that do not override it
+dataset.nexus.baseUrl=https://nexus.tinkar.org/repository/ike-restricted-snapshots/
+
+# This dataset resolves from the public repository instead, so it needs no credentials
+dataset.registry.gudidsubset.baseUrl=https://nexus.tinkar.org/repository/ike-public/
 ```
+
+Overriding per dataset rather than changing the default is deliberate: it lets a public
+dataset be credential-free without moving the restricted datasets, which are not published
+to `ike-public`.
 
 ### Adding a new dataset
 
@@ -260,7 +273,10 @@ dataset.registry.gudidsubset.artifactId=gudid
 dataset.registry.gudidsubset.version=20250804-subset+1.0.0-SNAPSHOT
 dataset.registry.gudidsubset.classifier=reasoned-sa
 dataset.registry.gudidsubset.controllerName=Open SpinedArrayStore
+dataset.registry.gudidsubset.baseUrl=https://nexus.tinkar.org/repository/ike-public/
 ```
+
+`baseUrl` is optional — omit it and the dataset resolves from `dataset.nexus.baseUrl`.
 
 `version` is optional — omitted, the latest base version is auto-resolved (by comparing
 `<version>` strings in the artifact's `maven-metadata.xml`, which only reflects true recency
