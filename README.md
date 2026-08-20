@@ -46,12 +46,122 @@ Default REST port will be on 8085 and gRPC on 9095 (configurable in `application
 
 [SwaggerUI URL](http://localhost:8085/swagger-ui/index.html)
 
-Sample gRPC curl:
-```
-grpcurl -d '{"query":"chronic lung","max_results":200}' \
+Sample gRPC call (plaintext, the default):
+```bash
+grpcurl -plaintext -d '{"query":"chronic lung","max_results":200}' \
   localhost:9095 \
-  ai.ica.tinkar.TinkarSearchService/ConceptSearch
+  dev.ikm.tinkar.service.TinkarSearchService/ConceptSearch
 ```
+
+Server reflection is enabled, so you can discover services and message shapes without a
+`.proto` file:
+```bash
+grpcurl -plaintext localhost:9095 list
+grpcurl -plaintext localhost:9095 describe dev.ikm.tinkar.service.TinkarSearchService
+grpcurl -plaintext localhost:9095 describe dev.ikm.tinkar.service.TinkarConceptSearchRequest
+```
+
+---
+
+## Transport Security (TLS)
+
+gRPC runs **plaintext by default**; TLS is opt-in per environment, so upgrading changes
+nothing for an existing deployment.
+
+### Generate a development certificate
+
+`scripts/generate-dev-cert.sh` writes a self-signed certificate to `certs/`. It is
+idempotent — an existing certificate is left alone unless it is within 30 days of expiry, or
+you pass `--force`:
+
+```bash
+./scripts/generate-dev-cert.sh
+# or, as a build step:
+./mvnw -Pdev-tls generate-resources
+```
+
+`certs/` is gitignored. The `dev-tls` profile is opt-in so ordinary builds neither require
+`openssl` nor pay for a process fork.
+
+The certificate is **self-signed**, so the same file is both the server's certificate chain
+and the client's trust anchor.
+
+### Run with TLS
+
+```bash
+export GRPC_TLS_ENABLED=true
+export GRPC_TLS_CERT_CHAIN=$PWD/certs/server-cert.pem
+export GRPC_TLS_PRIVATE_KEY=$PWD/certs/server-key.pem
+
+./mvnw spring-boot:run -Dspring-boot.run.arguments="--dataset.name=gudidsubset"
+```
+
+Only the gRPC port (9095) is affected. REST on 8085 is unchanged.
+
+### Calling a TLS server with grpcurl
+
+Pass the certificate as the CA. Paths below are relative, so run these from the project root:
+
+```bash
+# health check
+grpcurl -cacert certs/server-cert.pem \
+  localhost:9095 grpc.health.v1.Health/Check
+
+# list services / describe a message
+grpcurl -cacert certs/server-cert.pem localhost:9095 list
+grpcurl -cacert certs/server-cert.pem \
+  localhost:9095 describe dev.ikm.tinkar.service.TinkarConceptSearchRequest
+
+# concept search
+grpcurl -cacert certs/server-cert.pem \
+  -d '{"query":"catheter","max_results":3}' \
+  localhost:9095 dev.ikm.tinkar.service.TinkarSearchService/ConceptSearch
+
+# inspect a concept's semantics, using a public_id from the search above
+grpcurl -cacert certs/server-cert.pem \
+  -d '{"public_id":{"uuids":["94e2b677-9d00-5a45-8fe4-028c4e74bdaa"]}}' \
+  localhost:9095 dev.ikm.tinkar.service.IkeKnowledgeGraph/InspectConcept
+```
+
+If you prefer a shell variable, **quote it** — an unset variable expands to nothing and
+`-cacert` silently swallows the next token, producing a misleading `Too few arguments` /
+`Too many arguments` instead of a path error:
+
+```bash
+CA="$PWD/certs/server-cert.pem"
+grpcurl -cacert "$CA" localhost:9095 grpc.health.v1.Health/Check
+```
+
+### Verifying the handshake
+
+```bash
+openssl s_client -connect localhost:9095 -alpn h2 -servername localhost </dev/null
+```
+
+Expect `TLSv1.3`, `ALPN protocol: h2`, and `Verify return code: 18 (self signed certificate)`
+— 18 is expected for a self-signed development certificate.
+
+To confirm TLS is actually *enforced* rather than merely available, both of these must fail:
+
+```bash
+grpcurl -plaintext localhost:9095 list   # context deadline exceeded
+grpcurl localhost:9095 list              # certificate signed by unknown authority
+```
+
+### Notes
+
+- **The certificate must carry a `subjectAltName`.** Java matches SANs only and ignores CN,
+  so a CN-only certificate fails the handshake with an error that does not name the cause.
+  The script sets `DNS:localhost,IP:127.0.0.1,IP:::1`; override with `CERT_SAN` for other
+  hostnames.
+- **The `file:` prefix in `application.properties` is required, not decorative.** Those
+  properties are Spring `Resource` values; a bare absolute path resolves as a
+  ServletContext-relative resource and fails with `Could not open ServletContext resource`.
+  The prefix lives in the property, so the environment variables stay plain paths.
+- On macOS, `openssl` is **LibreSSL**, whose `x509` has no `-ext` option. To inspect the SAN
+  use `openssl x509 -in certs/server-cert.pem -noout -text | grep -A1 'Alternative Name'`.
+- For production, use a CA-issued certificate. Nothing here is specific to self-signed
+  material — point the same two environment variables at the real files.
 
 ---
 
