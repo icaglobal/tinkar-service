@@ -35,9 +35,9 @@
         <lucene.version>10.4.0</lucene.version>
 
         <!-- Tinkar Core dependency version -->
-        <tinkar-core.version>1.127.6-SNAPSHOT</tinkar-core.version>
+        <tinkar-core.version>1.127.7-SNAPSHOT</tinkar-core.version>
         <!-- tinkar-schema must include Tinkar.proto in the jar (added in 1.43.0). -->
-        <tinkar-schema.version>1.43.4-SNAPSHOT</tinkar-schema.version>
+        <tinkar-schema.version>1.43.5-SNAPSHOT</tinkar-schema.version>
     </properties>
 
     <repositories>
@@ -179,7 +179,7 @@
             <!-- rocks-kb sub-module: the release plan tracks member root
                  artifacts only, so this literal never retargets — keep it
                  at the version rocks-kb releases this cycle (1022 gate). -->
-            <version>0.1.4-SNAPSHOT</version>
+            <version>0.1.5-SNAPSHOT</version>
         </dependency>
         <!-- RocksDB platform-specific natives; classifier set by OS profile below -->
         <dependency>
