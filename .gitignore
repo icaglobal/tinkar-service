@@ -52,6 +52,15 @@ data/
 .claude
 # IKE goal report receipts (generated, never committed)
 ike꞉*.md
+
+# Local TLS development material, produced by scripts/generate-dev-cert.sh.
+# Never committed: server-key.pem is a private key, and a checked-in key is
+# trusted by every client that has the matching cert. Regenerate instead of
+# sharing — the script is idempotent.
+certs/
+*.pem
+*.p12
+*.jks
 # BEGIN ike-managed
 # IKE local state (never committed)
 .ike/vcs-state
