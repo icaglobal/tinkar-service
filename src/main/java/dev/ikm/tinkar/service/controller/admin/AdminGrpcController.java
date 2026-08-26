@@ -8,9 +8,15 @@ import dev.ikm.tinkar.service.proto.ExportEntitiesResponse;
 import dev.ikm.tinkar.service.proto.IkeAdminGrpc;
 import dev.ikm.tinkar.service.proto.ImportChangesetRequest;
 import dev.ikm.tinkar.service.proto.ImportChangesetResponse;
+import dev.ikm.tinkar.service.proto.RunReasonerEvent;
+import dev.ikm.tinkar.service.proto.RunReasonerResult;
+import dev.ikm.tinkar.service.proto.ReasonerPhase;
+import dev.ikm.tinkar.service.proto.EquivalentSet;
+import dev.ikm.tinkar.reasoner.service.ClassifierResults;
+import dev.ikm.tinkar.coordinate.view.ViewCoordinateRecord;
+import dev.ikm.tinkar.common.service.PrimitiveData;
 import dev.ikm.tinkar.service.proto.ReasonerResultsProto;
 import dev.ikm.tinkar.service.proto.RunReasonerRequest;
-import dev.ikm.tinkar.service.proto.RunReasonerResponse;
 import dev.ikm.tinkar.service.service.TinkarService;
 import com.google.protobuf.ByteString;
 import io.grpc.stub.StreamObserver;
@@ -92,29 +98,94 @@ public class AdminGrpcController extends IkeAdminGrpc.IkeAdminImplBase {
 
     @Override
     public void runReasoner(RunReasonerRequest request,
-            StreamObserver<RunReasonerResponse> responseObserver) {
+            StreamObserver<RunReasonerEvent> responseObserver) {
         log.info("IkeAdmin runReasoner request");
+        long startedAt = System.currentTimeMillis();
 
-        ReasonerResultsResponse result = tinkarService.runReasoner();
+        try {
+            ClassifierResults results = tinkarService.runReasoner(
+                    (step, totalSteps, message) -> responseObserver.onNext(
+                            RunReasonerEvent.newBuilder()
+                                    .setPhase(ReasonerPhase.newBuilder()
+                                            .setStep(step)
+                                            .setTotalSteps(totalSteps)
+                                            .setMessage(message)
+                                            .build())
+                                    .build()));
 
-        RunReasonerResponse.Builder builder = RunReasonerResponse.newBuilder()
-                .setSuccess(result.success())
-                .setErrorMessage(result.errorMessage() != null ? result.errorMessage() : "");
-
-        if (result.success()) {
-            builder.setResults(ReasonerResultsProto.newBuilder()
-                    .setClassifiedConceptCount(result.classifiedConceptCount())
-                    .setInferredChangesCount(result.inferredChangesCount())
-                    .setNavigationChangesCount(result.navigationChangesCount())
-                    .setEquivalentSetsCount(result.equivalentSetsCount())
-                    .setCyclesCount(result.cyclesCount())
-                    .setOrphansCount(result.orphansCount())
+            responseObserver.onNext(RunReasonerEvent.newBuilder()
+                    .setResult(toResult(results, System.currentTimeMillis() - startedAt))
                     .build());
-            builder.setDurationMs(result.durationMs());
+        } catch (Exception e) {
+            log.error("Reasoner failed: {}", e.getMessage(), e);
+            // Reported as a result with success=false rather than onError, so the caller reads
+            // the reason from the same message it would read a successful outcome from.
+            responseObserver.onNext(RunReasonerEvent.newBuilder()
+                    .setResult(RunReasonerResult.newBuilder()
+                            .setSuccess(false)
+                            .setErrorMessage(e.getMessage() == null ? e.toString() : e.getMessage())
+                            .setDurationMs(System.currentTimeMillis() - startedAt)
+                            .setCreatedAt(System.currentTimeMillis())
+                            .build())
+                    .build());
         }
-
-        builder.setCreatedAt(System.currentTimeMillis());
-        responseObserver.onNext(builder.build());
         responseObserver.onCompleted();
+    }
+
+    /** Maps the reasoner's results onto the wire type. */
+    private RunReasonerResult toResult(ClassifierResults results, long durationMs) {
+        RunReasonerResult.Builder builder = RunReasonerResult.newBuilder()
+                .setSuccess(true)
+                .setErrorMessage("")
+                .setDurationMs(durationMs)
+                .setCreatedAt(System.currentTimeMillis());
+
+        builder.setCounts(ReasonerResultsProto.newBuilder()
+                .setClassifiedConceptCount(results.getClassificationConceptSet().size())
+                .setInferredChangesCount(results.getConceptsWithInferredChanges().size())
+                .setNavigationChangesCount(results.getConceptsWithNavigationChanges().size())
+                .setEquivalentSetsCount(results.getEquivalentSets().size())
+                .setCyclesCount(results.getCycles() != null ? results.getCycles().size() : 0)
+                .setOrphansCount(results.getOrphans() != null ? results.getOrphans().size() : 0)
+                .build());
+
+        // classificationConceptSet is intentionally not sent — see the proto. Its size is
+        // carried in counts above, which is all the panel reads.
+        results.getConceptsWithInferredChanges()
+                .forEach(nid -> builder.addConceptsWithInferredChanges(publicIdOf(nid)));
+        results.getConceptsWithNavigationChanges()
+                .forEach(nid -> builder.addConceptsWithNavigationChanges(publicIdOf(nid)));
+        if (results.getOrphans() != null) {
+            results.getOrphans().forEach(nid -> builder.addOrphans(publicIdOf(nid)));
+        }
+        results.getEquivalentSets().forEach(set -> {
+            EquivalentSet.Builder equivalent = EquivalentSet.newBuilder();
+            set.forEach(nid -> equivalent.addConcept(publicIdOf(nid)));
+            builder.addEquivalentSets(equivalent.build());
+        });
+
+        ViewCoordinateRecord viewCoordinate = results.getViewCoordinate();
+        if (viewCoordinate != null) {
+            // Sent as text because the results panel only ever displays these; the commit time
+            // is the one part read functionally, to advance the caller's view far enough to see
+            // what was just written.
+            builder.setCommitTime(viewCoordinate.stampCoordinate().stampPosition().time());
+            builder.setStampCoordinateText(viewCoordinate.stampCoordinate().toUserString());
+            builder.setLogicCoordinateText(viewCoordinate.logicCoordinate().toUserString());
+            builder.setEditCoordinateText(viewCoordinate.editCoordinate().toUserString());
+        }
+        return builder.build();
+    }
+
+    /**
+     * Nids are assigned per data store, so they are meaningless to a caller. Every concept
+     * crosses the wire as its PublicId, which the caller resolves against its own store.
+     */
+    private static dev.ikm.tinkar.schema.PublicId publicIdOf(int nid) {
+        return dev.ikm.tinkar.schema.PublicId.newBuilder()
+                .addAllUuids(PrimitiveData.publicId(nid).asUuidList().stream()
+                        .map(java.util.UUID::toString)
+                        .toList())
+                .build();
     }
 }

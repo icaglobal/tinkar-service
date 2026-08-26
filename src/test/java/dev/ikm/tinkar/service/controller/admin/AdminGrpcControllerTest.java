@@ -5,8 +5,14 @@ import dev.ikm.tinkar.service.dto.EntityCountSummaryResponse;
 import dev.ikm.tinkar.service.dto.ReasonerResultsResponse;
 import dev.ikm.tinkar.service.proto.ImportChangesetRequest;
 import dev.ikm.tinkar.service.proto.ImportChangesetResponse;
+import dev.ikm.tinkar.reasoner.service.ClassifierResults;
+import dev.ikm.tinkar.service.proto.RunReasonerEvent;
+import dev.ikm.tinkar.service.proto.RunReasonerResult;
+import dev.ikm.tinkar.service.service.ReasonerPhaseListener;
+import org.eclipse.collections.api.factory.primitive.IntLists;
+import org.eclipse.collections.api.factory.Sets;
+import java.util.List;
 import dev.ikm.tinkar.service.proto.RunReasonerRequest;
-import dev.ikm.tinkar.service.proto.RunReasonerResponse;
 import dev.ikm.tinkar.service.service.TinkarService;
 import io.grpc.stub.StreamObserver;
 import org.junit.jupiter.api.Test;
@@ -143,68 +149,95 @@ class AdminGrpcControllerTest {
     // -------------------------------------------------------------------------
 
     @Test
-    void runReasoner_successPath_callsOnNextAndOnCompleted() {
-        // Arrange
-        ReasonerResultsResponse mockResult = Mockito.mock(ReasonerResultsResponse.class);
-        when(mockResult.success()).thenReturn(true);
-        when(mockResult.errorMessage()).thenReturn(null);
-        when(mockResult.classifiedConceptCount()).thenReturn(100);
-        when(mockResult.inferredChangesCount()).thenReturn(50);
-        when(mockResult.navigationChangesCount()).thenReturn(25);
-        when(mockResult.equivalentSetsCount()).thenReturn(5);
-        when(mockResult.cyclesCount()).thenReturn(0);
-        when(mockResult.orphansCount()).thenReturn(2);
-        when(mockResult.durationMs()).thenReturn(3000L);
+    void runReasoner_streamsEachPhaseThenTheResult() throws Exception {
+        ClassifierResults results = Mockito.mock(ClassifierResults.class);
+        when(results.getClassificationConceptSet()).thenReturn(IntLists.immutable.empty());
+        when(results.getConceptsWithInferredChanges()).thenReturn(IntLists.immutable.empty());
+        when(results.getConceptsWithNavigationChanges()).thenReturn(IntLists.immutable.empty());
+        when(results.getEquivalentSets()).thenReturn(Sets.immutable.empty());
+        when(results.getCycles()).thenReturn(null);
+        when(results.getOrphans()).thenReturn(null);
+        when(results.getViewCoordinate()).thenReturn(null);
 
-        when(tinkarService.runReasoner()).thenReturn(mockResult);
+        // Drive the listener the controller passes in, so the phases it forwards are the ones
+        // the pipeline would really report.
+        when(tinkarService.runReasoner(any(ReasonerPhaseListener.class))).thenAnswer(invocation -> {
+            ReasonerPhaseListener listener = invocation.getArgument(0);
+            listener.onPhaseComplete(1, 4, "Loading data into reasoner");
+            listener.onPhaseComplete(2, 4, "Computing inferences");
+            listener.onPhaseComplete(3, 4, "Building necessary normal form");
+            listener.onPhaseComplete(4, 4, "Processing results");
+            return results;
+        });
 
         @SuppressWarnings("unchecked")
-        StreamObserver<RunReasonerResponse> responseObserver = Mockito.mock(StreamObserver.class);
+        StreamObserver<RunReasonerEvent> responseObserver = Mockito.mock(StreamObserver.class);
 
-        // Act
         controller.runReasoner(RunReasonerRequest.getDefaultInstance(), responseObserver);
 
-        // Assert
-        ArgumentCaptor<RunReasonerResponse> captor =
-                ArgumentCaptor.forClass(RunReasonerResponse.class);
-        verify(responseObserver).onNext(captor.capture());
+        ArgumentCaptor<RunReasonerEvent> captor = ArgumentCaptor.forClass(RunReasonerEvent.class);
+        verify(responseObserver, Mockito.times(5)).onNext(captor.capture());
         verify(responseObserver).onCompleted();
 
-        RunReasonerResponse sent = captor.getValue();
-        assertThat(sent.getSuccess()).isTrue();
-        assertThat(sent.getResults().getClassifiedConceptCount()).isEqualTo(100);
-        assertThat(sent.getResults().getInferredChangesCount()).isEqualTo(50);
-        assertThat(sent.getResults().getNavigationChangesCount()).isEqualTo(25);
-        assertThat(sent.getResults().getEquivalentSetsCount()).isEqualTo(5);
-        assertThat(sent.getResults().getCyclesCount()).isEqualTo(0);
-        assertThat(sent.getResults().getOrphansCount()).isEqualTo(2);
-        assertThat(sent.getDurationMs()).isEqualTo(3000L);
+        List<RunReasonerEvent> events = captor.getAllValues();
+
+        // Four phases, in order, numbered to match Komet's local pipeline.
+        assertThat(events.subList(0, 4)).allMatch(RunReasonerEvent::hasPhase);
+        assertThat(events.subList(0, 4))
+                .extracting(e -> e.getPhase().getStep())
+                .containsExactly(1, 2, 3, 4);
+        assertThat(events.get(2).getPhase().getMessage())
+                .isEqualTo("Building necessary normal form");
+        assertThat(events.get(0).getPhase().getTotalSteps()).isEqualTo(4);
+
+        // Then exactly one result, terminal.
+        assertThat(events.get(4).hasResult()).isTrue();
+        assertThat(events.get(4).getResult().getSuccess()).isTrue();
     }
 
     @Test
-    void runReasoner_failurePath_setsSuccessFalseAndNoResults() {
-        // Arrange
-        ReasonerResultsResponse mockResult = Mockito.mock(ReasonerResultsResponse.class);
-        when(mockResult.success()).thenReturn(false);
-        when(mockResult.errorMessage()).thenReturn("reasoner timed out");
-
-        when(tinkarService.runReasoner()).thenReturn(mockResult);
+    void runReasoner_doesNotSendTheClassificationConceptSet() throws Exception {
+        // The panel only reads its size, so the concepts are deliberately omitted; sending them
+        // put the response over gRPC's default message limit.
+        ClassifierResults results = Mockito.mock(ClassifierResults.class);
+        when(results.getClassificationConceptSet()).thenReturn(IntLists.immutable.of(1, 2, 3));
+        when(results.getConceptsWithInferredChanges()).thenReturn(IntLists.immutable.empty());
+        when(results.getConceptsWithNavigationChanges()).thenReturn(IntLists.immutable.empty());
+        when(results.getEquivalentSets()).thenReturn(Sets.immutable.empty());
+        when(results.getCycles()).thenReturn(null);
+        when(results.getOrphans()).thenReturn(null);
+        when(results.getViewCoordinate()).thenReturn(null);
+        when(tinkarService.runReasoner(any(ReasonerPhaseListener.class))).thenReturn(results);
 
         @SuppressWarnings("unchecked")
-        StreamObserver<RunReasonerResponse> responseObserver = Mockito.mock(StreamObserver.class);
+        StreamObserver<RunReasonerEvent> responseObserver = Mockito.mock(StreamObserver.class);
 
-        // Act
         controller.runReasoner(RunReasonerRequest.getDefaultInstance(), responseObserver);
 
-        // Assert
-        ArgumentCaptor<RunReasonerResponse> captor =
-                ArgumentCaptor.forClass(RunReasonerResponse.class);
+        ArgumentCaptor<RunReasonerEvent> captor = ArgumentCaptor.forClass(RunReasonerEvent.class);
+        verify(responseObserver).onNext(captor.capture());
+
+        RunReasonerResult result = captor.getValue().getResult();
+        assertThat(result.getCounts().getClassifiedConceptCount()).isEqualTo(3);
+    }
+
+    @Test
+    void runReasoner_failureIsReportedAsAResultNotAStreamError() throws Exception {
+        when(tinkarService.runReasoner(any(ReasonerPhaseListener.class)))
+                .thenThrow(new IllegalStateException("reasoner timed out"));
+
+        @SuppressWarnings("unchecked")
+        StreamObserver<RunReasonerEvent> responseObserver = Mockito.mock(StreamObserver.class);
+
+        controller.runReasoner(RunReasonerRequest.getDefaultInstance(), responseObserver);
+
+        ArgumentCaptor<RunReasonerEvent> captor = ArgumentCaptor.forClass(RunReasonerEvent.class);
         verify(responseObserver).onNext(captor.capture());
         verify(responseObserver).onCompleted();
+        verify(responseObserver, Mockito.never()).onError(any());
 
-        RunReasonerResponse sent = captor.getValue();
-        assertThat(sent.getSuccess()).isFalse();
-        assertThat(sent.getErrorMessage()).isEqualTo("reasoner timed out");
-        assertThat(sent.hasResults()).isFalse();
+        RunReasonerResult result = captor.getValue().getResult();
+        assertThat(result.getSuccess()).isFalse();
+        assertThat(result.getErrorMessage()).isEqualTo("reasoner timed out");
     }
 }

@@ -97,7 +97,9 @@ message RunReasonerRequest {
   // Future: could accept coordinate overrides, specific reasoner name, etc.
 }
 
-// Summary of classification results.
+// Summary of classification results. Every count is derivable from the sets in
+// RunReasonerResult, but kept so a caller that only wants a summary need not
+// receive the sets.
 message ReasonerResultsProto {
   int32 classified_concept_count = 1;
   int32 inferred_changes_count = 2;
@@ -107,15 +109,86 @@ message ReasonerResultsProto {
   int32 orphans_count = 6;
 }
 
-message RunReasonerResponse {
+/*
+ * One equivalence class. A wrapper message is required because protobuf has no
+ * repeated-of-repeated.
+ */
+message EquivalentSet {
+  repeated dev.ikm.tinkar.schema.PublicId concept = 1;
+}
+
+/*
+ * Progress for one completed phase of the pipeline.
+ *
+ * step and total_steps mirror Komet's local RunReasonerTaskBase, which reports
+ * four phases through a TrackingCallable. Keeping the numbering and the message
+ * text identical means the same progress UI can be driven by a local run or a
+ * remote one without the two diverging in what the user sees.
+ */
+message ReasonerPhase {
+  int32 step = 1;
+  int32 total_steps = 2;
+  string message = 3;
+}
+
+/*
+ * Terminal event of the stream, carrying what Komet's reasoner results panel
+ * reads out of ClassifierResults.
+ *
+ * Concepts are PublicIds, not nids: nids are assigned per data store, so the
+ * server's are meaningless to a client. The client resolves each PublicId
+ * against its own store.
+ */
+message RunReasonerResult {
   bool success = 1;
   string error_message = 2;
-  ReasonerResultsProto results = 3;
-  /*
-   * Duration of the reasoner pipeline in milliseconds.
-   */
+  ReasonerResultsProto counts = 3;
   int64 duration_ms = 4;
   int64 created_at = 5;
+
+  /*
+   * Field 6 was classification_concept_set. Removed deliberately, not deferred:
+   * Komet's results panel calls size() on it and then disables and collapses the
+   * pane, so the concepts are never displayed. Sending them cost 20.5 MB on the
+   * gudidsubset dataset (511,681 concepts) and put the response 5x over gRPC's
+   * default 4 MB limit, to populate a number that classified_concept_count in
+   * ReasonerResultsProto already carries.
+   */
+  reserved 6;
+  reserved "classification_concept_set";
+
+  repeated dev.ikm.tinkar.schema.PublicId concepts_with_inferred_changes = 7;
+  repeated dev.ikm.tinkar.schema.PublicId concepts_with_navigation_changes = 8;
+  repeated dev.ikm.tinkar.schema.PublicId orphans = 9;
+  repeated EquivalentSet equivalent_sets = 10;
+
+  /*
+   * When the server committed the inferred results. Functionally required, not
+   * informational: the results panel pushes this onto the view coordinate so
+   * the client's view advances far enough to see what was just written.
+   */
+  int64 commit_time = 11;
+
+  /*
+   * The server's view coordinate, pre-rendered. The panel only ever displays
+   * these as text, so sending the strings avoids serialising an entire
+   * ViewCoordinateRecord that would be reassembled only to call toUserString().
+   */
+  string stamp_coordinate_text = 12;
+  string logic_coordinate_text = 13;
+  string edit_coordinate_text = 14;
+}
+
+/*
+ * One message in the RunReasoner stream: a phase as it completes, then exactly
+ * one result. A failure arrives as a result with success=false rather than as a
+ * stream error, so the caller reads the reason from the same place either way.
+ */
+message RunReasonerEvent {
+  oneof event {
+    ReasonerPhase phase = 1;
+    RunReasonerResult result = 2;
+  }
 }
 
 // ── Service ─────────────────────────────────────────────────────────
@@ -127,6 +200,14 @@ service IkeAdmin {
   // Export entities to a protobuf ZIP file.
   rpc ExportEntities(ExportEntitiesRequest) returns (ExportEntitiesResponse);
 
-  // Run the full reasoner classification pipeline.
-  rpc RunReasoner(RunReasonerRequest) returns (RunReasonerResponse);
+  /*
+   * Run the full reasoner classification pipeline, streaming progress.
+   *
+   * Server-streaming rather than unary because a full classification is slow
+   * and a unary call leaves the caller with no signal until it finishes. The
+   * pipeline itself is a single stateful run on one ReasonerService instance,
+   * so it is NOT exposed as one RPC per phase — that would require the server
+   * to hold a reasoner session between calls.
+   */
+  rpc RunReasoner(RunReasonerRequest) returns (stream RunReasonerEvent);
 }

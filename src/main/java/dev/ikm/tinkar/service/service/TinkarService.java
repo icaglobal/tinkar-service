@@ -259,4 +259,19 @@ public interface TinkarService {
      * @return ReasonerResultsResponse with classification results
      */
     ReasonerResultsResponse runReasoner();
+
+    /**
+     * Runs the reasoner pipeline, reporting each phase as it completes, and returns the full
+     * classification results rather than a summary of counts.
+     *
+     * <p>{@link #runReasoner()} is this method with a no-op listener, its results reduced to
+     * counts. Callers that need the classified concepts themselves — to show which concepts
+     * changed, not merely how many — use this.
+     *
+     * @param listener notified per phase; use {@link ReasonerPhaseListener#NONE} for none
+     * @return the classification results
+     * @throws Exception if any phase of the pipeline fails
+     */
+    dev.ikm.tinkar.reasoner.service.ClassifierResults runReasoner(ReasonerPhaseListener listener)
+            throws Exception;
 }
