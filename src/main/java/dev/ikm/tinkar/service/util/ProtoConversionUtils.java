@@ -118,6 +118,8 @@ public final class ProtoConversionUtils {
                         .setActive(group.active() != null && group.active());
                 if (group.publicId() != null) groupBuilder.addAllPublicId(group.publicId());
                 if (group.conceptNid() != null) groupBuilder.setConceptNid(group.conceptNid());
+                if (group.preferredName() != null) groupBuilder.setPreferredName(group.preferredName());
+                if (group.highlightedName() != null) groupBuilder.setHighlightedName(group.highlightedName());
 
                 if (group.matchingSemantics() != null) {
                     for (ConceptSearchResponse.MatchingSemantic semantic : group.matchingSemantics()) {

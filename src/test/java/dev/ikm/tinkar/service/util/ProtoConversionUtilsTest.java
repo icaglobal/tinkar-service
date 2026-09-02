@@ -241,6 +241,8 @@ class ProtoConversionUtilsTest {
         var group = new GroupedSearchResult(
                 List.of("group-uuid"),
                 "Diabetes mellitus (disorder)",
+                "Diabetes mellitus",
+                "<B>Diab</B>etes mellitus",
                 true,
                 0.9f,
                 List.of(matchingSemantic),
@@ -255,6 +257,8 @@ class ProtoConversionUtilsTest {
         var g = proto.getGroupedResults(0);
         assertThat(g.getPublicIdList()).containsExactly("group-uuid");
         assertThat(g.getFullyQualifiedName()).isEqualTo("Diabetes mellitus (disorder)");
+        assertThat(g.getPreferredName()).isEqualTo("Diabetes mellitus");
+        assertThat(g.getHighlightedName()).isEqualTo("<B>Diab</B>etes mellitus");
         assertThat(g.getActive()).isTrue();
         assertThat(g.getTopScore()).isEqualTo(0.9f);
         assertThat(g.getConceptNid()).isEqualTo(42);

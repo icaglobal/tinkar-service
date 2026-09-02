@@ -82,6 +82,12 @@ public record ConceptSearchResponse(
             @Schema(description = "Fully qualified name of the top-level concept")
             String fullyQualifiedName,
 
+            @Schema(description = "The concept's preferred description, per the service's language coordinate")
+            String preferredName,
+
+            @Schema(description = "The preferred name with <B>...</B> markup on the parts matching the query")
+            String highlightedName,
+
             @Schema(description = "Whether the concept is active")
             Boolean active,
 

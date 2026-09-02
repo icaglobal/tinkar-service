@@ -251,9 +251,12 @@ public class TinkarServiceImpl implements TinkarService {
                             r.latestVersion().isPresent() ? r.latestVersion().get().nid() : null))
                     .toList();
 
+            String preferredName = getConceptPreferredName(topNid);
             groupedResults.add(new GroupedSearchResult(
                     conceptPublicId.asUuidList().stream().map(UUID::toString).toList(),
                     fqn,
+                    preferredName,
+                    highlightName(query, preferredName),
                     active,
                     topScore,
                     matchingSemantics,
@@ -322,6 +325,45 @@ public class TinkarServiceImpl implements TinkarService {
                     .getFullyQualifiedDescriptionTextWithFallbackOrNid(nid);
         } catch (Exception e) {
             return "nid: " + nid;
+        }
+    }
+
+    /**
+     * The concept's preferred description, resolved the same way a local calculator would
+     * for a search result label — via the language coordinate's description type and
+     * dialect preferences, rather than forcing the fully qualified name.
+     *
+     * <p>Remote clients cannot do this themselves: nids are local to a data store, so a
+     * client holding only a public ID has nothing to resolve descriptions against.
+     */
+    private String getConceptPreferredName(int nid) {
+        return getConceptPreferredName(nid, Calculators.View.Default());
+    }
+
+    private String getConceptPreferredName(int nid, ViewCalculatorWithCache calc) {
+        try {
+            return calc.languageCalculator().getDescriptionTextOrNid(nid);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Marks the parts of {@code name} matching {@code query} with {@code <B>...</B>}, using
+     * the same analyzer and markers the index uses for hit snippets, so a client renders a
+     * concept title and its matched descriptions through one highlight parser.
+     *
+     * @return the marked-up name, or null when there is nothing to mark or highlighting failed
+     */
+    private String highlightName(String query, String name) {
+        if (query == null || query.isBlank() || name == null || name.isBlank()) {
+            return null;
+        }
+        try {
+            return Calculators.View.Default().highlight(query, name);
+        } catch (Exception e) {
+            log.debug("Title highlight failed for query '{}'; sending the plain name", query, e);
+            return null;
         }
     }
 

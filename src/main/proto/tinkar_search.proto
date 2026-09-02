@@ -190,6 +190,19 @@ message TinkarGroupedSearchResult {
    * The NID of the top-level concept entity.
    */
   int32 concept_nid = 6;
+  /*
+   * The concept's preferred description, per the service's language coordinate.
+   * Clients cannot derive this themselves: nids are local to a data store, so a
+   * client holding only a public ID cannot resolve descriptions against a view
+   * coordinate the way a local calculator does. Empty when unresolvable.
+   */
+  string preferred_name = 7;
+  /*
+   * preferred_name with <B>...</B> markup on the parts matching the query, using
+   * the same markers as matching_semantics.highlighted_text. Empty when there is
+   * no match to mark or highlighting failed.
+   */
+  string highlighted_name = 8;
 }
 
 // Response for concept search with sort
