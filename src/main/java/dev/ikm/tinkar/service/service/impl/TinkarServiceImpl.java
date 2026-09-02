@@ -32,6 +32,7 @@ import dev.ikm.tinkar.service.dto.SearchSortOption;
 import dev.ikm.tinkar.service.proto.*;
 import dev.ikm.tinkar.service.proto.TinkarSearchQueryResponse;
 import dev.ikm.tinkar.service.service.TinkarPrimitive;
+import dev.ikm.tinkar.service.service.ReasonerPhaseListener;
 import dev.ikm.tinkar.service.service.TinkarService;
 import dev.ikm.tinkar.entity.graph.DiTreeEntity;
 import dev.ikm.tinkar.terms.EntityFacade;
@@ -2336,6 +2337,27 @@ public class TinkarServiceImpl implements TinkarService {
 
     @Override
     public ReasonerResultsResponse runReasoner() {
+        try {
+            ClassifierResults results = runReasoner(ReasonerPhaseListener.NONE);
+            return ReasonerResultsResponse.success(
+                    results.getClassificationConceptSet().size(),
+                    results.getConceptsWithInferredChanges().size(),
+                    results.getConceptsWithNavigationChanges().size(),
+                    results.getEquivalentSets().size(),
+                    results.getCycles() != null ? results.getCycles().size() : 0,
+                    results.getOrphans() != null ? results.getOrphans().size() : 0,
+                    lastReasonerDurationMs);
+        } catch (Exception e) {
+            log.error("Reasoner failed: {}", e.getMessage(), e);
+            return ReasonerResultsResponse.error(e.getMessage());
+        }
+    }
+
+    /** Duration of the most recent pipeline run, for the counts-only wrapper above. */
+    private volatile long lastReasonerDurationMs;
+
+    @Override
+    public ClassifierResults runReasoner(ReasonerPhaseListener listener) throws Exception {
         log.info("Starting reasoner classification pipeline...");
         long startTime = System.currentTimeMillis();
         try {
@@ -2346,7 +2368,7 @@ public class TinkarServiceImpl implements TinkarService {
                     .toList();
 
             if (reasonerServices.isEmpty()) {
-                return ReasonerResultsResponse.error("No ReasonerService implementation found via SPI");
+                throw new IllegalStateException("No ReasonerService implementation found via SPI");
             }
 
             ReasonerService rs = reasonerServices.getFirst();
@@ -2361,10 +2383,23 @@ public class TinkarServiceImpl implements TinkarService {
                     TinkarTerm.EL_PLUS_PLUS_STATED_AXIOMS_PATTERN,
                     TinkarTerm.EL_PLUS_PLUS_INFERRED_AXIOMS_PATTERN);
 
+            // Phases and wording match Komet's local RunReasonerTaskBase so that a remote run
+            // performs the same work, in the same order, and reports it the same way.
             rs.extractData(noOpTracker);
             rs.loadData(noOpTracker);
+            listener.onPhaseComplete(ReasonerPhaseListener.Phase.LOAD_DATA);
+
             rs.computeInferences();
+            listener.onPhaseComplete(ReasonerPhaseListener.Phase.COMPUTE_INFERENCES);
+
+            // Was missing: the pipeline went straight from inferences to writing results, so a
+            // remote classification skipped the necessary normal form that a local run in Komet
+            // always builds. Without it the written results differ from Komet's for the same data.
+            rs.buildNecessaryNormalForm(noOpTracker);
+            listener.onPhaseComplete(ReasonerPhaseListener.Phase.BUILD_NECESSARY_NORMAL_FORM);
+
             ClassifierResults results = rs.writeInferredResults();
+            listener.onPhaseComplete(ReasonerPhaseListener.Phase.PROCESS_RESULTS);
 
             // Clear caches so navigation queries reflect the new inferred hierarchy
             dev.ikm.tinkar.common.service.CachingService.clearAll();
@@ -2376,18 +2411,13 @@ public class TinkarServiceImpl implements TinkarService {
                     results.getConceptsWithInferredChanges().size(),
                     results.getConceptsWithNavigationChanges().size());
 
-            return ReasonerResultsResponse.success(
-                    results.getClassificationConceptSet().size(),
-                    results.getConceptsWithInferredChanges().size(),
-                    results.getConceptsWithNavigationChanges().size(),
-                    results.getEquivalentSets().size(),
-                    results.getCycles() != null ? results.getCycles().size() : 0,
-                    results.getOrphans() != null ? results.getOrphans().size() : 0,
-                    durationMs);
+            lastReasonerDurationMs = durationMs;
+            return results;
         } catch (Exception e) {
             long durationMs = System.currentTimeMillis() - startTime;
+            lastReasonerDurationMs = durationMs;
             log.error("Reasoner failed after {}ms: {}", durationMs, e.getMessage(), e);
-            return ReasonerResultsResponse.error(e.getMessage());
+            throw e;
         }
     }
 }
