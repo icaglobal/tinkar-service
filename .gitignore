@@ -25,6 +25,12 @@ replay_pid*
 
 .DS_Store
 
+# JetBrains IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+
 # VS Code
 .vscode/
 
