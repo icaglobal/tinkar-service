@@ -112,6 +112,9 @@ public record ConceptSearchResponse(
     @JsonInclude(JsonInclude.Include.NON_NULL)
     @Schema(description = "A matching semantic within a concept group")
     public record MatchingSemantic(
+            @Schema(description = "Public ID (list of UUIDs) of the matching semantic")
+            List<String> publicId,
+
             @Schema(description = "The matched text with highlighting (HTML bold tags)")
             String highlightedText,
 

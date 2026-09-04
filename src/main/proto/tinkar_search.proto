@@ -162,6 +162,12 @@ message TinkarMatchingSemantic {
    * The NID of the matching semantic entity.
    */
   int32 semantic_nid = 5;
+  /*
+   * Public ID (list of UUIDs) of the matching semantic. Carried because nids are
+   * local to a data store, so a remote client cannot identify the semantic behind
+   * the matched text without it. Empty when unresolvable.
+   */
+  repeated string public_id = 6;
 }
 
 // Grouped search result by top-level component

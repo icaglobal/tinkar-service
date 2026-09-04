@@ -244,6 +244,7 @@ public class TinkarServiceImpl implements TinkarService {
             // Build matching semantics list
             List<MatchingSemantic> matchingSemantics = conceptResults.stream()
                     .map(r -> new MatchingSemantic(
+                            semanticPublicId(r),
                             r.highlightedString(),
                             getPlainText(r),
                             r.score(),
@@ -326,6 +327,23 @@ public class TinkarServiceImpl implements TinkarService {
         } catch (Exception e) {
             return "nid: " + nid;
         }
+    }
+
+    /**
+     * The public ID of the semantic a search result matched, as UUID strings.
+     *
+     * <p>Sent so a remote client can identify the semantic behind the matched text.
+     * The nid already on the payload is local to this data store and means nothing
+     * to a caller holding a different one.
+     *
+     * @return the semantic's UUIDs, or null when the latest version is absent
+     */
+    private List<String> semanticPublicId(LatestVersionSearchResult result) {
+        if (result.latestVersion() == null || result.latestVersion().isAbsent()) {
+            return null;
+        }
+        return result.latestVersion().get().publicId()
+                .asUuidList().stream().map(UUID::toString).toList();
     }
 
     /**

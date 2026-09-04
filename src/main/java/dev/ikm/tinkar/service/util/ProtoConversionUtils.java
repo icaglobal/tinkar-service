@@ -129,6 +129,7 @@ public final class ProtoConversionUtils {
                         if (semantic.plainText() != null) semanticBuilder.setPlainText(semantic.plainText());
                         if (semantic.fieldIndex() != null) semanticBuilder.setFieldIndex(semantic.fieldIndex());
                         if (semantic.semanticNid() != null) semanticBuilder.setSemanticNid(semantic.semanticNid());
+                        if (semantic.publicId() != null) semanticBuilder.addAllPublicId(semantic.publicId());
                         groupBuilder.addMatchingSemantics(semanticBuilder.build());
                     }
                 }

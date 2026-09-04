@@ -237,7 +237,7 @@ class ProtoConversionUtilsTest {
 
     @Test
     void toConceptSearchWithSortProto_groupedResults_mapsGroupAndSemantics() {
-        var matchingSemantic = new MatchingSemantic("<b>diab</b>", "diab", 0.8f, 2, 999);
+        var matchingSemantic = new MatchingSemantic(List.of("semantic-uuid"), "<b>diab</b>", "diab", 0.8f, 2, 999);
         var group = new GroupedSearchResult(
                 List.of("group-uuid"),
                 "Diabetes mellitus (disorder)",
@@ -267,6 +267,7 @@ class ProtoConversionUtilsTest {
         var m = g.getMatchingSemantics(0);
         assertThat(m.getHighlightedText()).isEqualTo("<b>diab</b>");
         assertThat(m.getPlainText()).isEqualTo("diab");
+        assertThat(m.getPublicIdList()).containsExactly("semantic-uuid");
         assertThat(m.getScore()).isEqualTo(0.8f);
         assertThat(m.getFieldIndex()).isEqualTo(2);
         assertThat(m.getSemanticNid()).isEqualTo(999);
