@@ -82,6 +82,12 @@ public record ConceptSearchResponse(
             @Schema(description = "Fully qualified name of the top-level concept")
             String fullyQualifiedName,
 
+            @Schema(description = "The concept's preferred description, per the service's language coordinate")
+            String preferredName,
+
+            @Schema(description = "The preferred name with <B>...</B> markup on the parts matching the query")
+            String highlightedName,
+
             @Schema(description = "Whether the concept is active")
             Boolean active,
 
@@ -106,6 +112,9 @@ public record ConceptSearchResponse(
     @JsonInclude(JsonInclude.Include.NON_NULL)
     @Schema(description = "A matching semantic within a concept group")
     public record MatchingSemantic(
+            @Schema(description = "Public ID (list of UUIDs) of the matching semantic")
+            List<String> publicId,
+
             @Schema(description = "The matched text with highlighting (HTML bold tags)")
             String highlightedText,
 
