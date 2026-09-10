@@ -111,7 +111,7 @@ export type SemanticInfo = {
   stamp: SemanticStampInfo;
 };
 
-// Response for getSemantics endpoint
+// Response for the semantics endpoint
 export type ConceptSemanticsResponse = {
   conceptId: string;
   conceptDescription: string;

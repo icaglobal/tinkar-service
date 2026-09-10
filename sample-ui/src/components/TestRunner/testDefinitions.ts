@@ -5,15 +5,12 @@ import {
   getConceptById,
   getChildren,
   getDescendants,
-  getSemantics,
-  getLidrRecords,
-  getChangeHistory,
-  getComments,
   kgGetSemantics,
+  getLidrRecords,
+  kgGetChangeHistory,
   kgGetComments,
   kgGetChildren,
   kgGetDescendants,
-  kgGetChangeHistory,
   kgGetConceptChangeHistory,
   saveStampCoordinate,
   listStampCoordinates,
@@ -87,7 +84,7 @@ async function testSemantics(
 ): Promise<TestOutcome> {
   const id = ctx.get(ctxKey);
   if (!id) return { status: 'skip', detail: `No concept ID for ${label}` };
-  const data = await getSemantics(id);
+  const data = await kgGetSemantics(id);
   if (!data.success) {
     return { status: 'fail', detail: data.errorMessage ?? 'not success', responseData: data };
   }
@@ -208,7 +205,7 @@ const scenario1Group: TestGroupDefinition = {
         run: async (ctx: TestContext): Promise<TestOutcome> => {
           const id = ctx.get('s1_id');
           if (!id) return { status: 'skip', detail: 'No concept ID' };
-          const data = await getSemantics(id);
+          const data = await kgGetSemantics(id);
           return containsText(data, pattern)
             ? { status: 'pass', detail: `Found "${pattern}"`, responseData: data }
             : { status: 'fail', detail: `"${pattern}" not found`, responseData: data };
@@ -757,10 +754,10 @@ const coordinateOverrideGroup: TestGroupDefinition = {
 
     {
       id: 'coord-compat-tier1',
-      name: 'Tier 1 semantics still works without coordinates',
+      name: 'Tier 2 semantics still works without coordinates',
       run: async (ctx) => {
         const id = ctx.get('albumin_id') ?? COORD_TEST_CONCEPT;
-        const data = await getSemantics(id);
+        const data = await kgGetSemantics(id);
         return data.success
           ? { status: 'pass', detail: `Tier 1 OK, ${data.semantics?.length ?? 0} semantics`, responseData: data }
           : { status: 'fail', detail: 'Tier 1 returned success=false', responseData: data };
@@ -849,31 +846,31 @@ const endpointCoverageGroup: TestGroupDefinition = {
     },
     {
       id: 'ep-change-history',
-      name: 'Tier 1: GET /change-history',
+      name: 'Tier 2: GET /change-history',
       run: async (ctx) => {
         const id = ctx.get('albumin_id') ?? ctx.get('s1_id');
         if (!id) return { status: 'skip', detail: 'No concept ID available' };
-        const data = await getChangeHistory(id);
+        const data = await kgGetChangeHistory(id);
         return { status: 'pass', detail: 'HTTP 200', responseData: data };
       },
     },
     {
       id: 'ep-comments',
-      name: 'Tier 1: GET /comments',
+      name: 'Tier 2: GET /comments',
       run: async (ctx) => {
         const id = ctx.get('albumin_id') ?? ctx.get('s1_id');
         if (!id) return { status: 'skip', detail: 'No concept ID available' };
-        const data = await getComments(id);
+        const data = await kgGetComments(id);
         return { status: 'pass', detail: 'HTTP 200', responseData: data };
       },
     },
     {
       id: 'ep-semantics',
-      name: 'Tier 1: GET /semantics',
+      name: 'Tier 2: GET /semantics',
       run: async (ctx) => {
         const id = ctx.get('albumin_id') ?? ctx.get('s1_id');
         if (!id) return { status: 'skip', detail: 'No concept ID available' };
-        const data = await getSemantics(id);
+        const data = await kgGetSemantics(id);
         return { status: 'pass', detail: 'HTTP 200', responseData: data };
       },
     },

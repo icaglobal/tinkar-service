@@ -16,13 +16,13 @@ import type {
   SearchSortOption,
 } from './types';
 
-const API_BASE_URL = 'http://localhost:8085/api/tinkar';
+const GR_API_BASE_URL = 'http://localhost:8085/api/ike/graphrag';
 const KG_API_BASE_URL = 'http://localhost:8085/api/ike/knowledgegraph';
 
 export async function search(query: string): Promise<ConceptSearchResponse> {
   const params = new URLSearchParams({ query });
 
-  const response = await fetch(`${API_BASE_URL}/search?${params}`, {
+  const response = await fetch(`${GR_API_BASE_URL}/search?${params}`, {
     method: 'GET',
     headers: { accept: '*/*' },
   });
@@ -43,7 +43,7 @@ export async function conceptSearch(
     maxResults: maxResults.toString(),
   });
 
-  const response = await fetch(`${API_BASE_URL}/conceptSearch?${params}`, {
+  const response = await fetch(`${GR_API_BASE_URL}/concept-search?${params}`, {
     method: 'GET',
     headers: {
       accept: '*/*',
@@ -60,7 +60,7 @@ export async function conceptSearch(
 export async function getDescendants(conceptId: string): Promise<DescendantsResponse> {
   const params = new URLSearchParams({ conceptId });
 
-  const response = await fetch(`${API_BASE_URL}/descendants/conceptId?${params}`, {
+  const response = await fetch(`${GR_API_BASE_URL}/descendants?${params}`, {
     method: 'GET',
     headers: {
       accept: '*/*',
@@ -80,7 +80,7 @@ export async function removeDescendant(
 ): Promise<DescendantOperationResponse> {
   const params = new URLSearchParams({ parentConceptId, descendantConceptId });
 
-  const response = await fetch(`${API_BASE_URL}/descendants?${params}`, {
+  const response = await fetch(`${KG_API_BASE_URL}/descendants?${params}`, {
     method: 'DELETE',
     headers: {
       accept: '*/*',
@@ -100,7 +100,7 @@ export async function addDescendant(
 ): Promise<DescendantOperationResponse> {
   const params = new URLSearchParams({ parentConceptId, descendantConceptId });
 
-  const response = await fetch(`${API_BASE_URL}/descendants?${params}`, {
+  const response = await fetch(`${KG_API_BASE_URL}/descendants?${params}`, {
     method: 'POST',
     headers: {
       accept: '*/*',
@@ -120,7 +120,7 @@ export async function createAndAddDescendant(
 ): Promise<DescendantOperationResponse> {
   const params = new URLSearchParams({ parentConceptId, conceptName });
 
-  const response = await fetch(`${API_BASE_URL}/descendants/create?${params}`, {
+  const response = await fetch(`${KG_API_BASE_URL}/descendants/create?${params}`, {
     method: 'POST',
     headers: {
       accept: '*/*',
@@ -145,7 +145,7 @@ export async function conceptSearchWithSort(
     sortBy,
   });
 
-  const response = await fetch(`${API_BASE_URL}/conceptSearchWithSort?${params}`, {
+  const response = await fetch(`${GR_API_BASE_URL}/concept-search-sorted?${params}`, {
     method: 'GET',
     headers: {
       accept: '*/*',
@@ -159,27 +159,11 @@ export async function conceptSearchWithSort(
   return response.json();
 }
 
-export async function getSemantics(conceptId: string): Promise<ConceptSemanticsResponse> {
-  const params = new URLSearchParams({ conceptId });
-
-  const response = await fetch(`${API_BASE_URL}/semantics?${params}`, {
-    method: 'GET',
-    headers: {
-      accept: '*/*',
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`);
-  }
-
-  return response.json();
-}
 
 export async function getConceptById(conceptId: string): Promise<ConceptSearchResponse> {
   const params = new URLSearchParams({ conceptId });
 
-  const response = await fetch(`${API_BASE_URL}/conceptId?${params}`, {
+  const response = await fetch(`${GR_API_BASE_URL}/entity?${params}`, {
     method: 'GET',
     headers: { accept: '*/*' },
   });
@@ -194,7 +178,7 @@ export async function getConceptById(conceptId: string): Promise<ConceptSearchRe
 export async function getChildren(conceptId: string): Promise<ConceptSearchResponse> {
   const params = new URLSearchParams({ conceptId });
 
-  const response = await fetch(`${API_BASE_URL}/children/conceptId?${params}`, {
+  const response = await fetch(`${GR_API_BASE_URL}/children?${params}`, {
     method: 'GET',
     headers: { accept: '*/*' },
   });
@@ -209,7 +193,7 @@ export async function getChildren(conceptId: string): Promise<ConceptSearchRespo
 export async function getLidrRecords(testKitConceptId: string): Promise<ConceptSearchResponse> {
   const params = new URLSearchParams({ testKitConceptId });
 
-  const response = await fetch(`${API_BASE_URL}/lidr-records/testKitConceptId?${params}`, {
+  const response = await fetch(`${GR_API_BASE_URL}/lidr-records?${params}`, {
     method: 'GET',
     headers: { accept: '*/*' },
   });
@@ -221,35 +205,7 @@ export async function getLidrRecords(testKitConceptId: string): Promise<ConceptS
   return response.json();
 }
 
-export async function getChangeHistory(entityId: string): Promise<ChangeHistoryResponse> {
-  const params = new URLSearchParams({ entityId });
 
-  const response = await fetch(`${API_BASE_URL}/change-history?${params}`, {
-    method: 'GET',
-    headers: { accept: '*/*' },
-  });
-
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`);
-  }
-
-  return response.json();
-}
-
-export async function getComments(conceptId: string): Promise<ConceptSemanticsResponse> {
-  const params = new URLSearchParams({ conceptId });
-
-  const response = await fetch(`${API_BASE_URL}/comments?${params}`, {
-    method: 'GET',
-    headers: { accept: '*/*' },
-  });
-
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`);
-  }
-
-  return response.json();
-}
 
 // ── Tier 2: Knowledge Graph API (with coordinate overrides) ─────────
 

@@ -50,14 +50,14 @@ Sample gRPC call (plaintext, the default):
 ```bash
 grpcurl -plaintext -d '{"query":"chronic lung","max_results":200}' \
   localhost:9095 \
-  dev.ikm.tinkar.service.TinkarSearchService/ConceptSearch
+  dev.ikm.tinkar.service.IkeGraphRAG/ConceptSearch
 ```
 
 Server reflection is enabled, so you can discover services and message shapes without a
 `.proto` file:
 ```bash
 grpcurl -plaintext localhost:9095 list
-grpcurl -plaintext localhost:9095 describe dev.ikm.tinkar.service.TinkarSearchService
+grpcurl -plaintext localhost:9095 describe dev.ikm.tinkar.service.IkeGraphRAG
 grpcurl -plaintext localhost:9095 describe dev.ikm.tinkar.service.TinkarConceptSearchRequest
 ```
 
@@ -115,7 +115,7 @@ grpcurl -cacert certs/server-cert.pem \
 # concept search
 grpcurl -cacert certs/server-cert.pem \
   -d '{"query":"catheter","max_results":3}' \
-  localhost:9095 dev.ikm.tinkar.service.TinkarSearchService/ConceptSearch
+  localhost:9095 dev.ikm.tinkar.service.IkeGraphRAG/ConceptSearch
 
 # inspect a concept's semantics, using a public_id from the search above
 grpcurl -cacert certs/server-cert.pem \
@@ -339,13 +339,14 @@ Administrative operations (import, reasoning).
 | `ImportChangeset` | Stream a protobuf changeset file into the entity store. |
 | `RunReasoner` | Execute the OWL EL++ reasoner and return a classification summary. |
 
-#### TinkarSearchService — `dev.ikm.tinkar.service.TinkarSearchService`
-
-**Deprecated.** Kept for backward compatibility with older Komet clients.
-Exposes the same search, entity-lookup, LIDR, and index-rebuild operations as `IkeGraphRAG`, plus two methods used internally by `GrpcPrimitiveDataService`:
-
-- `LoadConceptEntityGraph` — full entity graph (concept + semantics + patterns + stamps); called by Komet on concept open.
-- `GetEntityByPublicId` — single entity bytes by public ID; called by `GrpcPrimitiveDataService` on cache miss.
+> **Removed:** `TinkarSearchService` was the deprecated backward-compatibility service.
+> Its search, entity-lookup, LIDR, and index-rebuild operations are on `IkeGraphRAG`; the
+> three used by Komet internally moved to `IkeKnowledgeGraph`, where they mirror REST
+> endpoints that already existed:
+>
+> - `LoadConceptEntityGraph` — full entity graph (concept + semantics + patterns + stamps), called on concept open; mirrors `/entity-graph`.
+> - `GetEntityByPublicId` — single entity by public ID, called by `GrpcPrimitiveDataService` on cache miss; mirrors `/entity-by-id`.
+> - `GetSemanticInfo` — one semantic's fields addressed by its own public ID; mirrors `/semantics`.
 
 ---
 
@@ -405,10 +406,8 @@ Mirrors the `IkeAdmin` gRPC service.
 | POST | `/import` | Upload and import a protobuf changeset (multipart form). |
 | POST | `/reasoner` | Run the OWL EL++ reasoner. |
 
-#### `/api/tinkar` — Legacy Tinkar REST controller
-
-**Deprecated.** Kept for backward compatibility; mirrors `TinkarSearchService` gRPC methods.
-Prefer `/api/ike/graphrag` and `/api/ike/knowledgegraph` for new integrations.
+> **Removed:** `/api/tinkar` was the deprecated REST controller. Every endpoint it
+> carried exists on `/api/ike/graphrag` (Tier 1) or `/api/ike/knowledgegraph` (Tier 2).
 
 ---
 
