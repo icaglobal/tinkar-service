@@ -322,6 +322,17 @@ public class KnowledgeGraphGrpcController extends IkeKnowledgeGraphGrpc.IkeKnowl
     }
 
     @Override
+    public void commitEntities(CommitEntitiesRequest request,
+            StreamObserver<CommitEntitiesResponse> responseObserver) {
+        log.info("IkeKnowledgeGraph commitEntities request for {} entities", request.getEntitiesCount());
+        // No coordinate override: the entities carry their own STAMPs, authored by the client.
+        // Re-stamping them here would overwrite that authorship with the server's.
+        responseObserver.onNext(
+                tinkarService.commitEntities(request.getEntitiesList(), request.getTransactionName()));
+        responseObserver.onCompleted();
+    }
+
+    @Override
     public void getSemanticInfo(KnowledgeGraphConceptRequest request,
             StreamObserver<TinkarSemanticInfoResponse> responseObserver) {
         String semanticId = extractConceptId(request.getPublicId());

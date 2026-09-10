@@ -8,6 +8,8 @@ import dev.ikm.tinkar.service.dto.DescendantOperationResponse;
 import dev.ikm.tinkar.service.dto.EntityCountSummaryResponse;
 import dev.ikm.tinkar.service.dto.ReasonerResultsResponse;
 import dev.ikm.tinkar.service.dto.SearchSortOption;
+import dev.ikm.tinkar.schema.TinkarMsg;
+import dev.ikm.tinkar.service.proto.CommitEntitiesResponse;
 import dev.ikm.tinkar.service.proto.TinkarConceptSemanticsResponse;
 import dev.ikm.tinkar.service.proto.TinkarSearchQueryResponse;
 import dev.ikm.tinkar.service.proto.TinkarSemanticInfoResponse;
@@ -274,4 +276,24 @@ public interface TinkarService {
      */
     dev.ikm.tinkar.reasoner.service.ClassifierResults runReasoner(ReasonerPhaseListener listener)
             throws Exception;
+
+    /**
+     * Commits client-authored entities to this store as a single transaction.
+     *
+     * <p>The write counterpart to {@link #getEntityByPublicId(String)}: a client whose store is
+     * remote has nowhere durable to put an edit, so it sends the entities its own transaction
+     * produced and this commits them together.
+     *
+     * <p>Entities arrive carrying PublicIds rather than NIDs, because a NID is assigned per
+     * store and the client's are meaningless here. Each is resolved against this store, which
+     * assigns new NIDs for entities it has not seen.
+     *
+     * <p>All-or-nothing: if any entity fails to transform or store, nothing is committed, so a
+     * half-written concept never reaches the store.
+     *
+     * @param entities        the complete set of entities in one client transaction
+     * @param transactionName names the transaction for audit; blank to let this pick one
+     * @return the outcome, including the server-assigned commit time
+     */
+    CommitEntitiesResponse commitEntities(List<TinkarMsg> entities, String transactionName);
 }

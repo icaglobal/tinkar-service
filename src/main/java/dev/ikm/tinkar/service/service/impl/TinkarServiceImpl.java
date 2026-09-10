@@ -15,10 +15,12 @@ import dev.ikm.tinkar.coordinate.view.calculator.ViewCalculatorWithCache;
 import dev.ikm.tinkar.entity.*;
 import dev.ikm.tinkar.entity.load.LoadEntitiesFromProtobufFile;
 import dev.ikm.tinkar.entity.transform.EntityToTinkarSchemaTransformer;
+import dev.ikm.tinkar.entity.transform.TinkarSchemaToEntityTransformer;
 import dev.ikm.tinkar.entity.transaction.Transaction;
 import dev.ikm.tinkar.reasoner.service.ClassifierResults;
 import dev.ikm.tinkar.reasoner.service.ReasonerService;
 import dev.ikm.tinkar.schema.StampVersion;
+import dev.ikm.tinkar.schema.TinkarMsg;
 import dev.ikm.tinkar.service.dto.*;
 import dev.ikm.tinkar.service.dto.ChangeHistoryResponse.FieldChange;
 import dev.ikm.tinkar.service.dto.ChangeHistoryResponse.StampInfo;
@@ -2478,6 +2480,72 @@ public class TinkarServiceImpl implements TinkarService {
             lastReasonerDurationMs = durationMs;
             log.error("Reasoner failed after {}ms: {}", durationMs, e.getMessage(), e);
             throw e;
+        }
+    }
+
+    @Override
+    public CommitEntitiesResponse commitEntities(List<TinkarMsg> entities, String transactionName) {
+        long startTime = System.currentTimeMillis();
+        if (entities == null || entities.isEmpty()) {
+            return CommitEntitiesResponse.newBuilder()
+                    .setSuccess(false)
+                    .setErrorMessage("No entities to commit")
+                    .setCreatedAt(startTime)
+                    .build();
+        }
+
+        String name = (transactionName == null || transactionName.isBlank())
+                ? "Remote commit of " + entities.size() + " entities"
+                : transactionName;
+        log.info("Committing {} entities from remote client: {}", entities.size(), name);
+
+        try {
+            // Decode everything before storing anything. A malformed message then fails the
+            // whole call with the store untouched, instead of leaving a half-written concept
+            // behind — the concept stored but its description missing, say. putEntity has no
+            // rollback, so this validate-then-write split is what atomicity can mean here.
+            TinkarSchemaToEntityTransformer transformer = TinkarSchemaToEntityTransformer.getInstance();
+            List<Entity<? extends EntityVersion>> decodedEntities = new ArrayList<>();
+            List<StampEntity<StampEntityVersion>> decodedStamps = new ArrayList<>();
+            for (TinkarMsg message : entities) {
+                transformer.transform(message, decodedEntities::add, decodedStamps::add);
+            }
+
+            // Stamps first: every entity version cites its stamp by NID, so the stamp has to be
+            // resolvable before the entity citing it is stored.
+            for (StampEntity<StampEntityVersion> stamp : decodedStamps) {
+                EntityService.get().putStamp(stamp);
+            }
+            for (Entity<? extends EntityVersion> entity : decodedEntities) {
+                EntityService.get().putEntity(entity);
+            }
+
+            long commitTime = System.currentTimeMillis();
+
+            // The data provider indexes each entity inline on write, so the new concept is
+            // searchable without a rebuild; recreateLuceneIndex() is for bulk import, where
+            // inline indexing is suppressed. Caches still have to be dropped, or a query
+            // answered before this commit keeps being served.
+            dev.ikm.tinkar.common.service.CachingService.clearAll();
+
+            PrimitiveData.save();
+
+            log.info("Committed {} entities ({} stamps) in {}ms",
+                    decodedEntities.size(), decodedStamps.size(), commitTime - startTime);
+
+            return CommitEntitiesResponse.newBuilder()
+                    .setSuccess(true)
+                    .setEntitiesCommitted(decodedEntities.size())
+                    .setCommitTime(commitTime)
+                    .setCreatedAt(commitTime)
+                    .build();
+        } catch (Exception e) {
+            log.error("Commit of {} entities failed: {}", entities.size(), e.getMessage(), e);
+            return CommitEntitiesResponse.newBuilder()
+                    .setSuccess(false)
+                    .setErrorMessage(e.getMessage() == null ? e.toString() : e.getMessage())
+                    .setCreatedAt(System.currentTimeMillis())
+                    .build();
         }
     }
 }
