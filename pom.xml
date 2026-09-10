@@ -338,17 +338,17 @@
                                     <includes>Tinkar.proto</includes>
                                     <outputDirectory>${project.build.directory}/proto-deps</outputDirectory>
                                 </artifactItem>
-                                <!-- tinkar_search.proto is owned by tinkar-schema and compiled here
+                                <!-- Every service schema is owned by tinkar-schema and compiled here
                                      rather than checked in, so this project and the other consumer
                                      cannot drift. Unpacked to its own directory, which is added to
                                      BOTH sourceDirectories (to generate stubs) and importPaths (so
-                                     `import "tinkar_search.proto"` still resolves by its bare name). -->
+                                     inter-proto imports resolve by their bare names). -->
                                 <artifactItem>
                                     <groupId>dev.ikm.tinkar</groupId>
                                     <artifactId>tinkar-schema</artifactId>
                                     <version>${tinkar-schema.version}</version>
-                                    <includes>proto/tinkar_search.proto</includes>
-                                    <outputDirectory>${project.build.directory}/proto-shared</outputDirectory>
+                                    <includes>proto/*.proto</includes>
+                                    <outputDirectory>${project.build.directory}/proto-downstream</outputDirectory>
                                 </artifactItem>
                             </artifactItems>
                         </configuration>
@@ -362,12 +362,11 @@
                 <configuration>
                     <protocVersion>4.30.2</protocVersion>
                     <sourceDirectories>
-                        <sourceDirectory>${project.basedir}/src/main/proto</sourceDirectory>
-                        <sourceDirectory>${project.build.directory}/proto-shared/proto</sourceDirectory>
+                        <sourceDirectory>${project.build.directory}/proto-downstream/proto</sourceDirectory>
                     </sourceDirectories>
                     <importPaths>
                         <importPath>${project.build.directory}/proto-deps</importPath>
-                        <importPath>${project.build.directory}/proto-shared/proto</importPath>
+                        <importPath>${project.build.directory}/proto-downstream/proto</importPath>
                     </importPaths>
                     <binaryMavenPlugins>
                         <binaryMavenPlugin>

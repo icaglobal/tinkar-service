@@ -6,7 +6,7 @@ import { SortedResultsTable } from './components/SortedResultsTable';
 import { SemanticsView } from './components/SemanticsView';
 import { TestRunner } from './components/TestRunner/TestRunner';
 import { CoordinatesPanel } from './components/CoordinatesPanel';
-import { conceptSearchWithSort, getDescendants, getSemantics, removeDescendant, createAndAddDescendant } from './api/tinkarApi';
+import { conceptSearchWithSort, getDescendants, kgGetSemantics, removeDescendant, createAndAddDescendant } from './api/tinkarApi';
 import type { SearchSortOption } from './api/types';
 import './App.css';
 
@@ -59,7 +59,7 @@ function App() {
     error: semanticsError,
   } = useQuery({
     queryKey: ['semantics', selectedConceptId],
-    queryFn: () => getSemantics(selectedConceptId!),
+    queryFn: () => kgGetSemantics(selectedConceptId!),
     enabled: viewMode === 'semantics' && !!selectedConceptId,
   });
 

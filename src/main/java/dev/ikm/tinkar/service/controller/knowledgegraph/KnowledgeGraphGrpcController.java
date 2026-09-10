@@ -300,6 +300,37 @@ public class KnowledgeGraphGrpcController extends IkeKnowledgeGraphGrpc.IkeKnowl
         return CoordinateFactory.buildLanguageCoordinate(saved.settings());
     }
 
+    @Override
+    public void getEntityByPublicId(KnowledgeGraphConceptRequest request,
+            StreamObserver<TinkarConceptEntityResponse> responseObserver) {
+        String entityId = extractConceptId(request.getPublicId());
+        log.debug("IkeKnowledgeGraph getEntityByPublicId request for entityId: {}", entityId);
+        // No coordinate override: this returns the raw entity so the caller can load it
+        // into its own store and resolve it against its own coordinate.
+        responseObserver.onNext(tinkarService.getEntityByPublicId(entityId));
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void loadConceptEntityGraph(KnowledgeGraphConceptRequest request,
+            StreamObserver<TinkarConceptEntityResponse> responseObserver) {
+        String conceptId = extractConceptId(request.getPublicId());
+        log.info("IkeKnowledgeGraph loadConceptEntityGraph request for conceptId: {}", conceptId);
+        // Raw entity graph, for the same reason as getEntityByPublicId.
+        responseObserver.onNext(tinkarService.loadConceptEntityGraph(conceptId));
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void getSemanticInfo(KnowledgeGraphConceptRequest request,
+            StreamObserver<TinkarSemanticInfoResponse> responseObserver) {
+        String semanticId = extractConceptId(request.getPublicId());
+        log.info("IkeKnowledgeGraph getSemanticInfo request for semanticId: {}", semanticId);
+        ViewCalculatorWithCache calc = buildCalculator(request.getCoordinateOverride());
+        responseObserver.onNext(tinkarService.getSemanticInfo(semanticId, calc));
+        responseObserver.onCompleted();
+    }
+
     private ViewCalculatorWithCache buildCalculator(CoordinateOverride protoOverride) {
         if (protoOverride == null || protoOverride.equals(CoordinateOverride.getDefaultInstance())) {
             return CoordinateFactory.defaultCalculator();
