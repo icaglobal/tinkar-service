@@ -2504,6 +2504,13 @@ public class TinkarServiceImpl implements TinkarService {
             // whole call with the store untouched, instead of leaving a half-written concept
             // behind — the concept stored but its description missing, say. putEntity has no
             // rollback, so this validate-then-write split is what atomicity can mean here.
+            // Allocate a NID for every incoming entity before decoding any of them. A Rocks NID
+            // encodes the owning pattern, so the store can only mint one for a PublicId it has
+            // never seen while a pattern scope is bound; unscoped, it throws. The transformer
+            // resolves NIDs as it decodes, so without this pass a brand-new concept fails with
+            // "No entity key found for UUIDs" before it is ever stored.
+            allocateNids(entities);
+
             TinkarSchemaToEntityTransformer transformer = TinkarSchemaToEntityTransformer.getInstance();
             List<Entity<? extends EntityVersion>> decodedEntities = new ArrayList<>();
             List<StampEntity<StampEntityVersion>> decodedStamps = new ArrayList<>();
@@ -2547,5 +2554,48 @@ public class TinkarServiceImpl implements TinkarService {
                     .setCreatedAt(System.currentTimeMillis())
                     .build();
         }
+    }
+
+    /**
+     * Reserves a NID for each entity in a commit, in dependency order.
+     *
+     * <p>Each kind is allocated through the {@code nidForXxx} helper that binds its pattern
+     * scope. Semantics come last because a semantic's NID is allocated within its pattern's
+     * scope, so a pattern arriving in the same commit has to be reserved first.
+     *
+     * <p>Idempotent for entities the store already knows: the lookup returns the existing NID
+     * before any allocation happens.
+     */
+    private void allocateNids(List<TinkarMsg> entities) {
+        for (TinkarMsg message : entities) {
+            if (message.hasStampChronology()) {
+                EntityService.get().nidForStamp(toPublicId(message.getStampChronology().getPublicId()));
+            }
+        }
+        for (TinkarMsg message : entities) {
+            if (message.hasConceptChronology()) {
+                EntityService.get().nidForConcept(toPublicId(message.getConceptChronology().getPublicId()));
+            }
+        }
+        for (TinkarMsg message : entities) {
+            if (message.hasPatternChronology()) {
+                EntityService.get().nidForPattern(toPublicId(message.getPatternChronology().getPublicId()));
+            }
+        }
+        for (TinkarMsg message : entities) {
+            if (message.hasSemanticChronology()) {
+                var semantic = message.getSemanticChronology();
+                EntityService.get().nidForSemantic(
+                        toPublicId(semantic.getPatternForSemanticPublicId()),
+                        toPublicId(semantic.getPublicId()));
+            }
+        }
+    }
+
+    /** Converts a wire PublicId to the entity-layer one. */
+    private static PublicId toPublicId(dev.ikm.tinkar.schema.PublicId protoPublicId) {
+        return PublicIds.of(protoPublicId.getUuidsList().stream()
+                .map(UUID::fromString)
+                .toArray(UUID[]::new));
     }
 }
