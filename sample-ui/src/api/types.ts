@@ -42,6 +42,15 @@ export type DescendantOperationResponse = {
   errorMessage: string | null;
 };
 
+export type ConceptCreationResponse = {
+  conceptId: string | null;
+  fullyQualifiedName: string;
+  parentConceptIds: string[] | null;
+  success: boolean;
+  errorMessage: string | null;
+  createdAt: number;
+};
+
 // Sort options for search
 export type SearchSortOption =
   | 'TOP_COMPONENT'

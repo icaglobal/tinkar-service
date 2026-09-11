@@ -2,6 +2,7 @@ package dev.ikm.tinkar.service.service;
 
 import dev.ikm.tinkar.service.dto.ChangeHistoryResponse;
 import dev.ikm.tinkar.service.dto.ConceptChangeHistoryResponse;
+import dev.ikm.tinkar.service.dto.ConceptCreationResponse;
 import dev.ikm.tinkar.service.dto.ConceptSearchResponse;
 import dev.ikm.tinkar.service.dto.ConceptSemanticsResponse;
 import dev.ikm.tinkar.service.dto.DescendantOperationResponse;
@@ -296,4 +297,21 @@ public interface TinkarService {
      * @return the outcome, including the server-assigned commit time
      */
     CommitEntitiesResponse commitEntities(List<TinkarMsg> entities, String transactionName);
+
+    /**
+     * Creates a concept with a fully qualified name and an EL++ stated axiom.
+     *
+     * <p>Mirrors what Komet's "New Concept" editor writes, so a concept created here is
+     * indistinguishable from one authored in the client: a concept, a fully-qualified-name
+     * description, and a stated axiom whose necessary set references {@code parentConceptIds}.
+     *
+     * <p>An empty {@code parentConceptIds} yields a necessary set referencing
+     * {@code ANONYMOUS_CONCEPT} — the placeholder Komet uses for a definition that is not
+     * finished yet, rather than a concept with no axiom at all.
+     *
+     * @param fullyQualifiedName the concept's fully qualified name; required
+     * @param parentConceptIds   public IDs (UUIDs) the necessary set references; may be empty
+     * @return the created concept's public ID, or the reason it could not be created
+     */
+    ConceptCreationResponse createConcept(String fullyQualifiedName, List<String> parentConceptIds);
 }

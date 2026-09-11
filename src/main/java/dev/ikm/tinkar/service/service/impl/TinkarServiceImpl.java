@@ -40,6 +40,7 @@ import dev.ikm.tinkar.service.service.TinkarPrimitive;
 import dev.ikm.tinkar.service.service.ReasonerPhaseListener;
 import dev.ikm.tinkar.service.service.TinkarService;
 import dev.ikm.tinkar.entity.graph.DiTreeEntity;
+import dev.ikm.tinkar.entity.graph.EntityVertex;
 import dev.ikm.tinkar.terms.EntityFacade;
 import dev.ikm.tinkar.terms.EntityProxy;
 import dev.ikm.tinkar.terms.TinkarTerm;
@@ -2625,5 +2626,121 @@ public class TinkarServiceImpl implements TinkarService {
                 .filter(DataServiceController.class::isInstance)
                 .map(service -> (DataServiceController<?>) service)
                 .forEach(DataServiceController::save);
+    }
+
+    @Override
+    public ConceptCreationResponse createConcept(String fullyQualifiedName, List<String> parentConceptIds) {
+        if (fullyQualifiedName == null || fullyQualifiedName.isBlank()) {
+            return ConceptCreationResponse.error(fullyQualifiedName, "A fully qualified name is required");
+        }
+        List<String> parentIds = parentConceptIds == null ? List.of() : parentConceptIds;
+        log.info("Creating concept '{}' with {} parent(s)", fullyQualifiedName, parentIds.size());
+
+        try {
+            // Resolve the parents before writing anything, so an unknown parent fails the whole
+            // request rather than leaving a concept behind with a half-built axiom.
+            List<EntityProxy.Concept> parents = new ArrayList<>();
+            for (String parentId : parentIds) {
+                PublicId parentPublicId = primitive.getPublicId(parentId);
+                int parentNid = EntityService.get().nidForPublicId(parentPublicId);
+                parents.add(EntityProxy.Concept.make(EntityService.get().getEntityFast(parentNid).publicId()));
+            }
+            if (parents.isEmpty()) {
+                // Komet's editor writes this placeholder when a definition has no parent yet.
+                parents.add(TinkarTerm.ANONYMOUS_CONCEPT);
+            }
+
+            UUID conceptUuid = UUID.randomUUID();
+            PublicId conceptPublicId = PublicIds.of(conceptUuid);
+            Transaction transaction = Transaction.make("Create concept: " + fullyQualifiedName);
+
+            StampEntity<?> stamp = transaction.getStamp(
+                    dev.ikm.tinkar.terms.State.ACTIVE,
+                    System.currentTimeMillis(),
+                    TinkarTerm.USER.nid(),
+                    TinkarTerm.SOLOR_OVERLAY_MODULE.nid(),
+                    TinkarTerm.DEVELOPMENT_PATH.nid());
+
+            ConceptRecord conceptRecord = ConceptRecord.build(conceptUuid, stamp.versions().get(0));
+            EntityService.get().putEntity(conceptRecord);
+            transaction.addComponent(conceptRecord);
+            int conceptNid = conceptRecord.nid();
+
+            SemanticRecord fqnSemantic = SemanticRecord.build(
+                    UUID.randomUUID(),
+                    TinkarTerm.DESCRIPTION_PATTERN.nid(),
+                    conceptNid,
+                    stamp.versions().get(0),
+                    Lists.immutable.of(
+                            TinkarTerm.ENGLISH_LANGUAGE.publicId(),
+                            fullyQualifiedName,
+                            TinkarTerm.DESCRIPTION_CASE_SIGNIFICANCE.publicId(),
+                            TinkarTerm.FULLY_QUALIFIED_NAME_DESCRIPTION_TYPE.publicId()));
+            EntityService.get().putEntity(fqnSemantic);
+            transaction.addComponent(fqnSemantic);
+
+            SemanticRecord statedAxioms = SemanticRecord.build(
+                    UUID.randomUUID(),
+                    TinkarTerm.EL_PLUS_PLUS_STATED_AXIOMS_PATTERN.nid(),
+                    conceptNid,
+                    stamp.versions().get(0),
+                    Lists.immutable.of(buildNecessarySet(parents)));
+            EntityService.get().putEntity(statedAxioms);
+            transaction.addComponent(statedAxioms);
+
+            transaction.commit();
+            dev.ikm.tinkar.common.service.CachingService.clearAll();
+            saveDataStore();
+
+            log.info("Created concept {} '{}'", conceptUuid, fullyQualifiedName);
+            return ConceptCreationResponse.success(
+                    conceptUuid.toString(),
+                    fullyQualifiedName,
+                    parents.stream().map(parent -> parent.publicId().asUuidArray()[0].toString()).toList());
+        } catch (Exception e) {
+            log.error("Failed to create concept '{}': {}", fullyQualifiedName, e.getMessage(), e);
+            return ConceptCreationResponse.error(fullyQualifiedName,
+                    e.getMessage() == null ? e.toString() : e.getMessage());
+        }
+    }
+
+    /**
+     * Builds the EL++ stated axiom tree for a necessary set.
+     *
+     * <p>Shape matches what Komet's editor produces, so the client renders a concept created
+     * here the same way it renders its own:
+     * <pre>
+     *   Definition root
+     *     └─ Necessary set
+     *          └─ And
+     *               └─ Concept reference (one per parent)
+     * </pre>
+     *
+     * <p>Hand-built rather than reusing Komet's {@code AxiomBuilderRecord}: that lives in
+     * komet/framework, which this service does not depend on. The vertex primitives it uses are
+     * all in the entity layer.
+     */
+    private DiTreeEntity buildNecessarySet(List<EntityProxy.Concept> parents) {
+        DiTreeEntity.Builder treeBuilder = DiTreeEntity.builder();
+
+        EntityVertex root = EntityVertex.make(TinkarTerm.DEFINITION_ROOT);
+        treeBuilder.setRoot(root);
+
+        EntityVertex necessarySet = EntityVertex.make(TinkarTerm.NECESSARY_SET);
+        treeBuilder.addVertex(necessarySet);
+        treeBuilder.addEdge(necessarySet, root);
+
+        EntityVertex and = EntityVertex.make(TinkarTerm.AND);
+        treeBuilder.addVertex(and);
+        treeBuilder.addEdge(and, necessarySet);
+
+        for (EntityProxy.Concept parent : parents) {
+            EntityVertex conceptReference = EntityVertex.make(TinkarTerm.CONCEPT_REFERENCE);
+            conceptReference.putUncommittedProperty(TinkarTerm.CONCEPT_REFERENCE.nid(), parent);
+            treeBuilder.addVertex(conceptReference);
+            treeBuilder.addEdge(conceptReference, and);
+        }
+
+        return treeBuilder.build();
     }
 }
