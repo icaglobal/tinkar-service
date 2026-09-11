@@ -2,8 +2,11 @@ package dev.ikm.tinkar.service.service.impl;
 
 import dev.ikm.tinkar.common.id.*;
 import dev.ikm.tinkar.common.service.EntityCountSummary;
+import dev.ikm.tinkar.common.service.DataServiceController;
 import dev.ikm.tinkar.common.service.PluggableService;
 import dev.ikm.tinkar.common.service.PrimitiveData;
+import dev.ikm.tinkar.common.service.ServiceExclusionGroup;
+import dev.ikm.tinkar.common.service.ServiceLifecycleManager;
 import dev.ikm.tinkar.common.service.TrackingCallable;
 import dev.ikm.tinkar.coordinate.Calculators;
 import dev.ikm.tinkar.coordinate.stamp.calculator.Latest;
@@ -1987,7 +1990,7 @@ public class TinkarServiceImpl implements TinkarService {
     public String saveChanges() {
         log.info("Saving pending changes to persistent storage...");
         try {
-            PrimitiveData.save();
+            saveDataStore();
             log.info("Changes saved successfully to persistent storage");
             return "Changes saved successfully to persistent storage. Changes will now survive server restarts.";
         } catch (Exception e) {
@@ -2197,7 +2200,7 @@ public class TinkarServiceImpl implements TinkarService {
 
                 // Save changes to persistent storage
                 try {
-                    PrimitiveData.save();
+                    saveDataStore();
                 } catch (Exception saveEx) {
                     log.error("Failed to save changes after creating concept: {}", saveEx.getMessage(), saveEx);
                 }
@@ -2344,7 +2347,7 @@ public class TinkarServiceImpl implements TinkarService {
 
                 // Save changes to persistent storage
                 try {
-                    PrimitiveData.save();
+                    saveDataStore();
                 } catch (Exception saveEx) {
                     log.error("Failed to save changes after removing descendant: {}", saveEx.getMessage(), saveEx);
                 }
@@ -2535,7 +2538,7 @@ public class TinkarServiceImpl implements TinkarService {
             // answered before this commit keeps being served.
             dev.ikm.tinkar.common.service.CachingService.clearAll();
 
-            PrimitiveData.save();
+            saveDataStore();
 
             log.info("Committed {} entities ({} stamps) in {}ms",
                     decodedEntities.size(), decodedStamps.size(), commitTime - startTime);
@@ -2597,5 +2600,30 @@ public class TinkarServiceImpl implements TinkarService {
         return PublicIds.of(protoPublicId.getUuidsList().stream()
                 .map(UUID::fromString)
                 .toArray(UUID[]::new));
+    }
+
+    /**
+     * Flushes the running data provider to disk.
+     *
+     * <p>Deliberately not {@link PrimitiveData#save()}. That resolves controllers through a
+     * fresh {@code ServiceLoader}, which constructs a <em>new</em> controller whose provider
+     * reference is null; its {@code save()} is then skipped by a null guard, silently, with no
+     * log. Nothing written since startup reaches disk, and the loss only shows up as an empty
+     * store after the next restart.
+     *
+     * <p>Going through the lifecycle manager reaches the instances that were actually started —
+     * discovery creates one controller per service class and starts that same object — so the
+     * save lands on the provider holding the data.
+     *
+     * <p>Matters here because the Rocks maps are write-back caches: until something calls
+     * {@code save()}, committed entities live only in memory.
+     */
+    private void saveDataStore() {
+        ServiceLifecycleManager.get()
+                .getServicesForGroup(ServiceExclusionGroup.DATA_PROVIDER)
+                .stream()
+                .filter(DataServiceController.class::isInstance)
+                .map(service -> (DataServiceController<?>) service)
+                .forEach(DataServiceController::save);
     }
 }
