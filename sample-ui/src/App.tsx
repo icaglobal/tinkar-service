@@ -6,11 +6,12 @@ import { SortedResultsTable } from './components/SortedResultsTable';
 import { SemanticsView } from './components/SemanticsView';
 import { TestRunner } from './components/TestRunner/TestRunner';
 import { CoordinatesPanel } from './components/CoordinatesPanel';
+import { CreateConceptPanel } from './components/CreateConceptPanel';
 import { conceptSearchWithSort, getDescendants, kgGetSemantics, removeDescendant, createAndAddDescendant } from './api/tinkarApi';
 import type { SearchSortOption } from './api/types';
 import './App.css';
 
-type ViewMode = 'search' | 'descendants' | 'semantics' | 'test-runner' | 'coordinates';
+type ViewMode = 'search' | 'descendants' | 'semantics' | 'test-runner' | 'coordinates' | 'create-concept';
 
 const SORT_OPTIONS: { value: SearchSortOption; label: string }[] = [
   { value: 'TOP_COMPONENT', label: 'Top Component (by score)' },
@@ -143,6 +144,12 @@ function App() {
               Coordinates
             </button>
             <button
+              className={`create-concept-button ${viewMode === 'create-concept' ? 'active' : ''}`}
+              onClick={() => setViewMode('create-concept')}
+            >
+              Create Concept
+            </button>
+            <button
               className={`test-runner-button ${viewMode === 'test-runner' ? 'active' : ''}`}
               onClick={() => setViewMode('test-runner')}
             >
@@ -153,7 +160,7 @@ function App() {
       </header>
 
       <main className="app-main">
-        {viewMode !== 'test-runner' && viewMode !== 'coordinates' && (
+        {viewMode !== 'test-runner' && viewMode !== 'coordinates' && viewMode !== 'create-concept' && (
           <SearchBox onSearch={handleSearch} isLoading={isLoading} />
         )}
 
@@ -297,6 +304,10 @@ function App() {
 
         {viewMode === 'coordinates' && (
           <CoordinatesPanel onBack={handleBack} />
+        )}
+
+        {viewMode === 'create-concept' && (
+          <CreateConceptPanel onBack={handleBack} />
         )}
       </main>
     </div>

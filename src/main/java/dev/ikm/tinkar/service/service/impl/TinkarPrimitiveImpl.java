@@ -27,6 +27,7 @@ import dev.ikm.tinkar.entity.PatternEntityVersion;
 import dev.ikm.tinkar.provider.search.Searcher;
 import dev.ikm.tinkar.terms.EntityProxy;
 import dev.ikm.tinkar.terms.TinkarTerm;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -99,6 +100,17 @@ public final class TinkarPrimitiveImpl implements TinkarPrimitive {
 
     }
 
+    /**
+     * Closes the data store on application shutdown.
+     *
+     * <p>{@code @PreDestroy} because nothing else invokes this: the method is not on the
+     * {@link TinkarPrimitive} interface, the class does not implement {@code AutoCloseable},
+     * and Spring only infers a {@code close()} destroy method for {@code @Bean} definitions —
+     * not for a scanned {@code @Service}. Without the annotation the store was never closed, so
+     * the flush that {@code close()} performs never happened and every write since startup was
+     * lost on restart.
+     */
+    @PreDestroy
     public void close() {
         log.info("Closing IKM Interface");
         if (PrimitiveData.running()) {

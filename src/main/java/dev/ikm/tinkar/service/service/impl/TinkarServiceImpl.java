@@ -2,8 +2,11 @@ package dev.ikm.tinkar.service.service.impl;
 
 import dev.ikm.tinkar.common.id.*;
 import dev.ikm.tinkar.common.service.EntityCountSummary;
+import dev.ikm.tinkar.common.service.DataServiceController;
 import dev.ikm.tinkar.common.service.PluggableService;
 import dev.ikm.tinkar.common.service.PrimitiveData;
+import dev.ikm.tinkar.common.service.ServiceExclusionGroup;
+import dev.ikm.tinkar.common.service.ServiceLifecycleManager;
 import dev.ikm.tinkar.common.service.TrackingCallable;
 import dev.ikm.tinkar.coordinate.Calculators;
 import dev.ikm.tinkar.coordinate.stamp.calculator.Latest;
@@ -15,10 +18,12 @@ import dev.ikm.tinkar.coordinate.view.calculator.ViewCalculatorWithCache;
 import dev.ikm.tinkar.entity.*;
 import dev.ikm.tinkar.entity.load.LoadEntitiesFromProtobufFile;
 import dev.ikm.tinkar.entity.transform.EntityToTinkarSchemaTransformer;
+import dev.ikm.tinkar.entity.transform.TinkarSchemaToEntityTransformer;
 import dev.ikm.tinkar.entity.transaction.Transaction;
 import dev.ikm.tinkar.reasoner.service.ClassifierResults;
 import dev.ikm.tinkar.reasoner.service.ReasonerService;
 import dev.ikm.tinkar.schema.StampVersion;
+import dev.ikm.tinkar.schema.TinkarMsg;
 import dev.ikm.tinkar.service.dto.*;
 import dev.ikm.tinkar.service.dto.ChangeHistoryResponse.FieldChange;
 import dev.ikm.tinkar.service.dto.ChangeHistoryResponse.StampInfo;
@@ -35,6 +40,7 @@ import dev.ikm.tinkar.service.service.TinkarPrimitive;
 import dev.ikm.tinkar.service.service.ReasonerPhaseListener;
 import dev.ikm.tinkar.service.service.TinkarService;
 import dev.ikm.tinkar.entity.graph.DiTreeEntity;
+import dev.ikm.tinkar.entity.graph.EntityVertex;
 import dev.ikm.tinkar.terms.EntityFacade;
 import dev.ikm.tinkar.terms.EntityProxy;
 import dev.ikm.tinkar.terms.TinkarTerm;
@@ -1985,7 +1991,7 @@ public class TinkarServiceImpl implements TinkarService {
     public String saveChanges() {
         log.info("Saving pending changes to persistent storage...");
         try {
-            PrimitiveData.save();
+            saveDataStore();
             log.info("Changes saved successfully to persistent storage");
             return "Changes saved successfully to persistent storage. Changes will now survive server restarts.";
         } catch (Exception e) {
@@ -2195,7 +2201,7 @@ public class TinkarServiceImpl implements TinkarService {
 
                 // Save changes to persistent storage
                 try {
-                    PrimitiveData.save();
+                    saveDataStore();
                 } catch (Exception saveEx) {
                     log.error("Failed to save changes after creating concept: {}", saveEx.getMessage(), saveEx);
                 }
@@ -2342,7 +2348,7 @@ public class TinkarServiceImpl implements TinkarService {
 
                 // Save changes to persistent storage
                 try {
-                    PrimitiveData.save();
+                    saveDataStore();
                 } catch (Exception saveEx) {
                     log.error("Failed to save changes after removing descendant: {}", saveEx.getMessage(), saveEx);
                 }
@@ -2479,5 +2485,262 @@ public class TinkarServiceImpl implements TinkarService {
             log.error("Reasoner failed after {}ms: {}", durationMs, e.getMessage(), e);
             throw e;
         }
+    }
+
+    @Override
+    public CommitEntitiesResponse commitEntities(List<TinkarMsg> entities, String transactionName) {
+        long startTime = System.currentTimeMillis();
+        if (entities == null || entities.isEmpty()) {
+            return CommitEntitiesResponse.newBuilder()
+                    .setSuccess(false)
+                    .setErrorMessage("No entities to commit")
+                    .setCreatedAt(startTime)
+                    .build();
+        }
+
+        String name = (transactionName == null || transactionName.isBlank())
+                ? "Remote commit of " + entities.size() + " entities"
+                : transactionName;
+        log.info("Committing {} entities from remote client: {}", entities.size(), name);
+
+        try {
+            // Decode everything before storing anything. A malformed message then fails the
+            // whole call with the store untouched, instead of leaving a half-written concept
+            // behind — the concept stored but its description missing, say. putEntity has no
+            // rollback, so this validate-then-write split is what atomicity can mean here.
+            // Allocate a NID for every incoming entity before decoding any of them. A Rocks NID
+            // encodes the owning pattern, so the store can only mint one for a PublicId it has
+            // never seen while a pattern scope is bound; unscoped, it throws. The transformer
+            // resolves NIDs as it decodes, so without this pass a brand-new concept fails with
+            // "No entity key found for UUIDs" before it is ever stored.
+            allocateNids(entities);
+
+            TinkarSchemaToEntityTransformer transformer = TinkarSchemaToEntityTransformer.getInstance();
+            List<Entity<? extends EntityVersion>> decodedEntities = new ArrayList<>();
+            List<StampEntity<StampEntityVersion>> decodedStamps = new ArrayList<>();
+            for (TinkarMsg message : entities) {
+                transformer.transform(message, decodedEntities::add, decodedStamps::add);
+            }
+
+            // Stamps first: every entity version cites its stamp by NID, so the stamp has to be
+            // resolvable before the entity citing it is stored.
+            for (StampEntity<StampEntityVersion> stamp : decodedStamps) {
+                EntityService.get().putStamp(stamp);
+            }
+            for (Entity<? extends EntityVersion> entity : decodedEntities) {
+                EntityService.get().putEntity(entity);
+            }
+
+            long commitTime = System.currentTimeMillis();
+
+            // The data provider indexes each entity inline on write, so the new concept is
+            // searchable without a rebuild; recreateLuceneIndex() is for bulk import, where
+            // inline indexing is suppressed. Caches still have to be dropped, or a query
+            // answered before this commit keeps being served.
+            dev.ikm.tinkar.common.service.CachingService.clearAll();
+
+            saveDataStore();
+
+            log.info("Committed {} entities ({} stamps) in {}ms",
+                    decodedEntities.size(), decodedStamps.size(), commitTime - startTime);
+
+            return CommitEntitiesResponse.newBuilder()
+                    .setSuccess(true)
+                    .setEntitiesCommitted(decodedEntities.size())
+                    .setCommitTime(commitTime)
+                    .setCreatedAt(commitTime)
+                    .build();
+        } catch (Exception e) {
+            log.error("Commit of {} entities failed: {}", entities.size(), e.getMessage(), e);
+            return CommitEntitiesResponse.newBuilder()
+                    .setSuccess(false)
+                    .setErrorMessage(e.getMessage() == null ? e.toString() : e.getMessage())
+                    .setCreatedAt(System.currentTimeMillis())
+                    .build();
+        }
+    }
+
+    /**
+     * Reserves a NID for each entity in a commit, in dependency order.
+     *
+     * <p>Each kind is allocated through the {@code nidForXxx} helper that binds its pattern
+     * scope. Semantics come last because a semantic's NID is allocated within its pattern's
+     * scope, so a pattern arriving in the same commit has to be reserved first.
+     *
+     * <p>Idempotent for entities the store already knows: the lookup returns the existing NID
+     * before any allocation happens.
+     */
+    private void allocateNids(List<TinkarMsg> entities) {
+        for (TinkarMsg message : entities) {
+            if (message.hasStampChronology()) {
+                EntityService.get().nidForStamp(toPublicId(message.getStampChronology().getPublicId()));
+            }
+        }
+        for (TinkarMsg message : entities) {
+            if (message.hasConceptChronology()) {
+                EntityService.get().nidForConcept(toPublicId(message.getConceptChronology().getPublicId()));
+            }
+        }
+        for (TinkarMsg message : entities) {
+            if (message.hasPatternChronology()) {
+                EntityService.get().nidForPattern(toPublicId(message.getPatternChronology().getPublicId()));
+            }
+        }
+        for (TinkarMsg message : entities) {
+            if (message.hasSemanticChronology()) {
+                var semantic = message.getSemanticChronology();
+                EntityService.get().nidForSemantic(
+                        toPublicId(semantic.getPatternForSemanticPublicId()),
+                        toPublicId(semantic.getPublicId()));
+            }
+        }
+    }
+
+    /** Converts a wire PublicId to the entity-layer one. */
+    private static PublicId toPublicId(dev.ikm.tinkar.schema.PublicId protoPublicId) {
+        return PublicIds.of(protoPublicId.getUuidsList().stream()
+                .map(UUID::fromString)
+                .toArray(UUID[]::new));
+    }
+
+    /**
+     * Flushes the running data provider to disk.
+     *
+     * <p>Deliberately not {@link PrimitiveData#save()}. That resolves controllers through a
+     * fresh {@code ServiceLoader}, which constructs a <em>new</em> controller whose provider
+     * reference is null; its {@code save()} is then skipped by a null guard, silently, with no
+     * log. Nothing written since startup reaches disk, and the loss only shows up as an empty
+     * store after the next restart.
+     *
+     * <p>Going through the lifecycle manager reaches the instances that were actually started —
+     * discovery creates one controller per service class and starts that same object — so the
+     * save lands on the provider holding the data.
+     *
+     * <p>Matters here because the Rocks maps are write-back caches: until something calls
+     * {@code save()}, committed entities live only in memory.
+     */
+    private void saveDataStore() {
+        ServiceLifecycleManager.get()
+                .getServicesForGroup(ServiceExclusionGroup.DATA_PROVIDER)
+                .stream()
+                .filter(DataServiceController.class::isInstance)
+                .map(service -> (DataServiceController<?>) service)
+                .forEach(DataServiceController::save);
+    }
+
+    @Override
+    public ConceptCreationResponse createConcept(String fullyQualifiedName, List<String> parentConceptIds) {
+        if (fullyQualifiedName == null || fullyQualifiedName.isBlank()) {
+            return ConceptCreationResponse.error(fullyQualifiedName, "A fully qualified name is required");
+        }
+        List<String> parentIds = parentConceptIds == null ? List.of() : parentConceptIds;
+        log.info("Creating concept '{}' with {} parent(s)", fullyQualifiedName, parentIds.size());
+
+        try {
+            // Resolve the parents before writing anything, so an unknown parent fails the whole
+            // request rather than leaving a concept behind with a half-built axiom.
+            List<EntityProxy.Concept> parents = new ArrayList<>();
+            for (String parentId : parentIds) {
+                PublicId parentPublicId = primitive.getPublicId(parentId);
+                int parentNid = EntityService.get().nidForPublicId(parentPublicId);
+                parents.add(EntityProxy.Concept.make(EntityService.get().getEntityFast(parentNid).publicId()));
+            }
+            if (parents.isEmpty()) {
+                // Komet's editor writes this placeholder when a definition has no parent yet.
+                parents.add(TinkarTerm.ANONYMOUS_CONCEPT);
+            }
+
+            UUID conceptUuid = UUID.randomUUID();
+            PublicId conceptPublicId = PublicIds.of(conceptUuid);
+            Transaction transaction = Transaction.make("Create concept: " + fullyQualifiedName);
+
+            StampEntity<?> stamp = transaction.getStamp(
+                    dev.ikm.tinkar.terms.State.ACTIVE,
+                    System.currentTimeMillis(),
+                    TinkarTerm.USER.nid(),
+                    TinkarTerm.SOLOR_OVERLAY_MODULE.nid(),
+                    TinkarTerm.DEVELOPMENT_PATH.nid());
+
+            ConceptRecord conceptRecord = ConceptRecord.build(conceptUuid, stamp.versions().get(0));
+            EntityService.get().putEntity(conceptRecord);
+            transaction.addComponent(conceptRecord);
+            int conceptNid = conceptRecord.nid();
+
+            SemanticRecord fqnSemantic = SemanticRecord.build(
+                    UUID.randomUUID(),
+                    TinkarTerm.DESCRIPTION_PATTERN.nid(),
+                    conceptNid,
+                    stamp.versions().get(0),
+                    Lists.immutable.of(
+                            TinkarTerm.ENGLISH_LANGUAGE.publicId(),
+                            fullyQualifiedName,
+                            TinkarTerm.DESCRIPTION_CASE_SIGNIFICANCE.publicId(),
+                            TinkarTerm.FULLY_QUALIFIED_NAME_DESCRIPTION_TYPE.publicId()));
+            EntityService.get().putEntity(fqnSemantic);
+            transaction.addComponent(fqnSemantic);
+
+            SemanticRecord statedAxioms = SemanticRecord.build(
+                    UUID.randomUUID(),
+                    TinkarTerm.EL_PLUS_PLUS_STATED_AXIOMS_PATTERN.nid(),
+                    conceptNid,
+                    stamp.versions().get(0),
+                    Lists.immutable.of(buildNecessarySet(parents)));
+            EntityService.get().putEntity(statedAxioms);
+            transaction.addComponent(statedAxioms);
+
+            transaction.commit();
+            dev.ikm.tinkar.common.service.CachingService.clearAll();
+            saveDataStore();
+
+            log.info("Created concept {} '{}'", conceptUuid, fullyQualifiedName);
+            return ConceptCreationResponse.success(
+                    conceptUuid.toString(),
+                    fullyQualifiedName,
+                    parents.stream().map(parent -> parent.publicId().asUuidArray()[0].toString()).toList());
+        } catch (Exception e) {
+            log.error("Failed to create concept '{}': {}", fullyQualifiedName, e.getMessage(), e);
+            return ConceptCreationResponse.error(fullyQualifiedName,
+                    e.getMessage() == null ? e.toString() : e.getMessage());
+        }
+    }
+
+    /**
+     * Builds the EL++ stated axiom tree for a necessary set.
+     *
+     * <p>Shape matches what Komet's editor produces, so the client renders a concept created
+     * here the same way it renders its own:
+     * <pre>
+     *   Definition root
+     *     └─ Necessary set
+     *          └─ And
+     *               └─ Concept reference (one per parent)
+     * </pre>
+     *
+     * <p>Hand-built rather than reusing Komet's {@code AxiomBuilderRecord}: that lives in
+     * komet/framework, which this service does not depend on. The vertex primitives it uses are
+     * all in the entity layer.
+     */
+    private DiTreeEntity buildNecessarySet(List<EntityProxy.Concept> parents) {
+        DiTreeEntity.Builder treeBuilder = DiTreeEntity.builder();
+
+        EntityVertex root = EntityVertex.make(TinkarTerm.DEFINITION_ROOT);
+        treeBuilder.setRoot(root);
+
+        EntityVertex necessarySet = EntityVertex.make(TinkarTerm.NECESSARY_SET);
+        treeBuilder.addVertex(necessarySet);
+        treeBuilder.addEdge(necessarySet, root);
+
+        EntityVertex and = EntityVertex.make(TinkarTerm.AND);
+        treeBuilder.addVertex(and);
+        treeBuilder.addEdge(and, necessarySet);
+
+        for (EntityProxy.Concept parent : parents) {
+            EntityVertex conceptReference = EntityVertex.make(TinkarTerm.CONCEPT_REFERENCE);
+            conceptReference.putUncommittedProperty(TinkarTerm.CONCEPT_REFERENCE.nid(), parent);
+            treeBuilder.addVertex(conceptReference);
+            treeBuilder.addEdge(conceptReference, and);
+        }
+
+        return treeBuilder.build();
     }
 }

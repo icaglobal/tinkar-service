@@ -3,6 +3,7 @@ package dev.ikm.tinkar.service.controller.knowledgegraph;
 import dev.ikm.tinkar.service.dto.ChangeHistoryResponse;
 import dev.ikm.tinkar.service.dto.*;
 import dev.ikm.tinkar.service.dto.CoordinateOverride;
+import dev.ikm.tinkar.service.dto.ConceptCreationResponse;
 import dev.ikm.tinkar.service.dto.DescendantOperationResponse;
 import dev.ikm.tinkar.service.dto.PremiseType;
 import dev.ikm.tinkar.service.dto.SavedLanguageCoordinateResponse;
@@ -238,6 +239,21 @@ public class KnowledgeGraphRestController {
             @Parameter(description = "Parent concept ID (UUID)", required = true, example = "f6978e15-e169-58c2-a93d-eac1511974da") @RequestParam("parentConceptId") String parentConceptId,
             @Parameter(description = "Name for the new concept", required = true, example = "New Medical Condition") @RequestParam("conceptName") String conceptName) {
         return ResponseEntity.ok(tinkarService.createAndAddDescendant(parentConceptId, conceptName));
+    }
+
+    @Operation(summary = "Create a new concept",
+            description = "Creates a concept with a fully qualified name and an EL++ stated axiom whose necessary set "
+                    + "references the given parents. With no parents the necessary set references Anonymous concept, "
+                    + "the placeholder Komet uses for an unfinished definition.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Concept created", content = @Content(schema = @Schema(implementation = ConceptCreationResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Missing name, or a parent concept ID that does not resolve")
+    })
+    @PostMapping("/concepts")
+    public ResponseEntity<ConceptCreationResponse> createConcept(
+            @Parameter(description = "Fully qualified name for the new concept", required = true, example = "New Medical Condition") @RequestParam("fullyQualifiedName") String fullyQualifiedName,
+            @Parameter(description = "Concept IDs (UUIDs) the necessary set references; omit for Anonymous concept") @RequestParam(value = "parentConceptIds", required = false) List<String> parentConceptIds) {
+        return ResponseEntity.ok(tinkarService.createConcept(fullyQualifiedName, parentConceptIds));
     }
 
     @Operation(summary = "Remove a descendant from a concept", description = "Removes the IS-A relationship between a parent concept and a descendant concept.")

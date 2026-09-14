@@ -2,12 +2,15 @@ package dev.ikm.tinkar.service.service;
 
 import dev.ikm.tinkar.service.dto.ChangeHistoryResponse;
 import dev.ikm.tinkar.service.dto.ConceptChangeHistoryResponse;
+import dev.ikm.tinkar.service.dto.ConceptCreationResponse;
 import dev.ikm.tinkar.service.dto.ConceptSearchResponse;
 import dev.ikm.tinkar.service.dto.ConceptSemanticsResponse;
 import dev.ikm.tinkar.service.dto.DescendantOperationResponse;
 import dev.ikm.tinkar.service.dto.EntityCountSummaryResponse;
 import dev.ikm.tinkar.service.dto.ReasonerResultsResponse;
 import dev.ikm.tinkar.service.dto.SearchSortOption;
+import dev.ikm.tinkar.schema.TinkarMsg;
+import dev.ikm.tinkar.service.proto.CommitEntitiesResponse;
 import dev.ikm.tinkar.service.proto.TinkarConceptSemanticsResponse;
 import dev.ikm.tinkar.service.proto.TinkarSearchQueryResponse;
 import dev.ikm.tinkar.service.proto.TinkarSemanticInfoResponse;
@@ -274,4 +277,41 @@ public interface TinkarService {
      */
     dev.ikm.tinkar.reasoner.service.ClassifierResults runReasoner(ReasonerPhaseListener listener)
             throws Exception;
+
+    /**
+     * Commits client-authored entities to this store as a single transaction.
+     *
+     * <p>The write counterpart to {@link #getEntityByPublicId(String)}: a client whose store is
+     * remote has nowhere durable to put an edit, so it sends the entities its own transaction
+     * produced and this commits them together.
+     *
+     * <p>Entities arrive carrying PublicIds rather than NIDs, because a NID is assigned per
+     * store and the client's are meaningless here. Each is resolved against this store, which
+     * assigns new NIDs for entities it has not seen.
+     *
+     * <p>All-or-nothing: if any entity fails to transform or store, nothing is committed, so a
+     * half-written concept never reaches the store.
+     *
+     * @param entities        the complete set of entities in one client transaction
+     * @param transactionName names the transaction for audit; blank to let this pick one
+     * @return the outcome, including the server-assigned commit time
+     */
+    CommitEntitiesResponse commitEntities(List<TinkarMsg> entities, String transactionName);
+
+    /**
+     * Creates a concept with a fully qualified name and an EL++ stated axiom.
+     *
+     * <p>Mirrors what Komet's "New Concept" editor writes, so a concept created here is
+     * indistinguishable from one authored in the client: a concept, a fully-qualified-name
+     * description, and a stated axiom whose necessary set references {@code parentConceptIds}.
+     *
+     * <p>An empty {@code parentConceptIds} yields a necessary set referencing
+     * {@code ANONYMOUS_CONCEPT} — the placeholder Komet uses for a definition that is not
+     * finished yet, rather than a concept with no axiom at all.
+     *
+     * @param fullyQualifiedName the concept's fully qualified name; required
+     * @param parentConceptIds   public IDs (UUIDs) the necessary set references; may be empty
+     * @return the created concept's public ID, or the reason it could not be created
+     */
+    ConceptCreationResponse createConcept(String fullyQualifiedName, List<String> parentConceptIds);
 }

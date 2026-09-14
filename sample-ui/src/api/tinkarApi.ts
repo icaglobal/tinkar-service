@@ -6,6 +6,7 @@ import type {
   ConceptSemanticsResponse,
   CoordinateOverrideParams,
   DescendantsResponse,
+  ConceptCreationResponse,
   DescendantOperationResponse,
   LanguageCoordinateSettings,
   NavigationCoordinateSettings,
@@ -121,6 +122,34 @@ export async function createAndAddDescendant(
   const params = new URLSearchParams({ parentConceptId, conceptName });
 
   const response = await fetch(`${KG_API_BASE_URL}/descendants/create?${params}`, {
+    method: 'POST',
+    headers: {
+      accept: '*/*',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Creates a concept with a fully qualified name and a necessary set referencing `parentConceptIds`.
+ * Passing no parents leaves the necessary set referencing "Anonymous concept", the placeholder
+ * Komet uses for a definition that is not finished yet.
+ */
+export async function createConcept(
+  fullyQualifiedName: string,
+  parentConceptIds: string[] = []
+): Promise<ConceptCreationResponse> {
+  const params = new URLSearchParams({ fullyQualifiedName });
+  // Repeated key rather than a comma-joined value: Spring binds List<String> from repeats,
+  // and a concept UUID must never be split on a delimiter.
+  parentConceptIds.forEach((id) => params.append('parentConceptIds', id));
+
+  const response = await fetch(`${KG_API_BASE_URL}/concepts?${params}`, {
     method: 'POST',
     headers: {
       accept: '*/*',

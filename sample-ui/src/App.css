@@ -1424,3 +1424,181 @@
   color: #333;
   word-break: break-word;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   Create Concept Panel
+   ═══════════════════════════════════════════════════════════ */
+
+.create-concept-button {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  background-color: transparent;
+  color: #28a745;
+  border: 1px solid #28a745;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.create-concept-button:hover,
+.create-concept-button.active {
+  background-color: #28a745;
+  color: white;
+}
+
+.create-concept-panel {
+  width: 100%;
+  max-width: 640px;
+}
+
+.create-concept-header {
+  margin-bottom: 1.5rem;
+}
+
+.create-concept-header h2 {
+  margin: 1rem 0 0;
+  color: #213547;
+}
+
+.create-concept-section {
+  margin-bottom: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.create-concept-section label {
+  font-weight: 600;
+  color: #213547;
+}
+
+.create-concept-section .required {
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  color: #d9534f;
+  border: 1px solid #d9534f;
+  border-radius: 3px;
+}
+
+.create-concept-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #6c757d;
+}
+
+.create-concept-input {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.95rem;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.parent-search {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.parent-search button {
+  padding: 0.5rem 1rem;
+  white-space: nowrap;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  background-color: #f8f9fa;
+  cursor: pointer;
+}
+
+.parent-search button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.parent-chips,
+.parent-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.parent-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.parent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.85rem;
+  background-color: #e9f5ec;
+  border: 1px solid #28a745;
+  border-radius: 12px;
+  color: #1c7430;
+}
+
+.parent-chip button {
+  border: none;
+  background: none;
+  color: #1c7430;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.parent-results {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+}
+
+.parent-results li + li {
+  border-top: 1px solid #f1f3f5;
+}
+
+.parent-results button {
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: #213547;
+}
+
+.parent-results button:hover {
+  background-color: #f1f3f5;
+}
+
+.create-concept-submit {
+  padding: 0.6rem 1.2rem;
+  font-size: 0.95rem;
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.create-concept-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.create-concept-success {
+  color: #1c7430;
+  font-size: 0.9rem;
+}
+
+.create-concept-error {
+  color: #d9534f;
+  font-size: 0.9rem;
+}
