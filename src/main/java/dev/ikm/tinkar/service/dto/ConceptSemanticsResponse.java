@@ -20,6 +20,8 @@ public record ConceptSemanticsResponse(
 
         @Schema(description = "List of semantics attached to this concept") List<SemanticInfo> semantics,
 
+        @Schema(description = "STAMP of the concept's own latest version") StampInfo conceptStamp,
+
         @Schema(description = "Whether the query was successful") Boolean success,
 
         @Schema(description = "Error message if query failed") String errorMessage,
@@ -84,11 +86,24 @@ public record ConceptSemanticsResponse(
      */
     public static ConceptSemanticsResponse success(String conceptId, String conceptDescription,
                                                     List<SemanticInfo> semantics) {
+        return success(conceptId, conceptDescription, semantics, null);
+    }
+
+    /**
+     * As {@link #success(String, String, List)}, carrying the concept's own STAMP.
+     *
+     * <p>Separate from the per-semantic stamps: a viewer showing a concept header wants the
+     * status, time, author, module and path of the <em>concept</em>, which is not any one of
+     * its semantics' stamps.
+     */
+    public static ConceptSemanticsResponse success(String conceptId, String conceptDescription,
+                                                    List<SemanticInfo> semantics, StampInfo conceptStamp) {
         return new ConceptSemanticsResponse(
                 conceptId,
                 conceptDescription,
                 semantics != null ? semantics.size() : 0,
                 semantics,
+                conceptStamp,
                 true,
                 null,
                 System.currentTimeMillis());
@@ -102,6 +117,7 @@ public record ConceptSemanticsResponse(
                 conceptId,
                 null,
                 0,
+                null,
                 null,
                 false,
                 errorMessage,

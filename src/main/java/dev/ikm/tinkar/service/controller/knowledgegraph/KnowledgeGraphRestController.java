@@ -3,6 +3,7 @@ package dev.ikm.tinkar.service.controller.knowledgegraph;
 import dev.ikm.tinkar.service.dto.ChangeHistoryResponse;
 import dev.ikm.tinkar.service.dto.*;
 import dev.ikm.tinkar.service.dto.CoordinateOverride;
+import dev.ikm.tinkar.service.dto.CreateConceptRequest;
 import dev.ikm.tinkar.service.dto.ConceptCreationResponse;
 import dev.ikm.tinkar.service.dto.DescendantOperationResponse;
 import dev.ikm.tinkar.service.dto.PremiseType;
@@ -23,6 +24,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -242,18 +244,19 @@ public class KnowledgeGraphRestController {
     }
 
     @Operation(summary = "Create a new concept",
-            description = "Creates a concept with a fully qualified name and an EL++ stated axiom whose necessary set "
-                    + "references the given parents. With no parents the necessary set references Anonymous concept, "
-                    + "the placeholder Komet uses for an unfinished definition.")
+            description = "Creates a concept from its descriptions and stated axiom, mirroring what "
+                    + "Komet's New Concept editor can author. Exactly one description must be "
+                    + "FULLY_QUALIFIED_NAME; the rest may be REGULAR_NAME or DEFINITION. Axioms may "
+                    + "carry necessary and sufficient sets together. Omit axioms entirely for a "
+                    + "necessary set referencing Anonymous concept, the placeholder Komet writes for "
+                    + "a definition that is not finished yet.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Concept created", content = @Content(schema = @Schema(implementation = ConceptCreationResponse.class))),
-            @ApiResponse(responseCode = "400", description = "Missing name, or a parent concept ID that does not resolve")
+            @ApiResponse(responseCode = "400", description = "Missing or duplicated fully qualified name, or a concept ID that does not resolve")
     })
-    @PostMapping("/concepts")
-    public ResponseEntity<ConceptCreationResponse> createConcept(
-            @Parameter(description = "Fully qualified name for the new concept", required = true, example = "New Medical Condition") @RequestParam("fullyQualifiedName") String fullyQualifiedName,
-            @Parameter(description = "Concept IDs (UUIDs) the necessary set references; omit for Anonymous concept") @RequestParam(value = "parentConceptIds", required = false) List<String> parentConceptIds) {
-        return ResponseEntity.ok(tinkarService.createConcept(fullyQualifiedName, parentConceptIds));
+    @PostMapping(value = "/concepts", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<ConceptCreationResponse> createConcept(@RequestBody CreateConceptRequest request) {
+        return ResponseEntity.ok(tinkarService.createConcept(request));
     }
 
     @Operation(summary = "Remove a descendant from a concept", description = "Removes the IS-A relationship between a parent concept and a descendant concept.")

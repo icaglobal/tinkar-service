@@ -8,7 +8,7 @@ import type {
 } from '../api/types';
 import { kgGetChildren, kgGetConceptChangeHistory } from '../api/tinkarApi';
 
-type ConceptDetailTab = 'general' | 'axioms' | 'hierarchy' | 'history';
+type ConceptDetailTab = 'descriptions' | 'general' | 'axioms' | 'hierarchy' | 'history';
 
 // ── Pattern classification ───────────────────────────────────────────
 
@@ -23,6 +23,76 @@ function isNavigationPattern(name: string | null | undefined): boolean {
 
 // ── Shared sub-components ────────────────────────────────────────────
 
+/** Description Pattern field positions, in the order the pattern declares them. */
+const DESCRIPTION_FIELD = { LANGUAGE: 0, TEXT: 1, CASE_SIGNIFICANCE: 2, TYPE: 3 } as const;
+
+/**
+ * Navigation Pattern field positions: destination first, then origin
+ * (`Lists.immutable.of(destinationSet, originSet)` service-side). Origin holds the parents.
+ */
+const NAVIGATION_FIELD = { DESTINATION: 0, ORIGIN: 1 } as const;
+
+function isDescriptionPattern(name: string | null | undefined): boolean {
+  return (name ?? '').toLowerCase().includes('description pattern');
+}
+
+function fieldAt(semantic: SemanticInfo, index: number): string {
+  return semantic.fields.find((f) => f.index === index)?.value ?? '';
+}
+
+/**
+ * Descriptions grouped the way Komet's concept view groups them — definition, fully qualified
+ * names, then other names — with each entry annotated by case significance and language.
+ */
+function DescriptionsTab({ semantics }: { semantics: SemanticInfo[] }) {
+  const descriptions = semantics.filter((s) => isDescriptionPattern(s.patternName));
+
+  if (descriptions.length === 0) {
+    return <p className="no-results">No descriptions found for this concept.</p>;
+  }
+
+  const byType = (match: string) =>
+    descriptions.filter((s) =>
+      fieldAt(s, DESCRIPTION_FIELD.TYPE).toLowerCase().includes(match)
+    );
+
+  const definitions = byType('definition');
+  const fullyQualified = byType('fully qualified');
+  // Whatever is left is an "other name" — usually the regular name description type.
+  const otherNames = descriptions.filter(
+    (s) => !definitions.includes(s) && !fullyQualified.includes(s)
+  );
+
+  const section = (label: string, entries: SemanticInfo[]) =>
+    entries.length === 0 ? null : (
+      <div className="description-group" key={label}>
+        <h3 className="pattern-group-header">
+          {label}
+          <span className="pattern-count">({entries.length})</span>
+        </h3>
+        {entries.map((entry) => (
+          <div key={entry.semanticId} className="description-entry">
+            <div className="description-text">{fieldAt(entry, DESCRIPTION_FIELD.TEXT)}</div>
+            <div className="description-meta">
+              {fieldAt(entry, DESCRIPTION_FIELD.CASE_SIGNIFICANCE)}
+              {' · '}
+              {fieldAt(entry, DESCRIPTION_FIELD.LANGUAGE)}
+              {entry.stamp?.formattedTime ? ` · Added ${entry.stamp.formattedTime.slice(0, 10)}` : ''}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+
+  return (
+    <div className="semantics-groups">
+      {section('Definition', definitions)}
+      {section('Fully qualified names', fullyQualified)}
+      {section('Other names', otherNames)}
+    </div>
+  );
+}
+
 function SemanticCard({ semantic }: { semantic: SemanticInfo }) {
   const [showStamp, setShowStamp] = useState(false);
 
@@ -34,10 +104,12 @@ function SemanticCard({ semantic }: { semantic: SemanticInfo }) {
       </div>
 
       <div className="semantic-fields">
-        {semantic.fields.map((field, index) => (
-          <div key={index} className="semantic-field">
-            <span className="field-name">{field.fieldName}:</span>
-            <span className="field-value" title={`Type: ${field.fieldType}`}>
+        {semantic.fields.map((field) => (
+          <div key={field.index} className="semantic-field">
+            {/* The service sends field position, not name — the pattern is what gives each
+                position its meaning, and only some patterns are known here by name. */}
+            <span className="field-name">Field {field.index}:</span>
+            <span className="field-value">
               {field.value || <em className="empty-value">(empty)</em>}
             </span>
           </div>
@@ -52,7 +124,7 @@ function SemanticCard({ semantic }: { semantic: SemanticInfo }) {
         <div className="semantic-stamp">
           {[
             { label: 'Status', value: semantic.stamp.status },
-            { label: 'Time',   value: semantic.stamp.time   },
+            { label: 'Time',   value: semantic.stamp.formattedTime },
             { label: 'Author', value: semantic.stamp.author },
             { label: 'Module', value: semantic.stamp.module },
             { label: 'Path',   value: semantic.stamp.path   },
@@ -98,8 +170,12 @@ function SemanticPatternGroups({ semantics }: { semantics: SemanticInfo[] }) {
 // ── Tab: General ─────────────────────────────────────────────────────
 
 function GeneralTab({ semantics }: { semantics: SemanticInfo[] }) {
+  // Descriptions and axioms have tabs of their own; navigation is shown under Hierarchy.
   const filtered = semantics.filter(
-    (s) => !isAxiomPattern(s.patternName) && !isNavigationPattern(s.patternName),
+    (s) =>
+      !isAxiomPattern(s.patternName) &&
+      !isNavigationPattern(s.patternName) &&
+      !isDescriptionPattern(s.patternName),
   );
 
   if (filtered.length === 0) {
@@ -137,9 +213,9 @@ function HierarchyTab({ conceptId, semantics }: { conceptId: string; semantics: 
   const parentNavSemantics = navSemantics
     .map((s) => ({
       ...s,
-      fields: (s.fields ?? []).filter((f) =>
-        (f.fieldName ?? '').toLowerCase().includes('origin'),
-      ),
+      // By position, not name: the service sends field indexes, so the previous name-based
+      // filter matched nothing and this section was always empty.
+      fields: (s.fields ?? []).filter((f) => f.index === NAVIGATION_FIELD.ORIGIN),
     }))
     .filter((s) => s.fields.length > 0);
 
@@ -157,7 +233,9 @@ function HierarchyTab({ conceptId, semantics }: { conceptId: string; semantics: 
                 <div className="hierarchy-nav-pattern-label">{s.patternName}</div>
                 {s.fields.map((f, i) => (
                   <div key={i} className="hierarchy-nav-field">
-                    <span className="hierarchy-nav-field-label">{f.fieldName ?? '(field)'}:</span>
+                    <span className="hierarchy-nav-field-label">
+                      {f.index === NAVIGATION_FIELD.ORIGIN ? 'Parents' : 'Children'}:
+                    </span>
                     <span className="hierarchy-nav-field-value">{f.value || '(none)'}</span>
                   </div>
                 ))}
@@ -328,11 +406,13 @@ interface SemanticsViewProps {
 }
 
 export function SemanticsView({ data, conceptName, conceptId, onBack }: SemanticsViewProps) {
-  const [activeTab, setActiveTab] = useState<ConceptDetailTab>('general');
+  const [activeTab, setActiveTab] = useState<ConceptDetailTab>('descriptions');
 
   const axiomCount = data.semantics.filter((s) => isAxiomPattern(s.patternName)).length;
+  const descriptionCount = data.semantics.filter((s) => isDescriptionPattern(s.patternName)).length;
 
   const tabs: { id: ConceptDetailTab; label: string; badge?: number }[] = [
+    { id: 'descriptions', label: 'Descriptions', badge: descriptionCount },
     { id: 'general',   label: 'General'   },
     { id: 'axioms',    label: 'Axioms',    badge: axiomCount },
     { id: 'hierarchy', label: 'Hierarchy' },
@@ -346,8 +426,26 @@ export function SemanticsView({ data, conceptName, conceptId, onBack }: Semantic
       </button>
 
       <div className="concept-detail-header">
-        <h2 className="results-title">{conceptName}</h2>
-        <p className="concept-id-display">ID: {data.conceptId}</p>
+        <div className="concept-identity">
+          <h2 className="results-title">{conceptName}</h2>
+          <p className="concept-id-display">ID: {data.conceptId}</p>
+        </div>
+        {data.conceptStamp && (
+          <dl className="concept-stamp">
+            {[
+              { label: 'Status', value: data.conceptStamp.status },
+              { label: 'Last Updated', value: data.conceptStamp.formattedTime },
+              { label: 'Author', value: data.conceptStamp.author },
+              { label: 'Module', value: data.conceptStamp.module },
+              { label: 'Path', value: data.conceptStamp.path },
+            ].map(({ label, value }) => (
+              <div className="concept-stamp-row" key={label}>
+                <dt>{label}</dt>
+                <dd>{value ?? '—'}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
       </div>
 
       <div className="detail-tab-bar">
@@ -366,6 +464,7 @@ export function SemanticsView({ data, conceptName, conceptId, onBack }: Semantic
       </div>
 
       <div className="detail-tab-content">
+        {activeTab === 'descriptions' && <DescriptionsTab semantics={data.semantics} />}
         {activeTab === 'general'   && <GeneralTab   semantics={data.semantics} />}
         {activeTab === 'axioms'    && <AxiomsTab    semantics={data.semantics} />}
         {activeTab === 'hierarchy' && <HierarchyTab conceptId={conceptId} semantics={data.semantics} />}

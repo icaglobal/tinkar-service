@@ -42,6 +42,63 @@ export type DescendantOperationResponse = {
   errorMessage: string | null;
 };
 
+export type ReasonerPhaseEvent = {
+  step: number;
+  totalSteps: number;
+  message: string;
+};
+
+export type ReasonerResultsResponse = {
+  classifiedConceptCount: number | null;
+  inferredChangesCount: number | null;
+  navigationChangesCount: number | null;
+  equivalentSetsCount: number | null;
+  cyclesCount: number | null;
+  orphansCount: number | null;
+  durationMs: number | null;
+  success: boolean;
+  errorMessage: string | null;
+  createdAt: number;
+};
+
+export type DescriptionType = 'FULLY_QUALIFIED_NAME' | 'REGULAR_NAME' | 'DEFINITION';
+
+export type CaseSignificance =
+  | 'CASE_SENSITIVE'
+  | 'NOT_CASE_SENSITIVE'
+  | 'INITIAL_CHARACTER_CASE_SENSITIVE';
+
+export type DescriptionLanguage =
+  | 'ENGLISH'
+  | 'SPANISH'
+  | 'FRENCH'
+  | 'GERMAN'
+  | 'DUTCH'
+  | 'ITALIAN'
+  | 'DANISH'
+  | 'CZECH'
+  | 'IRISH'
+  | 'CHINESE';
+
+export type AxiomSetType = 'NECESSARY' | 'SUFFICIENT';
+
+export type ConceptDescription = {
+  text: string;
+  type: DescriptionType;
+  caseSignificance: CaseSignificance;
+  language: DescriptionLanguage;
+};
+
+export type ConceptAxiom = {
+  setType: AxiomSetType;
+  parentConceptIds: string[];
+};
+
+export type CreateConceptRequest = {
+  descriptions: ConceptDescription[];
+  axioms: ConceptAxiom[];
+};
+
 export type ConceptCreationResponse = {
   conceptId: string | null;
   fullyQualifiedName: string;
@@ -97,19 +154,21 @@ export type ConceptSearchWithSortResponse = {
 
 // Field value in a semantic
 export type SemanticFieldValue = {
-  fieldName: string;
-  fieldType: string;
+  /** Position in the pattern's field list; the pattern gives it its meaning. */
+  index: number;
   value: string;
-  rawValue: unknown;
 };
 
 // Stamp info for a semantic
 export type SemanticStampInfo = {
   status: string;
-  time: string;
   author: string;
   module: string;
   path: string;
+  /** Epoch milliseconds. */
+  time: number;
+  /** ISO-8601, pre-rendered by the service. */
+  formattedTime: string;
 };
 
 // Individual semantic info
@@ -126,6 +185,8 @@ export type ConceptSemanticsResponse = {
   conceptDescription: string;
   totalCount?: number;
   semantics: SemanticInfo[];
+  /** STAMP of the concept's own latest version, as opposed to any semantic's. */
+  conceptStamp?: SemanticStampInfo;
   success: boolean;
   errorMessage: string | null;
 };

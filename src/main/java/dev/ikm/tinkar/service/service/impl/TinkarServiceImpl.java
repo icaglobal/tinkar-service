@@ -885,6 +885,45 @@ public class TinkarServiceImpl implements TinkarService {
         }
     }
 
+    /**
+     * STAMP of a concept's latest version, or null if it cannot be resolved.
+     *
+     * <p>Latest by stamp time rather than by position: version order in the chronology is not
+     * guaranteed to put the newest last.
+     */
+    private ConceptSemanticsResponse.StampInfo conceptStampInfo(
+            String conceptId, ViewCalculatorWithCache viewCalculator) {
+        try {
+            PublicId publicId = primitive.getPublicId(conceptId);
+            int nid = EntityService.get().nidForPublicId(publicId);
+            Entity<?> entity = EntityService.get().getEntityFast(nid);
+            if (entity == null || entity.versions().isEmpty()) {
+                return null;
+            }
+
+            int latestStampNid = -1;
+            long latestTime = Long.MIN_VALUE;
+            for (EntityVersion version : entity.versions()) {
+                StampEntity<?> stamp = EntityService.get().getStampFast(version.stampNid());
+                if (stamp != null && stamp.time() >= latestTime) {
+                    latestTime = stamp.time();
+                    latestStampNid = version.stampNid();
+                }
+            }
+            if (latestStampNid == -1) {
+                return null;
+            }
+
+            StampInfo stamp = buildStampInfo(latestStampNid, viewCalculator);
+            return new ConceptSemanticsResponse.StampInfo(
+                    stamp.status(), stamp.author(), stamp.module(),
+                    stamp.path(), stamp.time(), stamp.formattedTime());
+        } catch (Exception e) {
+            log.debug("Could not resolve the concept STAMP for {}: {}", conceptId, e.getMessage());
+            return null;
+        }
+    }
+
     private String getDescriptionForNid(int nid) {
         try {
             var lc = Calculators.View.Default().languageCalculator();
@@ -1293,7 +1332,17 @@ public class TinkarServiceImpl implements TinkarService {
     public ConceptSemanticsResponse inspectConcept(String conceptId, ViewCalculatorWithCache viewCalculator) {
         // Delegate to proto implementation and convert to DTO
         TinkarConceptSemanticsResponse protoResponse = inspectConceptProto(conceptId, viewCalculator);
-        return convertProtoToDto(protoResponse);
+        ConceptSemanticsResponse response = convertProtoToDto(protoResponse);
+        if (!Boolean.TRUE.equals(response.success())) {
+            return response;
+        }
+        // Added here rather than in the proto path: the concept's own STAMP is what a detail
+        // header shows, and carrying it would mean changing ike_types.proto in tinkar-schema.
+        return ConceptSemanticsResponse.success(
+                response.conceptId(),
+                response.conceptDescription(),
+                response.semantics(),
+                conceptStampInfo(conceptId, viewCalculator));
     }
 
     private ConceptSemanticsResponse convertProtoToDto(TinkarConceptSemanticsResponse proto) {
@@ -2405,14 +2454,7 @@ public class TinkarServiceImpl implements TinkarService {
     public ReasonerResultsResponse runReasoner() {
         try {
             ClassifierResults results = runReasoner(ReasonerPhaseListener.NONE);
-            return ReasonerResultsResponse.success(
-                    results.getClassificationConceptSet().size(),
-                    results.getConceptsWithInferredChanges().size(),
-                    results.getConceptsWithNavigationChanges().size(),
-                    results.getEquivalentSets().size(),
-                    results.getCycles() != null ? results.getCycles().size() : 0,
-                    results.getOrphans() != null ? results.getOrphans().size() : 0,
-                    lastReasonerDurationMs);
+            return ReasonerResultsResponse.from(results, lastReasonerDurationMs);
         } catch (Exception e) {
             log.error("Reasoner failed: {}", e.getMessage(), e);
             return ReasonerResultsResponse.error(e.getMessage());
@@ -2630,28 +2672,53 @@ public class TinkarServiceImpl implements TinkarService {
 
     @Override
     public ConceptCreationResponse createConcept(String fullyQualifiedName, List<String> parentConceptIds) {
-        if (fullyQualifiedName == null || fullyQualifiedName.isBlank()) {
-            return ConceptCreationResponse.error(fullyQualifiedName, "A fully qualified name is required");
+        // The simple form: one fully qualified name and a single necessary set. Delegates so
+        // there is one implementation rather than two that can drift.
+        return createConcept(new CreateConceptRequest(
+                List.of(new CreateConceptRequest.Description(
+                        fullyQualifiedName,
+                        CreateConceptRequest.DescriptionType.FULLY_QUALIFIED_NAME,
+                        null,
+                        null)),
+                List.of(new CreateConceptRequest.Axiom(
+                        CreateConceptRequest.AxiomSetType.NECESSARY,
+                        parentConceptIds == null ? List.of() : parentConceptIds))));
+    }
+
+    @Override
+    public ConceptCreationResponse createConcept(CreateConceptRequest request) {
+        List<CreateConceptRequest.Description> descriptions =
+                request == null || request.descriptions() == null ? List.of() : request.descriptions();
+
+        String fullyQualifiedName = descriptions.stream()
+                .filter(d -> d.type() == CreateConceptRequest.DescriptionType.FULLY_QUALIFIED_NAME)
+                .map(CreateConceptRequest.Description::text)
+                .findFirst()
+                .orElse(null);
+
+        String rejection = validate(descriptions, fullyQualifiedName);
+        if (rejection != null) {
+            return ConceptCreationResponse.error(fullyQualifiedName, rejection);
         }
-        List<String> parentIds = parentConceptIds == null ? List.of() : parentConceptIds;
-        log.info("Creating concept '{}' with {} parent(s)", fullyQualifiedName, parentIds.size());
+
+        List<CreateConceptRequest.Axiom> axioms =
+                request.axioms() == null || request.axioms().isEmpty()
+                        ? List.of(new CreateConceptRequest.Axiom(
+                                CreateConceptRequest.AxiomSetType.NECESSARY, List.of()))
+                        : request.axioms();
+
+        log.info("Creating concept '{}' with {} description(s) and {} axiom set(s)",
+                fullyQualifiedName, descriptions.size(), axioms.size());
 
         try {
-            // Resolve the parents before writing anything, so an unknown parent fails the whole
-            // request rather than leaving a concept behind with a half-built axiom.
-            List<EntityProxy.Concept> parents = new ArrayList<>();
-            for (String parentId : parentIds) {
-                PublicId parentPublicId = primitive.getPublicId(parentId);
-                int parentNid = EntityService.get().nidForPublicId(parentPublicId);
-                parents.add(EntityProxy.Concept.make(EntityService.get().getEntityFast(parentNid).publicId()));
-            }
-            if (parents.isEmpty()) {
-                // Komet's editor writes this placeholder when a definition has no parent yet.
-                parents.add(TinkarTerm.ANONYMOUS_CONCEPT);
+            // Resolve every referenced concept before writing anything, so an unknown parent
+            // fails the request rather than leaving a concept behind with a half-built axiom.
+            Map<CreateConceptRequest.Axiom, List<EntityProxy.Concept>> resolved = new LinkedHashMap<>();
+            for (CreateConceptRequest.Axiom axiom : axioms) {
+                resolved.put(axiom, resolveParents(axiom.parentConceptIds()));
             }
 
             UUID conceptUuid = UUID.randomUUID();
-            PublicId conceptPublicId = PublicIds.of(conceptUuid);
             Transaction transaction = Transaction.make("Create concept: " + fullyQualifiedName);
 
             StampEntity<?> stamp = transaction.getStamp(
@@ -2666,25 +2733,27 @@ public class TinkarServiceImpl implements TinkarService {
             transaction.addComponent(conceptRecord);
             int conceptNid = conceptRecord.nid();
 
-            SemanticRecord fqnSemantic = SemanticRecord.build(
-                    UUID.randomUUID(),
-                    TinkarTerm.DESCRIPTION_PATTERN.nid(),
-                    conceptNid,
-                    stamp.versions().get(0),
-                    Lists.immutable.of(
-                            TinkarTerm.ENGLISH_LANGUAGE.publicId(),
-                            fullyQualifiedName,
-                            TinkarTerm.DESCRIPTION_CASE_SIGNIFICANCE.publicId(),
-                            TinkarTerm.FULLY_QUALIFIED_NAME_DESCRIPTION_TYPE.publicId()));
-            EntityService.get().putEntity(fqnSemantic);
-            transaction.addComponent(fqnSemantic);
+            for (CreateConceptRequest.Description description : descriptions) {
+                SemanticRecord semantic = SemanticRecord.build(
+                        UUID.randomUUID(),
+                        TinkarTerm.DESCRIPTION_PATTERN.nid(),
+                        conceptNid,
+                        stamp.versions().get(0),
+                        Lists.immutable.of(
+                                languageConcept(description.language()).publicId(),
+                                description.text(),
+                                caseSignificanceConcept(description.caseSignificance()).publicId(),
+                                descriptionTypeConcept(description.type()).publicId()));
+                EntityService.get().putEntity(semantic);
+                transaction.addComponent(semantic);
+            }
 
             SemanticRecord statedAxioms = SemanticRecord.build(
                     UUID.randomUUID(),
                     TinkarTerm.EL_PLUS_PLUS_STATED_AXIOMS_PATTERN.nid(),
                     conceptNid,
                     stamp.versions().get(0),
-                    Lists.immutable.of(buildNecessarySet(parents)));
+                    Lists.immutable.of(buildStatedAxiom(resolved)));
             EntityService.get().putEntity(statedAxioms);
             transaction.addComponent(statedAxioms);
 
@@ -2696,7 +2765,11 @@ public class TinkarServiceImpl implements TinkarService {
             return ConceptCreationResponse.success(
                     conceptUuid.toString(),
                     fullyQualifiedName,
-                    parents.stream().map(parent -> parent.publicId().asUuidArray()[0].toString()).toList());
+                    resolved.values().stream()
+                            .flatMap(List::stream)
+                            .map(parent -> parent.publicId().asUuidArray()[0].toString())
+                            .distinct()
+                            .toList());
         } catch (Exception e) {
             log.error("Failed to create concept '{}': {}", fullyQualifiedName, e.getMessage(), e);
             return ConceptCreationResponse.error(fullyQualifiedName,
@@ -2704,43 +2777,128 @@ public class TinkarServiceImpl implements TinkarService {
         }
     }
 
+    /** @return why the request cannot be honoured, or null if it can. */
+    private String validate(List<CreateConceptRequest.Description> descriptions, String fullyQualifiedName) {
+        if (descriptions.isEmpty()) {
+            return "At least one description is required";
+        }
+        if (descriptions.stream().anyMatch(d -> d.type() == null)) {
+            return "Every description needs a type";
+        }
+        if (descriptions.stream().anyMatch(d -> d.text() == null || d.text().isBlank())) {
+            return "Every description needs text";
+        }
+        long fqnCount = descriptions.stream()
+                .filter(d -> d.type() == CreateConceptRequest.DescriptionType.FULLY_QUALIFIED_NAME)
+                .count();
+        if (fqnCount != 1) {
+            // Not merely "at least one": two fully qualified names would leave the concept with
+            // no single authoritative name, and every consumer picks one arbitrarily.
+            return "Exactly one FULLY_QUALIFIED_NAME description is required, found " + fqnCount;
+        }
+        return fullyQualifiedName == null ? "A fully qualified name is required" : null;
+    }
+
+    /** Resolves referenced concepts, falling back to Komet's unfinished-definition placeholder. */
+    private List<EntityProxy.Concept> resolveParents(List<String> parentConceptIds) {
+        if (parentConceptIds == null || parentConceptIds.isEmpty()) {
+            return List.of(TinkarTerm.ANONYMOUS_CONCEPT);
+        }
+        List<EntityProxy.Concept> parents = new ArrayList<>();
+        for (String parentId : parentConceptIds) {
+            PublicId parentPublicId = primitive.getPublicId(parentId);
+            int parentNid = EntityService.get().nidForPublicId(parentPublicId);
+            parents.add(EntityProxy.Concept.make(EntityService.get().getEntityFast(parentNid).publicId()));
+        }
+        return parents;
+    }
+
     /**
-     * Builds the EL++ stated axiom tree for a necessary set.
+     * Builds the EL++ stated axiom tree.
      *
-     * <p>Shape matches what Komet's editor produces, so the client renders a concept created
-     * here the same way it renders its own:
+     * <p>Shape matches what Komet's editor produces, so a concept created here renders there the
+     * same way its own do:
      * <pre>
      *   Definition root
-     *     └─ Necessary set
-     *          └─ And
-     *               └─ Concept reference (one per parent)
+     *     +- Necessary set        (or Sufficient set)
+     *          +- And
+     *               +- Concept reference (one per referenced concept)
      * </pre>
+     * Several sets hang off the one root, which is how a concept carries necessary conditions
+     * and a sufficient definition at the same time.
      *
      * <p>Hand-built rather than reusing Komet's {@code AxiomBuilderRecord}: that lives in
      * komet/framework, which this service does not depend on. The vertex primitives it uses are
      * all in the entity layer.
      */
-    private DiTreeEntity buildNecessarySet(List<EntityProxy.Concept> parents) {
+    private DiTreeEntity buildStatedAxiom(
+            Map<CreateConceptRequest.Axiom, List<EntityProxy.Concept>> axioms) {
         DiTreeEntity.Builder treeBuilder = DiTreeEntity.builder();
 
         EntityVertex root = EntityVertex.make(TinkarTerm.DEFINITION_ROOT);
         treeBuilder.setRoot(root);
 
-        EntityVertex necessarySet = EntityVertex.make(TinkarTerm.NECESSARY_SET);
-        treeBuilder.addVertex(necessarySet);
-        treeBuilder.addEdge(necessarySet, root);
+        axioms.forEach((axiom, parents) -> {
+            EntityVertex set = EntityVertex.make(setTypeConcept(axiom.setType()));
+            treeBuilder.addVertex(set);
+            treeBuilder.addEdge(set, root);
 
-        EntityVertex and = EntityVertex.make(TinkarTerm.AND);
-        treeBuilder.addVertex(and);
-        treeBuilder.addEdge(and, necessarySet);
+            EntityVertex and = EntityVertex.make(TinkarTerm.AND);
+            treeBuilder.addVertex(and);
+            treeBuilder.addEdge(and, set);
 
-        for (EntityProxy.Concept parent : parents) {
-            EntityVertex conceptReference = EntityVertex.make(TinkarTerm.CONCEPT_REFERENCE);
-            conceptReference.putUncommittedProperty(TinkarTerm.CONCEPT_REFERENCE.nid(), parent);
-            treeBuilder.addVertex(conceptReference);
-            treeBuilder.addEdge(conceptReference, and);
-        }
+            for (EntityProxy.Concept parent : parents) {
+                EntityVertex conceptReference = EntityVertex.make(TinkarTerm.CONCEPT_REFERENCE);
+                conceptReference.putUncommittedProperty(TinkarTerm.CONCEPT_REFERENCE.nid(), parent);
+                treeBuilder.addVertex(conceptReference);
+                treeBuilder.addEdge(conceptReference, and);
+            }
+        });
 
         return treeBuilder.build();
+    }
+
+    private static EntityProxy.Concept setTypeConcept(CreateConceptRequest.AxiomSetType setType) {
+        return setType == CreateConceptRequest.AxiomSetType.SUFFICIENT
+                ? TinkarTerm.SUFFICIENT_SET
+                : TinkarTerm.NECESSARY_SET;
+    }
+
+    private static EntityProxy.Concept descriptionTypeConcept(CreateConceptRequest.DescriptionType type) {
+        return switch (type) {
+            case FULLY_QUALIFIED_NAME -> TinkarTerm.FULLY_QUALIFIED_NAME_DESCRIPTION_TYPE;
+            case REGULAR_NAME -> TinkarTerm.REGULAR_NAME_DESCRIPTION_TYPE;
+            case DEFINITION -> TinkarTerm.DEFINITION_DESCRIPTION_TYPE;
+        };
+    }
+
+    /** Defaults to not-case-sensitive, the usual choice and what an omitted value should mean. */
+    private static EntityProxy.Concept caseSignificanceConcept(CreateConceptRequest.CaseSignificance significance) {
+        if (significance == null) {
+            return TinkarTerm.DESCRIPTION_NOT_CASE_SENSITIVE;
+        }
+        return switch (significance) {
+            case CASE_SENSITIVE -> TinkarTerm.DESCRIPTION_CASE_SENSITIVE;
+            case NOT_CASE_SENSITIVE -> TinkarTerm.DESCRIPTION_NOT_CASE_SENSITIVE;
+            case INITIAL_CHARACTER_CASE_SENSITIVE -> TinkarTerm.DESCRIPTION_INITIAL_CHARACTER_CASE_SENSITIVE;
+        };
+    }
+
+    private static EntityProxy.Concept languageConcept(CreateConceptRequest.Language language) {
+        if (language == null) {
+            return TinkarTerm.ENGLISH_LANGUAGE;
+        }
+        return switch (language) {
+            case ENGLISH -> TinkarTerm.ENGLISH_LANGUAGE;
+            case SPANISH -> TinkarTerm.SPANISH_LANGUAGE;
+            case FRENCH -> TinkarTerm.FRENCH_LANGUAGE;
+            case GERMAN -> TinkarTerm.GERMAN_LANGUAGE;
+            case DUTCH -> TinkarTerm.DUTCH_LANGUAGE;
+            case ITALIAN -> TinkarTerm.ITALIAN_LANGUAGE;
+            case DANISH -> TinkarTerm.DANISH_LANGUAGE;
+            case CZECH -> TinkarTerm.CZECH_LANGUAGE;
+            case IRISH -> TinkarTerm.IRISH_LANGUAGE;
+            case CHINESE -> TinkarTerm.CHINESE_LANGUAGE;
+        };
     }
 }

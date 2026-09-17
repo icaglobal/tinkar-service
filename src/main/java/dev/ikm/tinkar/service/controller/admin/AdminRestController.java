@@ -1,6 +1,7 @@
 package dev.ikm.tinkar.service.controller.admin;
 
 import dev.ikm.tinkar.service.dto.EntityCountSummaryResponse;
+import dev.ikm.tinkar.service.dto.ReasonerPhaseEvent;
 import dev.ikm.tinkar.service.dto.ReasonerResultsResponse;
 import dev.ikm.tinkar.service.service.TinkarService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -21,11 +22,16 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Tier 3: Admin / Data Management — REST controller.
@@ -39,6 +45,39 @@ import java.util.List;
 @RequestMapping("/api/ike/admin")
 @Tag(name = "IKE Admin (Tier 3)", description = "Data management operations: import changesets, export entities, and reasoner classification.")
 public class AdminRestController {
+
+    /**
+     * How long a streaming run may take before the container gives up, in milliseconds.
+     *
+     * <p>Generous because a classification is genuinely slow — roughly 11s on gudidsubset and
+     * minutes on a full dataset — and the default async timeout (30s) would abort a legitimate
+     * run mid-pipeline.
+     */
+    private static final long REASONER_STREAM_TIMEOUT_MS = 30L * 60L * 1000L;
+
+    /**
+     * Guards against a second classification starting while one is in flight.
+     *
+     * <p>The pipeline is a single stateful run over one {@code ReasonerService} instance, so two
+     * concurrent runs would corrupt each other. Rejected rather than queued: a caller that is
+     * told "busy" can decide what to do, whereas a queued run gives it a stream that reports
+     * nothing for an unbounded time.
+     */
+    private final AtomicBoolean reasonerRunning = new AtomicBoolean(false);
+
+    /**
+     * Runs streaming classifications off the request thread.
+     *
+     * <p>An {@code SseEmitter} has to be returned before any event is written, so the work
+     * cannot happen inline. Single-threaded because {@link #reasonerRunning} already admits one
+     * run at a time; the queue should never hold more than the one task being executed.
+     */
+    private final ExecutorService reasonerExecutor =
+            Executors.newSingleThreadExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "rest-reasoner");
+                thread.setDaemon(true);
+                return thread;
+            });
 
     private final TinkarService tinkarService;
 
@@ -91,5 +130,79 @@ public class AdminRestController {
     @PostMapping("/reasoner")
     public ResponseEntity<ReasonerResultsResponse> runReasoner() {
         return ResponseEntity.ok(tinkarService.runReasoner());
+    }
+
+    @Operation(summary = "Run the reasoner, streaming progress",
+            description = "Runs the same pipeline as POST /reasoner, but returns a text/event-stream: "
+                    + "one 'phase' event as each of the four phases completes, then a single 'result' "
+                    + "event carrying the counts. Use this when a caller needs to show progress; use "
+                    + "POST /reasoner when it only needs the outcome.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Event stream opened"),
+            @ApiResponse(responseCode = "409", description = "A classification is already running")
+    })
+    @PostMapping(value = "/reasoner/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public ResponseEntity<SseEmitter> runReasonerStreaming() {
+        if (!reasonerRunning.compareAndSet(false, true)) {
+            log.info("Rejecting reasoner stream request — a classification is already running");
+            return ResponseEntity.status(409).build();
+        }
+
+        SseEmitter emitter = new SseEmitter(REASONER_STREAM_TIMEOUT_MS);
+        // Release the guard however the stream ends, including the client disconnecting
+        // mid-run; otherwise one abandoned request would block every later one.
+        emitter.onCompletion(() -> reasonerRunning.set(false));
+        emitter.onTimeout(() -> {
+            log.warn("Reasoner stream timed out after {}ms", REASONER_STREAM_TIMEOUT_MS);
+            reasonerRunning.set(false);
+        });
+        emitter.onError(throwable -> reasonerRunning.set(false));
+
+        reasonerExecutor.execute(() -> runAndStream(emitter));
+        return ResponseEntity.ok(emitter);
+    }
+
+    /**
+     * Runs the pipeline, writing each phase and then the outcome to {@code emitter}.
+     *
+     * <p>A failed classification is sent as a {@code result} event with {@code success} false
+     * rather than as a stream error, matching what the gRPC call does: the caller reads the
+     * reason from the same event it would read a successful outcome from, and handles one shape
+     * instead of two.
+     */
+    private void runAndStream(SseEmitter emitter) {
+        long startedAt = System.currentTimeMillis();
+        log.info("IkeAdmin runReasoner (streaming) started");
+        try {
+            var results = tinkarService.runReasoner((step, totalSteps, message) -> {
+                try {
+                    emitter.send(SseEmitter.event()
+                            .name("phase")
+                            .data(new ReasonerPhaseEvent(step, totalSteps, message)));
+                } catch (IOException e) {
+                    // The client has gone. Surface it so the pipeline unwinds rather than
+                    // running a long classification nobody is listening to.
+                    throw new IllegalStateException("Reasoner stream closed by the client", e);
+                }
+            });
+
+            emitter.send(SseEmitter.event()
+                    .name("result")
+                    .data(ReasonerResultsResponse.from(
+                            results, System.currentTimeMillis() - startedAt)));
+            emitter.complete();
+        } catch (Exception e) {
+            log.error("Streaming reasoner failed: {}", e.getMessage(), e);
+            try {
+                emitter.send(SseEmitter.event()
+                        .name("result")
+                        .data(ReasonerResultsResponse.error(
+                                e.getMessage() == null ? e.toString() : e.getMessage())));
+                emitter.complete();
+            } catch (IOException sendFailure) {
+                // Nothing left to report through — the stream is already gone.
+                emitter.completeWithError(sendFailure);
+            }
+        }
     }
 }

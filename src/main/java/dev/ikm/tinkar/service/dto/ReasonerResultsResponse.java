@@ -25,6 +25,28 @@ public record ReasonerResultsResponse(
                 durationMs, true, null, System.currentTimeMillis());
     }
 
+    /**
+     * Maps a completed classification onto this response.
+     *
+     * <p>One definition so the blocking and streaming endpoints cannot report the same run
+     * differently — they did briefly, when the streaming path was written separately and lost
+     * the null guards below.
+     *
+     * <p>Cycles and orphans are null-guarded because {@code ClassifierResults} leaves them unset
+     * when the reasoner found none, rather than returning an empty collection.
+     */
+    public static ReasonerResultsResponse from(
+            dev.ikm.tinkar.reasoner.service.ClassifierResults results, long durationMs) {
+        return success(
+                results.getClassificationConceptSet().size(),
+                results.getConceptsWithInferredChanges().size(),
+                results.getConceptsWithNavigationChanges().size(),
+                results.getEquivalentSets().size(),
+                results.getCycles() != null ? results.getCycles().size() : 0,
+                results.getOrphans() != null ? results.getOrphans().size() : 0,
+                durationMs);
+    }
+
     public static ReasonerResultsResponse error(String errorMessage) {
         return new ReasonerResultsResponse(null, null, null, null, null, null, null,
                 false, errorMessage, System.currentTimeMillis());
