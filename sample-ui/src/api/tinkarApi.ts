@@ -7,6 +7,9 @@ import type {
   CoordinateOverrideParams,
   DescendantsResponse,
   ConceptCreationResponse,
+  CreateConceptRequest,
+  ReasonerPhaseEvent,
+  ReasonerResultsResponse,
   DescendantOperationResponse,
   LanguageCoordinateSettings,
   NavigationCoordinateSettings,
@@ -19,6 +22,7 @@ import type {
 
 const GR_API_BASE_URL = 'http://localhost:8085/api/ike/graphrag';
 const KG_API_BASE_URL = 'http://localhost:8085/api/ike/knowledgegraph';
+const ADMIN_API_BASE_URL = 'http://localhost:8085/api/ike/admin';
 
 export async function search(query: string): Promise<ConceptSearchResponse> {
   const params = new URLSearchParams({ query });
@@ -136,24 +140,22 @@ export async function createAndAddDescendant(
 }
 
 /**
- * Creates a concept with a fully qualified name and a necessary set referencing `parentConceptIds`.
- * Passing no parents leaves the necessary set referencing "Anonymous concept", the placeholder
- * Komet uses for a definition that is not finished yet.
+ * Creates a concept from its descriptions and stated axiom.
+ *
+ * Exactly one description must be FULLY_QUALIFIED_NAME. Axioms may carry necessary and
+ * sufficient sets together; an axiom with no parents references "Anonymous concept", the
+ * placeholder Komet writes for an unfinished definition.
  */
 export async function createConcept(
-  fullyQualifiedName: string,
-  parentConceptIds: string[] = []
+  request: CreateConceptRequest
 ): Promise<ConceptCreationResponse> {
-  const params = new URLSearchParams({ fullyQualifiedName });
-  // Repeated key rather than a comma-joined value: Spring binds List<String> from repeats,
-  // and a concept UUID must never be split on a delimiter.
-  parentConceptIds.forEach((id) => params.append('parentConceptIds', id));
-
-  const response = await fetch(`${KG_API_BASE_URL}/concepts?${params}`, {
+  const response = await fetch(`${KG_API_BASE_URL}/concepts`, {
     method: 'POST',
     headers: {
       accept: '*/*',
+      'content-type': 'application/json',
     },
+    body: JSON.stringify(request),
   });
 
   if (!response.ok) {
@@ -479,4 +481,65 @@ export async function getSemanticsWithCoordinate(
   }
 
   return response.json();
+}
+
+/**
+ * Runs the reasoner, calling `onPhase` as each phase completes, resolving with the outcome.
+ *
+ * Reads the stream with fetch rather than EventSource: EventSource only issues GET, and running
+ * a classification writes inferred results, so the endpoint is a POST. The framing is plain SSE
+ * — events separated by a blank line, with `event:` and `data:` fields — so parsing it by hand
+ * is a few lines.
+ */
+export async function runReasonerStreaming(
+  onPhase: (phase: ReasonerPhaseEvent) => void
+): Promise<ReasonerResultsResponse> {
+  const response = await fetch(`${ADMIN_API_BASE_URL}/reasoner/stream`, {
+    method: 'POST',
+    headers: { accept: 'text/event-stream' },
+  });
+
+  if (response.status === 409) {
+    throw new Error('A classification is already running');
+  }
+  if (!response.ok || !response.body) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let result: ReasonerResultsResponse | null = null;
+
+  const consumeFrame = (frame: string) => {
+    let eventName = 'message';
+    const dataLines: string[] = [];
+    for (const line of frame.split('\n')) {
+      if (line.startsWith('event:')) eventName = line.slice(6).trim();
+      else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+    }
+    if (dataLines.length === 0) return;
+    const payload = JSON.parse(dataLines.join('\n'));
+    if (eventName === 'phase') onPhase(payload as ReasonerPhaseEvent);
+    else if (eventName === 'result') result = payload as ReasonerResultsResponse;
+  };
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    // Normalise line endings so a frame boundary is always a blank line.
+    buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
+    let boundary = buffer.indexOf('\n\n');
+    while (boundary !== -1) {
+      consumeFrame(buffer.slice(0, boundary));
+      buffer = buffer.slice(boundary + 2);
+      boundary = buffer.indexOf('\n\n');
+    }
+  }
+  if (buffer.trim()) consumeFrame(buffer);
+
+  if (!result) {
+    throw new Error('Reasoner stream ended without a result');
+  }
+  return result;
 }

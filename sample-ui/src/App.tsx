@@ -7,11 +7,12 @@ import { SemanticsView } from './components/SemanticsView';
 import { TestRunner } from './components/TestRunner/TestRunner';
 import { CoordinatesPanel } from './components/CoordinatesPanel';
 import { CreateConceptPanel } from './components/CreateConceptPanel';
+import { ReasonerPanel } from './components/ReasonerPanel';
 import { conceptSearchWithSort, getDescendants, kgGetSemantics, removeDescendant, createAndAddDescendant } from './api/tinkarApi';
 import type { SearchSortOption } from './api/types';
 import './App.css';
 
-type ViewMode = 'search' | 'descendants' | 'semantics' | 'test-runner' | 'coordinates' | 'create-concept';
+type ViewMode = 'search' | 'descendants' | 'semantics' | 'test-runner' | 'coordinates' | 'create-concept' | 'reasoner';
 
 const SORT_OPTIONS: { value: SearchSortOption; label: string }[] = [
   { value: 'TOP_COMPONENT', label: 'Top Component (by score)' },
@@ -147,7 +148,13 @@ function App() {
               className={`create-concept-button ${viewMode === 'create-concept' ? 'active' : ''}`}
               onClick={() => setViewMode('create-concept')}
             >
-              Create Concept
+              New Concept
+            </button>
+            <button
+              className={`reasoner-button ${viewMode === 'reasoner' ? 'active' : ''}`}
+              onClick={() => setViewMode('reasoner')}
+            >
+              Reasoner
             </button>
             <button
               className={`test-runner-button ${viewMode === 'test-runner' ? 'active' : ''}`}
@@ -160,7 +167,7 @@ function App() {
       </header>
 
       <main className="app-main">
-        {viewMode !== 'test-runner' && viewMode !== 'coordinates' && viewMode !== 'create-concept' && (
+        {viewMode !== 'test-runner' && viewMode !== 'coordinates' && viewMode !== 'create-concept' && viewMode !== 'reasoner' && (
           <SearchBox onSearch={handleSearch} isLoading={isLoading} />
         )}
 
@@ -308,6 +315,10 @@ function App() {
 
         {viewMode === 'create-concept' && (
           <CreateConceptPanel onBack={handleBack} />
+        )}
+
+        {viewMode === 'reasoner' && (
+          <ReasonerPanel onBack={handleBack} />
         )}
       </main>
     </div>

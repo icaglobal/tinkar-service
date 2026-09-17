@@ -1602,3 +1602,297 @@
   color: #d9534f;
   font-size: 0.9rem;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   Reasoner Panel
+   ═══════════════════════════════════════════════════════════ */
+
+.reasoner-button {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  background-color: transparent;
+  color: #6f42c1;
+  border: 1px solid #6f42c1;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.reasoner-button:hover,
+.reasoner-button.active {
+  background-color: #6f42c1;
+  color: white;
+}
+
+.reasoner-panel {
+  width: 100%;
+  max-width: 640px;
+}
+
+.reasoner-header h2 {
+  margin: 1rem 0 0;
+  color: #213547;
+}
+
+.reasoner-hint {
+  font-size: 0.85rem;
+  color: #6c757d;
+}
+
+.reasoner-run {
+  padding: 0.6rem 1.2rem;
+  font-size: 0.95rem;
+  background-color: #6f42c1;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.reasoner-run:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.reasoner-progress {
+  margin-top: 1.25rem;
+}
+
+.reasoner-progress-bar {
+  height: 8px;
+  background-color: #e9ecef;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.reasoner-progress-fill {
+  height: 100%;
+  background-color: #6f42c1;
+  transition: width 0.3s ease;
+}
+
+.reasoner-progress-label {
+  margin: 0.5rem 0 0;
+  font-size: 0.9rem;
+  color: #213547;
+}
+
+.reasoner-steps {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 0.5rem;
+}
+
+.reasoner-step {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background-color: #e9ecef;
+  transition: background-color 0.3s ease;
+}
+
+.reasoner-step.done {
+  background-color: #6f42c1;
+}
+
+.reasoner-results {
+  margin-top: 1.5rem;
+}
+
+.reasoner-results h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  color: #213547;
+}
+
+.reasoner-results table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.reasoner-results th,
+.reasoner-results td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #f1f3f5;
+  font-size: 0.9rem;
+}
+
+.reasoner-results th {
+  text-align: left;
+  font-weight: 600;
+  color: #495057;
+}
+
+.reasoner-results td {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #213547;
+}
+
+.reasoner-error {
+  margin-top: 1rem;
+  color: #d9534f;
+  font-size: 0.9rem;
+}
+
+/* New Concept panel — descriptions and axiom sets */
+
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.section-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.section-actions button {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  border: 1px solid #ced4da;
+  border-radius: 3px;
+  background-color: #f8f9fa;
+  cursor: pointer;
+  color: #495057;
+}
+
+.section-actions button:hover {
+  background-color: #e9ecef;
+}
+
+.description-card,
+.axiom-card {
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.axiom-card {
+  cursor: pointer;
+}
+
+.axiom-card.active {
+  border-color: #28a745;
+  box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.15);
+}
+
+.description-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #6c757d;
+}
+
+.description-card-header button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: #adb5bd;
+}
+
+.description-card-header button:hover {
+  color: #d9534f;
+}
+
+.description-card label,
+.axiom-card label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #495057;
+}
+
+.description-card-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.6rem;
+}
+
+.description-card-row select {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.85rem;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  background-color: white;
+}
+
+/* Concept detail — STAMP header and descriptions */
+
+.concept-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.concept-identity {
+  min-width: 0;
+}
+
+/*
+ * Label/value pairs stacked in one narrow column beside the title, as Komet's concept view
+ * arranges them. Labels are right-aligned against the values so the colon-like gutter reads as
+ * a single edge, and each pair sits on its own line so nothing wraps mid-label.
+ */
+.concept-stamp {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.concept-stamp-row {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.5rem;
+}
+
+.concept-stamp dt {
+  font-weight: 600;
+  color: #495057;
+  text-align: right;
+}
+
+.concept-stamp dd {
+  margin: 0;
+  color: #213547;
+}
+
+.description-group {
+  margin-bottom: 1.25rem;
+}
+
+.description-entry {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+  margin-bottom: 0.4rem;
+}
+
+.description-text {
+  font-size: 0.95rem;
+  color: #213547;
+}
+
+.description-meta {
+  font-size: 0.78rem;
+  color: #6c757d;
+  margin-top: 0.15rem;
+}

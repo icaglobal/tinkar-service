@@ -3,6 +3,7 @@ package dev.ikm.tinkar.service.service;
 import dev.ikm.tinkar.service.dto.ChangeHistoryResponse;
 import dev.ikm.tinkar.service.dto.ConceptChangeHistoryResponse;
 import dev.ikm.tinkar.service.dto.ConceptCreationResponse;
+import dev.ikm.tinkar.service.dto.CreateConceptRequest;
 import dev.ikm.tinkar.service.dto.ConceptSearchResponse;
 import dev.ikm.tinkar.service.dto.ConceptSemanticsResponse;
 import dev.ikm.tinkar.service.dto.DescendantOperationResponse;
@@ -314,4 +315,17 @@ public interface TinkarService {
      * @return the created concept's public ID, or the reason it could not be created
      */
     ConceptCreationResponse createConcept(String fullyQualifiedName, List<String> parentConceptIds);
+
+    /**
+     * Creates a concept from a full specification of its descriptions and axioms.
+     *
+     * <p>The general form of {@link #createConcept(String, List)}, which is this with one
+     * fully-qualified-name description and a single necessary set. Mirrors what Komet's New
+     * Concept editor can author: several descriptions, each with its own type, language and case
+     * significance, and a stated axiom that may carry necessary and sufficient sets together.
+     *
+     * @param request the concept to create; requires exactly one FULLY_QUALIFIED_NAME description
+     * @return the created concept's public ID, or the reason it could not be created
+     */
+    ConceptCreationResponse createConcept(CreateConceptRequest request);
 }
