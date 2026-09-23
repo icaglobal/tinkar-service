@@ -1,8 +1,12 @@
 package dev.ikm.tinkar.service.service.impl;
 
 import dev.ikm.tinkar.common.id.PublicId;
+import dev.ikm.tinkar.common.service.DataServiceController;
 import dev.ikm.tinkar.common.service.PrimitiveData;
 import dev.ikm.tinkar.common.service.PrimitiveDataService;
+import dev.ikm.tinkar.common.service.ServiceExclusionGroup;
+import dev.ikm.tinkar.common.service.ServiceLifecycle;
+import dev.ikm.tinkar.common.service.ServiceLifecycleManager;
 import dev.ikm.tinkar.coordinate.Calculators;
 import dev.ikm.tinkar.coordinate.view.calculator.ViewCalculatorWithCache;
 import dev.ikm.tinkar.entity.Entity;
@@ -671,25 +675,56 @@ class TinkarServiceImplTest {
 
     // ── saveChanges ───────────────────────────────────────────────────────────
 
+    // saveChanges flushes the running data providers through the lifecycle manager's
+    // DATA_PROVIDER group (saveDataStore), not through PrimitiveData.save(), which would
+    // resolve a fresh controller with no provider and save nothing. These tests stub that
+    // path: a controller registered in the group whose save succeeds or throws.
+
     @Test
-    void saveChanges_succeeds_returnsSuccessMessage() {
-        try (MockedStatic<PrimitiveData> staticPrimitiveData = Mockito.mockStatic(PrimitiveData.class)) {
-            // save() is void — default mock does nothing (success)
+    void saveChanges_flushesEachDataProvider_returnsSuccessMessage() {
+        ServiceLifecycle provider = dataProvider();
+        ServiceLifecycleManager manager = managerWithDataProviders(provider);
+
+        try (MockedStatic<ServiceLifecycleManager> staticManager =
+                     Mockito.mockStatic(ServiceLifecycleManager.class)) {
+            staticManager.when(ServiceLifecycleManager::get).thenReturn(manager);
+
             String result = service.saveChanges();
+
             assertThat(result).containsIgnoringCase("saved");
+            Mockito.verify((DataServiceController<?>) provider).save();
         }
     }
 
     @Test
-    void saveChanges_primitiveDataSaveThrows_returnsFailureMessage() {
-        try (MockedStatic<PrimitiveData> staticPrimitiveData = Mockito.mockStatic(PrimitiveData.class)) {
-            staticPrimitiveData.when(PrimitiveData::save)
-                    .thenThrow(new RuntimeException("data service not ready"));
+    void saveChanges_dataProviderSaveThrows_returnsFailureMessage() {
+        ServiceLifecycle provider = dataProvider();
+        Mockito.doThrow(new RuntimeException("data service not ready"))
+                .when((DataServiceController<?>) provider).save();
+        ServiceLifecycleManager manager = managerWithDataProviders(provider);
+
+        try (MockedStatic<ServiceLifecycleManager> staticManager =
+                     Mockito.mockStatic(ServiceLifecycleManager.class)) {
+            staticManager.when(ServiceLifecycleManager::get).thenReturn(manager);
 
             String result = service.saveChanges();
 
             assertThat(result).containsIgnoringCase("failed");
         }
+    }
+
+    /** A lifecycle service that is also a data-service controller, as the real providers are. */
+    private static ServiceLifecycle dataProvider() {
+        return Mockito.mock(ServiceLifecycle.class,
+                Mockito.withSettings().extraInterfaces(DataServiceController.class));
+    }
+
+    /** A lifecycle manager whose DATA_PROVIDER group holds exactly the given services. */
+    private static ServiceLifecycleManager managerWithDataProviders(ServiceLifecycle... providers) {
+        ServiceLifecycleManager manager = Mockito.mock(ServiceLifecycleManager.class);
+        when(manager.getServicesForGroup(ServiceExclusionGroup.DATA_PROVIDER))
+                .thenReturn(List.of(providers));
+        return manager;
     }
 
     // ── importChangeset ───────────────────────────────────────────────────────
