@@ -55,6 +55,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 
 @Service
@@ -2466,6 +2467,12 @@ public class TinkarServiceImpl implements TinkarService {
 
     @Override
     public ClassifierResults runReasoner(ReasonerPhaseListener listener) throws Exception {
+        return runReasoner(listener, TinkarService.newCancellationTracker());
+    }
+
+    @Override
+    public ClassifierResults runReasoner(ReasonerPhaseListener listener, TrackingCallable<?> tracker)
+            throws Exception {
         log.info("Starting reasoner classification pipeline...");
         long startTime = System.currentTimeMillis();
         try {
@@ -2482,31 +2489,36 @@ public class TinkarServiceImpl implements TinkarService {
             ReasonerService rs = reasonerServices.getFirst();
             log.info("Using reasoner: {}", rs.getName());
 
-            TrackingCallable<Object> noOpTracker = new TrackingCallable<>() {
-                @Override
-                protected Object compute() { return null; }
-            };
-
             rs.init(Calculators.View.Default(),
                     TinkarTerm.EL_PLUS_PLUS_STATED_AXIOMS_PATTERN,
                     TinkarTerm.EL_PLUS_PLUS_INFERRED_AXIOMS_PATTERN);
 
             // Phases and wording match Komet's local RunReasonerTaskBase so that a remote run
             // performs the same work, in the same order, and reports it the same way.
-            rs.extractData(noOpTracker);
-            rs.loadData(noOpTracker);
+            rs.extractData(tracker);
+            rs.loadData(tracker);
             listener.onPhaseComplete(ReasonerPhaseListener.Phase.LOAD_DATA);
 
-            rs.computeInferences();
+            // The tracker-taking overload, not computeInferences(): the no-arg form fabricates a
+            // throwaway tracker that nobody can cancel, so the classification would ignore a
+            // cancel however it was requested.
+            rs.computeInferences(tracker);
             listener.onPhaseComplete(ReasonerPhaseListener.Phase.COMPUTE_INFERENCES);
 
             // Was missing: the pipeline went straight from inferences to writing results, so a
             // remote classification skipped the necessary normal form that a local run in Komet
             // always builds. Without it the written results differ from Komet's for the same data.
-            rs.buildNecessaryNormalForm(noOpTracker);
+            rs.buildNecessaryNormalForm(tracker);
             listener.onPhaseComplete(ReasonerPhaseListener.Phase.BUILD_NECESSARY_NORMAL_FORM);
 
-            ClassifierResults results = rs.writeInferredResults();
+            // The last clean abort point. Everything above is read-only; writeInferredResults
+            // stages entities into a transaction over a store other clients read, so once it
+            // starts it is allowed to finish.
+            if (tracker.isCancelled()) {
+                throw new CancellationException("Reasoner cancelled before writing results");
+            }
+
+            ClassifierResults results = rs.writeInferredResults(tracker);
             listener.onPhaseComplete(ReasonerPhaseListener.Phase.PROCESS_RESULTS);
 
             // Clear caches so navigation queries reflect the new inferred hierarchy
@@ -2521,6 +2533,13 @@ public class TinkarServiceImpl implements TinkarService {
 
             lastReasonerDurationMs = durationMs;
             return results;
+        } catch (CancellationException e) {
+            // Not a failure: logged as the outcome it is, so an operator reading the log can tell
+            // a cancelled run from a broken one.
+            long durationMs = System.currentTimeMillis() - startTime;
+            lastReasonerDurationMs = durationMs;
+            log.info("Reasoner cancelled after {}ms: {}", durationMs, e.getMessage());
+            throw e;
         } catch (Exception e) {
             long durationMs = System.currentTimeMillis() - startTime;
             lastReasonerDurationMs = durationMs;
@@ -2850,6 +2869,10 @@ public class TinkarServiceImpl implements TinkarService {
             for (EntityProxy.Concept parent : parents) {
                 EntityVertex conceptReference = EntityVertex.make(TinkarTerm.CONCEPT_REFERENCE);
                 conceptReference.putUncommittedProperty(TinkarTerm.CONCEPT_REFERENCE.nid(), parent);
+                // putUncommittedProperty only stages the value; properties() — what the reasoner
+                // and Komet read — stays empty until it is committed. Without this the vertex was
+                // stored as a concept reference to nothing, and ElkSnomedDataBuilder failed on it.
+                conceptReference.commitProperties();
                 treeBuilder.addVertex(conceptReference);
                 treeBuilder.addEdge(conceptReference, and);
             }

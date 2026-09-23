@@ -17,8 +17,10 @@ import dev.ikm.tinkar.coordinate.view.ViewCoordinateRecord;
 import dev.ikm.tinkar.common.service.PrimitiveData;
 import dev.ikm.tinkar.service.proto.ReasonerResultsProto;
 import dev.ikm.tinkar.service.proto.RunReasonerRequest;
+import dev.ikm.tinkar.common.service.TrackingCallable;
 import dev.ikm.tinkar.service.service.TinkarService;
 import com.google.protobuf.ByteString;
+import io.grpc.stub.ServerCallStreamObserver;
 import io.grpc.stub.StreamObserver;
 import lombok.extern.slf4j.Slf4j;
 import net.devh.boot.grpc.server.service.GrpcService;
@@ -26,6 +28,7 @@ import net.devh.boot.grpc.server.service.GrpcService;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.nio.file.Files;
+import java.util.concurrent.CancellationException;
 import java.util.List;
 
 /**
@@ -102,6 +105,16 @@ public class AdminGrpcController extends IkeAdminGrpc.IkeAdminImplBase {
         log.info("IkeAdmin runReasoner request");
         long startedAt = System.currentTimeMillis();
 
+        TrackingCallable<?> tracker = TinkarService.newCancellationTracker();
+        // A client that cancels the call — Komet's cancel button, or a dropped connection — has
+        // stopped waiting for the result, so stop the run rather than classifying for nobody.
+        if (responseObserver instanceof ServerCallStreamObserver<RunReasonerEvent> serverObserver) {
+            serverObserver.setOnCancelHandler(() -> {
+                log.info("Reasoner call cancelled by the client — cancelling the run");
+                tracker.cancel();
+            });
+        }
+
         try {
             ClassifierResults results = tinkarService.runReasoner(
                     (step, totalSteps, message) -> responseObserver.onNext(
@@ -111,12 +124,19 @@ public class AdminGrpcController extends IkeAdminGrpc.IkeAdminImplBase {
                                             .setTotalSteps(totalSteps)
                                             .setMessage(message)
                                             .build())
-                                    .build()));
+                                    .build()), tracker);
 
             responseObserver.onNext(RunReasonerEvent.newBuilder()
                     .setResult(toResult(results, System.currentTimeMillis() - startedAt))
                     .build());
-        } catch (Exception e) {
+        } catch (CancellationException e) {
+            // The client asked for this, and its stream is already gone — nothing to report back
+            // to, and nothing wrong to report.
+            log.info("Reasoner call cancelled: {}", e.getMessage());
+            return;
+        } catch (Exception | Error e) {
+            // Error too: an OutOfMemoryError would otherwise end the call without a result, so
+            // the client waits forever instead of hearing that the run failed.
             log.error("Reasoner failed: {}", e.getMessage(), e);
             // Reported as a result with success=false rather than onError, so the caller reads
             // the reason from the same message it would read a successful outcome from.

@@ -3,6 +3,7 @@ package dev.ikm.tinkar.service.controller.admin;
 import dev.ikm.tinkar.service.dto.EntityCountSummaryResponse;
 import dev.ikm.tinkar.service.dto.ReasonerPhaseEvent;
 import dev.ikm.tinkar.service.dto.ReasonerResultsResponse;
+import dev.ikm.tinkar.common.service.TrackingCallable;
 import dev.ikm.tinkar.service.service.TinkarService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -29,7 +30,11 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.List;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -72,6 +77,17 @@ public class AdminRestController {
      * cannot happen inline. Single-threaded because {@link #reasonerRunning} already admits one
      * run at a time; the queue should never hold more than the one task being executed.
      */
+    /** How often a running stream is probed for a disconnected client. */
+    private static final long HEARTBEAT_INTERVAL_MS = 1000L;
+
+    /** Sends heartbeats for the running stream; one thread suffices for one run at a time. */
+    private final ScheduledExecutorService heartbeatScheduler =
+            Executors.newSingleThreadScheduledExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "rest-reasoner-heartbeat");
+                thread.setDaemon(true);
+                return thread;
+            });
+
     private final ExecutorService reasonerExecutor =
             Executors.newSingleThreadExecutor(runnable -> {
                 Thread thread = new Thread(runnable, "rest-reasoner");
@@ -149,16 +165,25 @@ public class AdminRestController {
         }
 
         SseEmitter emitter = new SseEmitter(REASONER_STREAM_TIMEOUT_MS);
-        // Release the guard however the stream ends, including the client disconnecting
-        // mid-run; otherwise one abandoned request would block every later one.
+        TrackingCallable<?> tracker = TinkarService.newCancellationTracker();
+
+        // A client that closes the stream has stopped caring about the result, so treat it as a
+        // cancellation rather than letting a classification nobody is waiting for run to the end.
+        // Also releases the guard however the stream ends, or one abandoned request would block
+        // every later one.
         emitter.onCompletion(() -> reasonerRunning.set(false));
         emitter.onTimeout(() -> {
-            log.warn("Reasoner stream timed out after {}ms", REASONER_STREAM_TIMEOUT_MS);
+            log.warn("Reasoner stream timed out after {}ms — cancelling the run", REASONER_STREAM_TIMEOUT_MS);
+            tracker.cancel();
             reasonerRunning.set(false);
         });
-        emitter.onError(throwable -> reasonerRunning.set(false));
+        emitter.onError(throwable -> {
+            log.info("Reasoner stream closed by the client — cancelling the run");
+            tracker.cancel();
+            reasonerRunning.set(false);
+        });
 
-        reasonerExecutor.execute(() -> runAndStream(emitter));
+        reasonerExecutor.execute(() -> runAndStream(emitter, tracker));
         return ResponseEntity.ok(emitter);
     }
 
@@ -170,7 +195,32 @@ public class AdminRestController {
      * reason from the same event it would read a successful outcome from, and handles one shape
      * instead of two.
      */
-    private void runAndStream(SseEmitter emitter) {
+    private void runAndStream(SseEmitter emitter, TrackingCallable<?> tracker) {
+        // A closed socket is invisible to the server until it next writes, and phase events are
+        // seconds to minutes apart — so without this a client that disconnects mid-classification
+        // is only noticed after the phase it disconnected in has finished. A comment every second
+        // turns a disconnect into a failed write, and so into a cancel, within a second.
+        ScheduledFuture<?> heartbeat = heartbeatScheduler.scheduleAtFixedRate(() -> {
+            try {
+                emitter.send(SseEmitter.event().comment("heartbeat"));
+            } catch (IOException | IllegalStateException e) {
+                if (!tracker.isCancelled()) {
+                    log.info("Reasoner stream heartbeat failed — client gone, cancelling the run");
+                    tracker.cancel();
+                }
+            }
+        }, HEARTBEAT_INTERVAL_MS, HEARTBEAT_INTERVAL_MS, TimeUnit.MILLISECONDS);
+        try {
+            streamRun(emitter, tracker);
+        } finally {
+            heartbeat.cancel(false);
+            // Released here as well as in the emitter callbacks: those only fire once the
+            // container notices the stream ended, and must not be the only way out.
+            reasonerRunning.set(false);
+        }
+    }
+
+    private void streamRun(SseEmitter emitter, TrackingCallable<?> tracker) {
         long startedAt = System.currentTimeMillis();
         log.info("IkeAdmin runReasoner (streaming) started");
         try {
@@ -179,19 +229,29 @@ public class AdminRestController {
                     emitter.send(SseEmitter.event()
                             .name("phase")
                             .data(new ReasonerPhaseEvent(step, totalSteps, message)));
-                } catch (IOException e) {
-                    // The client has gone. Surface it so the pipeline unwinds rather than
-                    // running a long classification nobody is listening to.
-                    throw new IllegalStateException("Reasoner stream closed by the client", e);
+                } catch (IOException | IllegalStateException e) {
+                    // The client has gone. Spring reports a broken pipe as IllegalStateException
+                    // ("Failed to send"), not IOException, so both mean the same thing here: stop
+                    // the run rather than failing it.
+                    log.info("Reasoner stream send failed — cancelling the run");
+                    tracker.cancel();
                 }
-            });
+            }, tracker);
 
             emitter.send(SseEmitter.event()
                     .name("result")
                     .data(ReasonerResultsResponse.from(
                             results, System.currentTimeMillis() - startedAt)));
             emitter.complete();
-        } catch (Exception e) {
+        } catch (CancellationException e) {
+            // Expected when a client disconnects, so not logged as a failure. The stream it would
+            // have been reported on is usually gone already.
+            log.info("Streaming reasoner cancelled: {}", e.getMessage());
+            emitter.complete();
+        } catch (Exception | Error e) {
+            // Error too: an OutOfMemoryError from ELK on a large dataset would otherwise kill this
+            // thread without completing the stream, leaving the caller waiting forever and the
+            // concurrency guard held until the stream times out.
             log.error("Streaming reasoner failed: {}", e.getMessage(), e);
             try {
                 emitter.send(SseEmitter.event()
