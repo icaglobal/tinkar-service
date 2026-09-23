@@ -20,7 +20,7 @@ import dev.ikm.tinkar.service.proto.RunReasonerRequest;
 import dev.ikm.tinkar.common.service.TrackingCallable;
 import dev.ikm.tinkar.service.service.TinkarService;
 import com.google.protobuf.ByteString;
-import io.grpc.stub.ServerCallStreamObserver;
+import io.grpc.Context;
 import io.grpc.stub.StreamObserver;
 import lombok.extern.slf4j.Slf4j;
 import net.devh.boot.grpc.server.service.GrpcService;
@@ -29,6 +29,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.nio.file.Files;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.List;
 
 /**
@@ -108,12 +109,20 @@ public class AdminGrpcController extends IkeAdminGrpc.IkeAdminImplBase {
         TrackingCallable<?> tracker = TinkarService.newCancellationTracker();
         // A client that cancels the call — Komet's cancel button, or a dropped connection — has
         // stopped waiting for the result, so stop the run rather than classifying for nobody.
-        if (responseObserver instanceof ServerCallStreamObserver<RunReasonerEvent> serverObserver) {
-            serverObserver.setOnCancelHandler(() -> {
+        //
+        // Through the call's Context, not setOnCancelHandler: the pipeline runs on this call's own
+        // thread, and gRPC delivers a call's callbacks one at a time — so the cancel handler would
+        // be queued behind this method and fire only after the classification had finished. The
+        // Context is cancelled on the transport thread as soon as the client resets the stream.
+        // gRPC also cancels the Context when a call ends normally, so only a cancel that lands
+        // while the run is still going means the client left.
+        AtomicBoolean finished = new AtomicBoolean(false);
+        Context.current().addListener(cancelled -> {
+            if (!finished.get()) {
                 log.info("Reasoner call cancelled by the client — cancelling the run");
                 tracker.cancel();
-            });
-        }
+            }
+        }, Runnable::run);
 
         try {
             ClassifierResults results = tinkarService.runReasoner(
@@ -126,17 +135,20 @@ public class AdminGrpcController extends IkeAdminGrpc.IkeAdminImplBase {
                                             .build())
                                     .build()), tracker);
 
+            finished.set(true);
             responseObserver.onNext(RunReasonerEvent.newBuilder()
                     .setResult(toResult(results, System.currentTimeMillis() - startedAt))
                     .build());
         } catch (CancellationException e) {
             // The client asked for this, and its stream is already gone — nothing to report back
             // to, and nothing wrong to report.
+            finished.set(true);
             log.info("Reasoner call cancelled: {}", e.getMessage());
             return;
         } catch (Exception | Error e) {
             // Error too: an OutOfMemoryError would otherwise end the call without a result, so
             // the client waits forever instead of hearing that the run failed.
+            finished.set(true);
             log.error("Reasoner failed: {}", e.getMessage(), e);
             // Reported as a result with success=false rather than onError, so the caller reads
             // the reason from the same message it would read a successful outcome from.
