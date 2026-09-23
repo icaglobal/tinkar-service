@@ -492,11 +492,16 @@ export async function getSemanticsWithCoordinate(
  * is a few lines.
  */
 export async function runReasonerStreaming(
-  onPhase: (phase: ReasonerPhaseEvent) => void
+  onPhase: (phase: ReasonerPhaseEvent) => void,
+  signal?: AbortSignal
 ): Promise<ReasonerResultsResponse> {
+  // Aborting `signal` is how a caller cancels: it closes the connection, which the server's
+  // stream heartbeat notices within a second and turns into a cancel of the classification. No
+  // separate cancel endpoint is needed, and a closed browser tab cancels the same way.
   const response = await fetch(`${ADMIN_API_BASE_URL}/reasoner/stream`, {
     method: 'POST',
     headers: { accept: 'text/event-stream' },
+    signal,
   });
 
   if (response.status === 409) {

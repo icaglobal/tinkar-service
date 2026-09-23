@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { runReasonerStreaming } from '../api/tinkarApi';
 import type { ReasonerPhaseEvent, ReasonerResultsResponse } from '../api/types';
 
@@ -41,25 +41,38 @@ export function ReasonerPanel({ onBack }: ReasonerPanelProps) {
   const [isRunning, setIsRunning] = useState(false);
   const [result, setResult] = useState<ReasonerResultsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cancelled, setCancelled] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   const run = async () => {
     setIsRunning(true);
     setPhase(null);
     setResult(null);
     setError(null);
+    setCancelled(false);
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
-      const outcome = await runReasonerStreaming(setPhase);
+      const outcome = await runReasonerStreaming(setPhase, controller.signal);
       if (outcome.success) {
         setResult(outcome);
       } else {
         setError(outcome.errorMessage ?? 'Reasoner failed');
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Reasoner failed');
+      if (controller.signal.aborted) {
+        // The user asked for this; not an error to show in red.
+        setCancelled(true);
+      } else {
+        setError(e instanceof Error ? e.message : 'Reasoner failed');
+      }
     } finally {
+      abortRef.current = null;
       setIsRunning(false);
     }
   };
+
+  const cancel = () => abortRef.current?.abort();
 
   const percent = phase ? Math.round((phase.step / phase.totalSteps) * 100) : 0;
 
@@ -74,9 +87,16 @@ export function ReasonerPanel({ onBack }: ReasonerPanelProps) {
         
       </p>
 
-      <button className="reasoner-run" onClick={run} disabled={isRunning}>
-        {isRunning ? 'Running…' : 'Run Reasoner'}
-      </button>
+      <div className="reasoner-actions">
+        <button className="reasoner-run" onClick={run} disabled={isRunning}>
+          {isRunning ? 'Running…' : 'Run Reasoner'}
+        </button>
+        {isRunning && (
+          <button className="reasoner-cancel" onClick={cancel}>
+            Cancel
+          </button>
+        )}
+      </div>
 
       {(isRunning || phase) && (
         <div className="reasoner-progress">
@@ -126,6 +146,14 @@ export function ReasonerPanel({ onBack }: ReasonerPanelProps) {
             thousands of ids over the wire.
           </p>
         </div>
+      )}
+
+      {cancelled && (
+        <p className="reasoner-hint">
+          Cancelled. The classification stops on the server and nothing is written — unless
+          results had already started being written, in which case that finishes first so the
+          dataset is never left half-classified.
+        </p>
       )}
 
       {error && <p className="reasoner-error">{error}</p>}

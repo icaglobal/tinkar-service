@@ -1896,3 +1896,23 @@
   color: #6c757d;
   margin-top: 0.15rem;
 }
+
+.reasoner-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.reasoner-cancel {
+  padding: 0.6rem 1.2rem;
+  font-size: 0.95rem;
+  background-color: white;
+  color: #d9534f;
+  border: 1px solid #d9534f;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.reasoner-cancel:hover {
+  background-color: #d9534f;
+  color: white;
+}

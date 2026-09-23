@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -52,15 +53,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class AdminRestController {
 
     /**
-     * How long a streaming run may take before the container gives up, in milliseconds.
-     *
-     * <p>Generous because a classification is genuinely slow — roughly 11s on gudidsubset and
-     * minutes on a full dataset — and the default async timeout (30s) would abort a legitimate
-     * run mid-pipeline.
-     */
-    private static final long REASONER_STREAM_TIMEOUT_MS = 30L * 60L * 1000L;
-
-    /**
      * Guards against a second classification starting while one is in flight.
      *
      * <p>The pipeline is a single stateful run over one {@code ReasonerService} instance, so two
@@ -70,13 +62,6 @@ public class AdminRestController {
      */
     private final AtomicBoolean reasonerRunning = new AtomicBoolean(false);
 
-    /**
-     * Runs streaming classifications off the request thread.
-     *
-     * <p>An {@code SseEmitter} has to be returned before any event is written, so the work
-     * cannot happen inline. Single-threaded because {@link #reasonerRunning} already admits one
-     * run at a time; the queue should never hold more than the one task being executed.
-     */
     /** How often a running stream is probed for a disconnected client. */
     private static final long HEARTBEAT_INTERVAL_MS = 1000L;
 
@@ -88,6 +73,13 @@ public class AdminRestController {
                 return thread;
             });
 
+    /**
+     * Runs streaming classifications off the request thread.
+     *
+     * <p>An {@code SseEmitter} has to be returned before any event is written, so the work
+     * cannot happen inline. Single-threaded because {@link #reasonerRunning} already admits one
+     * run at a time; the queue should never hold more than the one task being executed.
+     */
     private final ExecutorService reasonerExecutor =
             Executors.newSingleThreadExecutor(runnable -> {
                 Thread thread = new Thread(runnable, "rest-reasoner");
@@ -95,10 +87,23 @@ public class AdminRestController {
                 return thread;
             });
 
+    /**
+     * How long a streaming run may take before it is cancelled, in milliseconds.
+     *
+     * <p>A backstop, not the way abandoned runs end — the heartbeat notices a disconnected client
+     * within a second. It exists for a run that wedges (ELK starved of memory stops making
+     * progress without failing), so set it well above the longest legitimate classification.
+     * Configured by {@code reasoner.stream.timeout-ms}; without one, Spring's async default of
+     * about 30 seconds would abort every real run.
+     */
+    private final long reasonerStreamTimeoutMs;
+
     private final TinkarService tinkarService;
 
-    public AdminRestController(TinkarService tinkarService) {
+    public AdminRestController(TinkarService tinkarService,
+                               @Value("${reasoner.stream.timeout-ms:14400000}") long reasonerStreamTimeoutMs) {
         this.tinkarService = tinkarService;
+        this.reasonerStreamTimeoutMs = reasonerStreamTimeoutMs;
     }
 
     @Operation(summary = "Import a changeset",
@@ -164,23 +169,23 @@ public class AdminRestController {
             return ResponseEntity.status(409).build();
         }
 
-        SseEmitter emitter = new SseEmitter(REASONER_STREAM_TIMEOUT_MS);
+        SseEmitter emitter = new SseEmitter(reasonerStreamTimeoutMs);
         TrackingCallable<?> tracker = TinkarService.newCancellationTracker();
 
         // A client that closes the stream has stopped caring about the result, so treat it as a
         // cancellation rather than letting a classification nobody is waiting for run to the end.
-        // Also releases the guard however the stream ends, or one abandoned request would block
-        // every later one.
-        emitter.onCompletion(() -> reasonerRunning.set(false));
+        //
+        // These only cancel; they do not release the guard. That happens when the worker thread
+        // actually exits, in runAndStream. Releasing it here would let a new request start a
+        // second pipeline beside one still running — which a wedged ELK run, deaf to interrupt,
+        // otherwise makes possible.
         emitter.onTimeout(() -> {
-            log.warn("Reasoner stream timed out after {}ms — cancelling the run", REASONER_STREAM_TIMEOUT_MS);
+            log.warn("Reasoner stream timed out after {}ms — cancelling the run", reasonerStreamTimeoutMs);
             tracker.cancel();
-            reasonerRunning.set(false);
         });
         emitter.onError(throwable -> {
             log.info("Reasoner stream closed by the client — cancelling the run");
             tracker.cancel();
-            reasonerRunning.set(false);
         });
 
         reasonerExecutor.execute(() -> runAndStream(emitter, tracker));
@@ -214,8 +219,7 @@ public class AdminRestController {
             streamRun(emitter, tracker);
         } finally {
             heartbeat.cancel(false);
-            // Released here as well as in the emitter callbacks: those only fire once the
-            // container notices the stream ended, and must not be the only way out.
+            // The only release: the guard is held for exactly as long as a pipeline is running.
             reasonerRunning.set(false);
         }
     }
