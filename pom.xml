@@ -7,7 +7,7 @@
     <parent>
         <groupId>network.ike.platform</groupId>
         <artifactId>ike-parent</artifactId>
-        <version>176</version>
+        <version>178</version>
         <relativePath/>
     </parent>
 
@@ -17,6 +17,13 @@
     <packaging>jar</packaging>
     <name>Tinkar Service</name>
     <description>Standalone Spring Boot / gRPC service exposing Tinkar knowledge-graph APIs</description>
+
+    <scm>
+        <connection>scm:git:https://github.com/icaglobal/tinkar-service.git</connection>
+        <developerConnection>scm:git:git@github.com:icaglobal/tinkar-service.git</developerConnection>
+        <url>https://github.com/icaglobal/tinkar-service</url>
+        <tag>HEAD</tag>
+    </scm>
 
     <properties>
         <java.version>25</java.version>
