@@ -3,9 +3,9 @@ package dev.ikm.tinkar.service.controller.admin;
 import dev.ikm.tinkar.service.dto.EntityCountSummaryResponse;
 import dev.ikm.tinkar.service.dto.ReasonerResultsResponse;
 import dev.ikm.tinkar.service.service.TinkarService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -27,8 +27,14 @@ class AdminRestControllerTest {
     @Mock
     private TinkarService tinkarService;
 
-    @InjectMocks
+    // Constructed rather than @InjectMocks: the controller also takes the stream timeout, a long
+    // Mockito cannot supply.
     private AdminRestController controller;
+
+    @BeforeEach
+    void createController() {
+        controller = new AdminRestController(tinkarService, 14_400_000L);
+    }
 
     // -------------------------------------------------------------------------
     // importChangeset
