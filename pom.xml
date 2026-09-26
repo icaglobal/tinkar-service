@@ -39,7 +39,7 @@
         <springdoc-openapi.version>2.6.0</springdoc-openapi.version>
         <!-- Must match the lucene-core version resolved transitively via tinkar-core's
              search-provider module -->
-        <lucene.version>10.4.0</lucene.version>
+        <lucene.version>10.5.1</lucene.version>
 
         <!-- Tinkar Core dependency version -->
         <tinkar-core.version>1.127.7-8bp-jdk27-SNAPSHOT</tinkar-core.version>
