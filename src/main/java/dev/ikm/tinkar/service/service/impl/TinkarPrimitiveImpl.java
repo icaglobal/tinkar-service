@@ -28,12 +28,13 @@ import dev.ikm.tinkar.provider.search.Searcher;
 import dev.ikm.tinkar.terms.EntityProxy;
 import dev.ikm.tinkar.terms.TinkarTerm;
 import jakarta.annotation.PreDestroy;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-@Slf4j
 @Service
 @ConditionalOnProperty(name = "tinkar.data.enabled", havingValue = "true", matchIfMissing = true)
 public final class TinkarPrimitiveImpl implements TinkarPrimitive {
+    private static final Logger log = LoggerFactory.getLogger(TinkarPrimitiveImpl.class);
 
     /**
      * Default Constructor

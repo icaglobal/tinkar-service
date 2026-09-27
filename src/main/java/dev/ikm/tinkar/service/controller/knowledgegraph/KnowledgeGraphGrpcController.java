@@ -17,7 +17,8 @@ import dev.ikm.tinkar.coordinate.view.calculator.ViewCalculatorWithCache;
 import dev.ikm.tinkar.schema.PublicId;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import net.devh.boot.grpc.server.service.GrpcService;
 
 import java.util.List;
@@ -30,8 +31,8 @@ import java.util.List;
  * and navigation mode. Target audience: analytics engineers, knowledge graph practitioners.
  */
 @GrpcService
-@Slf4j
 public class KnowledgeGraphGrpcController extends IkeKnowledgeGraphGrpc.IkeKnowledgeGraphImplBase {
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeGraphGrpcController.class);
 
     private final TinkarService tinkarService;
     private final CoordinateStoreService coordinateStoreService;

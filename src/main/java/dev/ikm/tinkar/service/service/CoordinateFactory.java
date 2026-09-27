@@ -21,7 +21,8 @@ import dev.ikm.tinkar.coordinate.stamp.StateSet;
 import dev.ikm.tinkar.coordinate.view.ViewCoordinateRecord;
 import dev.ikm.tinkar.coordinate.view.calculator.ViewCalculatorWithCache;
 import dev.ikm.tinkar.entity.EntityService;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.UUID;
@@ -30,8 +31,8 @@ import java.util.UUID;
  * Builds a {@link ViewCalculatorWithCache} from optional coordinate overrides.
  * Unspecified fields fall back to server defaults (same as Tier 1).
  */
-@Slf4j
 public class CoordinateFactory {
+    private static final Logger log = LoggerFactory.getLogger(CoordinateFactory.class);
 
     /**
      * Returns the server-default calculator (same as Tier 1).

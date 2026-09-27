@@ -20,7 +20,8 @@ import dev.ikm.tinkar.service.proto.RunReasonerRequest;
 import dev.ikm.tinkar.service.service.TinkarService;
 import com.google.protobuf.ByteString;
 import io.grpc.stub.StreamObserver;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import net.devh.boot.grpc.server.service.GrpcService;
 
 import java.io.File;
@@ -36,8 +37,8 @@ import java.util.List;
  * Target audience: platform operators, DevOps, CI/CD pipelines.
  */
 @GrpcService
-@Slf4j
 public class AdminGrpcController extends IkeAdminGrpc.IkeAdminImplBase {
+    private static final Logger log = LoggerFactory.getLogger(AdminGrpcController.class);
 
     private final TinkarService tinkarService;
 

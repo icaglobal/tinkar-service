@@ -6,7 +6,8 @@ import dev.ikm.tinkar.service.service.TinkarService;
 import dev.ikm.tinkar.service.util.ProtoConversionUtils;
 import dev.ikm.tinkar.schema.PublicId;
 import io.grpc.stub.StreamObserver;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import net.devh.boot.grpc.server.service.GrpcService;
 
 /**
@@ -16,8 +17,8 @@ import net.devh.boot.grpc.server.service.GrpcService;
  * All responses are pre-resolved to human-readable form using server-side defaults.
  */
 @GrpcService
-@Slf4j
 public class GraphRAGGrpcController extends IkeGraphRAGGrpc.IkeGraphRAGImplBase {
+    private static final Logger log = LoggerFactory.getLogger(GraphRAGGrpcController.class);
 
     private final TinkarService tinkarService;
 

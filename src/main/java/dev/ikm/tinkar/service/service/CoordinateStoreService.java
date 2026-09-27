@@ -23,7 +23,8 @@ import dev.ikm.tinkar.entity.StampEntity;
 import dev.ikm.tinkar.entity.transaction.Transaction;
 import dev.ikm.tinkar.terms.State;
 import dev.ikm.tinkar.terms.TinkarTerm;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.eclipse.collections.api.factory.Lists;
 import org.springframework.stereotype.Component;
 
@@ -52,8 +53,8 @@ import java.util.UUID;
  * the nid element-sequence collision that breaks {@code semanticNidsOfPattern}.
  */
 @Component
-@Slf4j
 public class CoordinateStoreService {
+    private static final Logger log = LoggerFactory.getLogger(CoordinateStoreService.class);
 
     /**
      * Registry concept UUIDs — one per coordinate type.

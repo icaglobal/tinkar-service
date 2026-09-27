@@ -23,7 +23,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
@@ -40,11 +41,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * and running the reasoner classification pipeline.
  * Target audience: platform operators, DevOps, CI/CD pipelines.
  */
-@Slf4j
 @RestController
 @RequestMapping("/api/ike/admin")
 @Tag(name = "IKE Admin (Tier 3)", description = "Data management operations: import changesets, export entities, and reasoner classification.")
 public class AdminRestController {
+    private static final Logger log = LoggerFactory.getLogger(AdminRestController.class);
 
     /**
      * How long a streaming run may take before the container gives up, in milliseconds.
