@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
-import { conceptSearch, createConcept } from '../api/tinkarApi';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { conceptSearchWithSort, createConcept } from '../api/tinkarApi';
 import type {
   AxiomSetType,
   CaseSignificance,
@@ -8,7 +8,7 @@ import type {
   ConceptDescription,
   DescriptionLanguage,
   DescriptionType,
-  SearchResult,
+  GroupedSearchResult,
 } from '../api/types';
 
 interface CreateConceptPanelProps {
@@ -43,12 +43,8 @@ const SET_TYPES: { value: AxiomSetType; label: string }[] = [
   { value: 'SUFFICIENT', label: 'Sufficient set' },
 ];
 
-function labelFor(result: SearchResult): string {
-  return (
-    result.descriptions?.regularName ||
-    result.descriptions?.fullyQualifiedName ||
-    result.publicId[0]
-  );
+function labelFor(result: GroupedSearchResult): string {
+  return result.fullyQualifiedName || result.publicId[0];
 }
 
 const newDescription = (type: DescriptionType): ConceptDescription => ({
@@ -66,18 +62,23 @@ const newDescription = (type: DescriptionType): ConceptDescription => ({
 export function CreateConceptPanel({ onBack }: CreateConceptPanelProps) {
   // The fully qualified name is seeded because exactly one is required; the server rejects
   // a request without it, so starting with an empty one keeps that rule visible in the form.
+  const queryClient = useQueryClient();
   const [descriptions, setDescriptions] = useState<ConceptDescription[]>([
     newDescription('FULLY_QUALIFIED_NAME'),
   ]);
   const [axioms, setAxioms] = useState<AxiomDraft[]>([{ setType: 'NECESSARY', parents: [] }]);
   const [parentQuery, setParentQuery] = useState('');
-  const [parentResults, setParentResults] = useState<SearchResult[]>([]);
+  const [parentResults, setParentResults] = useState<GroupedSearchResult[]>([]);
   const [activeAxiom, setActiveAxiom] = useState(0);
   const [message, setMessage] = useState<{ text: string; isError: boolean } | null>(null);
 
   const searchParents = useMutation({
-    mutationFn: () => conceptSearch(parentQuery, 20),
-    onSuccess: (data) => setParentResults(data.results ?? []),
+    // The same search, ranking and default as the main search box, so a concept found there
+    // is found here in the same place. Inactive concepts are dropped as the main search drops
+    // them by default — a new concept should not be defined against a retired one.
+    mutationFn: () => conceptSearchWithSort(parentQuery, 20, 'TOP_COMPONENT'),
+    onSuccess: (data) =>
+      setParentResults((data.groupedResults ?? []).filter((result) => result.active)),
     onError: (e) =>
       setMessage({
         text: `Parent search failed: ${e instanceof Error ? e.message : 'unknown error'}`,
@@ -95,6 +96,10 @@ export function CreateConceptPanel({ onBack }: CreateConceptPanelProps) {
     },
     onSuccess: (response) => {
       if (response.success) {
+        // A new concept changes search results and whatever views referenced its parents, so
+        // cached answers are no longer true. Marked stale, not cleared: each view re-fetches
+        // when it is next shown rather than all at once now.
+        queryClient.invalidateQueries();
         setMessage({
           text: `Created "${response.fullyQualifiedName}" — ${response.conceptId}`,
           isError: false,
@@ -117,7 +122,7 @@ export function CreateConceptPanel({ onBack }: CreateConceptPanelProps) {
   const updateDescription = (index: number, patch: Partial<ConceptDescription>) =>
     setDescriptions(descriptions.map((d, i) => (i === index ? { ...d, ...patch } : d)));
 
-  const addParent = (result: SearchResult) => {
+  const addParent = (result: GroupedSearchResult) => {
     const id = result.publicId[0];
     setAxioms(
       axioms.map((a, i) =>

@@ -10,6 +10,7 @@ import type {
   CreateConceptRequest,
   ReasonerPhaseEvent,
   ReasonerResultsResponse,
+  ReasonerRunEvent,
   DescendantOperationResponse,
   LanguageCoordinateSettings,
   NavigationCoordinateSettings,
@@ -483,29 +484,79 @@ export async function getSemanticsWithCoordinate(
   return response.json();
 }
 
+/** What a reasoner stream reports, in order: the run, its phases, then the outcome. */
+export type ReasonerStreamHandlers = {
+  onRun?: (run: ReasonerRunEvent) => void;
+  onPhase: (phase: ReasonerPhaseEvent) => void;
+};
+
 /**
- * Runs the reasoner, calling `onPhase` as each phase completes, resolving with the outcome.
+ * Starts the reasoner, or attaches to the run already going, resolving with its outcome.
  *
- * Reads the stream with fetch rather than EventSource: EventSource only issues GET, and running
- * a classification writes inferred results, so the endpoint is a POST. The framing is plain SSE
- * — events separated by a blank line, with `event:` and `data:` fields — so parsing it by hand
- * is a few lines.
+ * A run belongs to the server, not to this request: aborting `signal` (or closing the tab) only
+ * stops watching, and the classification carries on. Get back to it with
+ * {@link watchReasonerStreaming}; stop it with {@link cancelReasoner}.
  */
 export async function runReasonerStreaming(
-  onPhase: (phase: ReasonerPhaseEvent) => void,
+  handlers: ReasonerStreamHandlers,
   signal?: AbortSignal
 ): Promise<ReasonerResultsResponse> {
-  // Aborting `signal` is how a caller cancels: it closes the connection, which the server's
-  // stream heartbeat notices within a second and turns into a cancel of the classification. No
-  // separate cancel endpoint is needed, and a closed browser tab cancels the same way.
+  const outcome = await streamReasoner('POST', handlers, signal);
+  if (!outcome) {
+    throw new Error('Reasoner stream ended without a result');
+  }
+  return outcome;
+}
+
+/**
+ * Attaches to the running reasoner, or replays the last run if it has finished. Never starts a
+ * run. Resolves with null if there has been no run since the server started.
+ */
+export async function watchReasonerStreaming(
+  handlers: ReasonerStreamHandlers,
+  signal?: AbortSignal
+): Promise<ReasonerResultsResponse | null> {
+  return streamReasoner('GET', handlers, signal);
+}
+
+/**
+ * Asks the running reasoner to stop. Resolves once the request is accepted, not once the run has
+ * stopped — anyone watching gets a result with `cancelled` set when it has. Throws if nothing is
+ * running.
+ */
+export async function cancelReasoner(): Promise<void> {
+  const response = await fetch(`${ADMIN_API_BASE_URL}/reasoner/cancel`, { method: 'POST' });
+  if (response.status === 409) {
+    throw new Error('The reasoner is not running');
+  }
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+}
+
+/**
+ * Reads a reasoner event stream.
+ *
+ * With fetch rather than EventSource: EventSource only issues GET, and starting a run is a POST.
+ * The framing is plain SSE — events separated by a blank line, with `event:` and `data:` fields —
+ * so parsing it by hand is a few lines. Heartbeats are SSE comments and carry no data, so they
+ * are skipped.
+ *
+ * @returns the outcome, or null if the server had no run to report (204)
+ */
+async function streamReasoner(
+  method: 'GET' | 'POST',
+  { onRun, onPhase }: ReasonerStreamHandlers,
+  signal?: AbortSignal
+): Promise<ReasonerResultsResponse | null> {
   const response = await fetch(`${ADMIN_API_BASE_URL}/reasoner/stream`, {
-    method: 'POST',
+    method,
     headers: { accept: 'text/event-stream' },
     signal,
   });
 
-  if (response.status === 409) {
-    throw new Error('A classification is already running');
+  if (response.status === 204) {
+    return null;
   }
   if (!response.ok || !response.body) {
     throw new Error(`API error: ${response.status} ${response.statusText}`);
@@ -525,7 +576,8 @@ export async function runReasonerStreaming(
     }
     if (dataLines.length === 0) return;
     const payload = JSON.parse(dataLines.join('\n'));
-    if (eventName === 'phase') onPhase(payload as ReasonerPhaseEvent);
+    if (eventName === 'run') onRun?.(payload as ReasonerRunEvent);
+    else if (eventName === 'phase') onPhase(payload as ReasonerPhaseEvent);
     else if (eventName === 'result') result = payload as ReasonerResultsResponse;
   };
 
