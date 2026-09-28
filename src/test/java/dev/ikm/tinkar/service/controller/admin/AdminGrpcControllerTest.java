@@ -18,7 +18,18 @@ import io.grpc.stub.StreamObserver;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
+import io.grpc.Status;
+import io.grpc.stub.ServerCallStreamObserver;
+import dev.ikm.tinkar.service.proto.CancelReasonerRequest;
+import dev.ikm.tinkar.service.proto.CancelReasonerResponse;
+import dev.ikm.tinkar.service.proto.WatchReasonerRequest;
+import dev.ikm.tinkar.service.service.ReasonerRunManager;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import dev.ikm.tinkar.common.service.TrackingCallable;
+import java.util.concurrent.CancellationException;
+import org.junit.jupiter.api.BeforeEach;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -28,6 +39,7 @@ import java.io.File;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -37,8 +49,20 @@ class AdminGrpcControllerTest {
     @Mock
     private TinkarService tinkarService;
 
-    @InjectMocks
+    // Constructed rather than @InjectMocks: the run manager is real — it is what the reasoner
+    // calls are about — over the mocked service.
+    private ReasonerRunManager reasonerRuns;
+
     private AdminGrpcController controller;
+
+    @BeforeEach
+    void createController() {
+        reasonerRuns = new ReasonerRunManager(tinkarService);
+        controller = new AdminGrpcController(tinkarService, reasonerRuns);
+    }
+
+    /** Runs are asynchronous: events arrive on the run's thread, after the call has returned. */
+    private static final int WAIT_MS = 5000;
 
     // -------------------------------------------------------------------------
     // importChangeset
@@ -161,7 +185,7 @@ class AdminGrpcControllerTest {
 
         // Drive the listener the controller passes in, so the phases it forwards are the ones
         // the pipeline would really report.
-        when(tinkarService.runReasoner(any(ReasonerPhaseListener.class))).thenAnswer(invocation -> {
+        when(tinkarService.runReasoner(any(ReasonerPhaseListener.class), any())).thenAnswer(invocation -> {
             ReasonerPhaseListener listener = invocation.getArgument(0);
             listener.onPhaseComplete(1, 4, "Loading data into reasoner");
             listener.onPhaseComplete(2, 4, "Computing inferences");
@@ -175,24 +199,29 @@ class AdminGrpcControllerTest {
 
         controller.runReasoner(RunReasonerRequest.getDefaultInstance(), responseObserver);
 
+        verify(responseObserver, timeout(WAIT_MS)).onCompleted();
         ArgumentCaptor<RunReasonerEvent> captor = ArgumentCaptor.forClass(RunReasonerEvent.class);
-        verify(responseObserver, Mockito.times(5)).onNext(captor.capture());
-        verify(responseObserver).onCompleted();
+        verify(responseObserver, Mockito.times(6)).onNext(captor.capture());
 
         List<RunReasonerEvent> events = captor.getAllValues();
 
+        // First, which run this is — one this call started.
+        assertThat(events.get(0).hasRun()).isTrue();
+        assertThat(events.get(0).getRun().getStarted()).isTrue();
+
         // Four phases, in order, numbered to match Komet's local pipeline.
-        assertThat(events.subList(0, 4)).allMatch(RunReasonerEvent::hasPhase);
-        assertThat(events.subList(0, 4))
+        List<RunReasonerEvent> phases = events.subList(1, 5);
+        assertThat(phases).allMatch(RunReasonerEvent::hasPhase);
+        assertThat(phases)
                 .extracting(e -> e.getPhase().getStep())
                 .containsExactly(1, 2, 3, 4);
-        assertThat(events.get(2).getPhase().getMessage())
+        assertThat(phases.get(2).getPhase().getMessage())
                 .isEqualTo("Building necessary normal form");
-        assertThat(events.get(0).getPhase().getTotalSteps()).isEqualTo(4);
+        assertThat(phases.get(0).getPhase().getTotalSteps()).isEqualTo(4);
 
         // Then exactly one result, terminal.
-        assertThat(events.get(4).hasResult()).isTrue();
-        assertThat(events.get(4).getResult().getSuccess()).isTrue();
+        assertThat(events.get(5).hasResult()).isTrue();
+        assertThat(events.get(5).getResult().getSuccess()).isTrue();
     }
 
     @Test
@@ -207,15 +236,16 @@ class AdminGrpcControllerTest {
         when(results.getCycles()).thenReturn(null);
         when(results.getOrphans()).thenReturn(null);
         when(results.getViewCoordinate()).thenReturn(null);
-        when(tinkarService.runReasoner(any(ReasonerPhaseListener.class))).thenReturn(results);
+        when(tinkarService.runReasoner(any(ReasonerPhaseListener.class), any())).thenReturn(results);
 
         @SuppressWarnings("unchecked")
         StreamObserver<RunReasonerEvent> responseObserver = Mockito.mock(StreamObserver.class);
 
         controller.runReasoner(RunReasonerRequest.getDefaultInstance(), responseObserver);
 
+        verify(responseObserver, timeout(WAIT_MS)).onCompleted();
         ArgumentCaptor<RunReasonerEvent> captor = ArgumentCaptor.forClass(RunReasonerEvent.class);
-        verify(responseObserver).onNext(captor.capture());
+        verify(responseObserver, Mockito.times(2)).onNext(captor.capture());
 
         RunReasonerResult result = captor.getValue().getResult();
         assertThat(result.getCounts().getClassifiedConceptCount()).isEqualTo(3);
@@ -223,7 +253,7 @@ class AdminGrpcControllerTest {
 
     @Test
     void runReasoner_failureIsReportedAsAResultNotAStreamError() throws Exception {
-        when(tinkarService.runReasoner(any(ReasonerPhaseListener.class)))
+        when(tinkarService.runReasoner(any(ReasonerPhaseListener.class), any()))
                 .thenThrow(new IllegalStateException("reasoner timed out"));
 
         @SuppressWarnings("unchecked")
@@ -231,13 +261,133 @@ class AdminGrpcControllerTest {
 
         controller.runReasoner(RunReasonerRequest.getDefaultInstance(), responseObserver);
 
+        verify(responseObserver, timeout(WAIT_MS)).onCompleted();
         ArgumentCaptor<RunReasonerEvent> captor = ArgumentCaptor.forClass(RunReasonerEvent.class);
-        verify(responseObserver).onNext(captor.capture());
-        verify(responseObserver).onCompleted();
+        verify(responseObserver, Mockito.times(2)).onNext(captor.capture());
         verify(responseObserver, Mockito.never()).onError(any());
 
         RunReasonerResult result = captor.getValue().getResult();
         assertThat(result.getSuccess()).isFalse();
         assertThat(result.getErrorMessage()).isEqualTo("reasoner timed out");
+    }
+
+    @Test
+    void runReasoner_clientLeavingDoesNotCancelTheRun() throws Exception {
+        // Komet closing, or its call being cancelled, only stops it watching. The run is the
+        // server's, and carries on to the end.
+        CountDownLatch running = new CountDownLatch(1);
+        CountDownLatch proceed = new CountDownLatch(1);
+        AtomicReference<TrackingCallable<?>> tracker = new AtomicReference<>();
+        when(tinkarService.runReasoner(any(ReasonerPhaseListener.class), any())).thenAnswer(invocation -> {
+            tracker.set(invocation.getArgument(1));
+            running.countDown();
+            proceed.await(WAIT_MS, TimeUnit.MILLISECONDS);
+            return null;
+        });
+
+        @SuppressWarnings("unchecked")
+        ServerCallStreamObserver<RunReasonerEvent> call = Mockito.mock(ServerCallStreamObserver.class);
+        ArgumentCaptor<Runnable> onCancel = ArgumentCaptor.forClass(Runnable.class);
+
+        controller.runReasoner(RunReasonerRequest.getDefaultInstance(), call);
+        assertThat(running.await(WAIT_MS, TimeUnit.MILLISECONDS)).isTrue();
+        verify(call).setOnCancelHandler(onCancel.capture());
+
+        onCancel.getValue().run();                 // the client goes away mid-run
+        assertThat(tracker.get().isCancelled()).isFalse();
+
+        proceed.countDown();
+        // Nothing more reaches the departed caller — it was detached, not left to fail.
+        Thread.sleep(200);
+        verify(call, Mockito.never()).onCompleted();
+        assertThat(tracker.get().isCancelled()).isFalse();
+    }
+
+    @Test
+    void cancelReasoner_whileRunning_endsTheRunWithACancelledResult() throws Exception {
+        CountDownLatch running = new CountDownLatch(1);
+        when(tinkarService.runReasoner(any(ReasonerPhaseListener.class), any())).thenAnswer(invocation -> {
+            TrackingCallable<?> tracker = invocation.getArgument(1);
+            running.countDown();
+            while (!tracker.isCancelled()) {
+                Thread.sleep(10);
+            }
+            throw new CancellationException("cancelled");
+        });
+
+        @SuppressWarnings("unchecked")
+        StreamObserver<RunReasonerEvent> watching = Mockito.mock(StreamObserver.class);
+        controller.runReasoner(RunReasonerRequest.getDefaultInstance(), watching);
+        assertThat(running.await(WAIT_MS, TimeUnit.MILLISECONDS)).isTrue();
+
+        @SuppressWarnings("unchecked")
+        StreamObserver<CancelReasonerResponse> cancelling = Mockito.mock(StreamObserver.class);
+        controller.cancelReasoner(CancelReasonerRequest.getDefaultInstance(), cancelling);
+
+        verify(cancelling).onNext(any());
+        verify(cancelling).onCompleted();
+        verify(watching, timeout(WAIT_MS)).onCompleted();
+        ArgumentCaptor<RunReasonerEvent> captor = ArgumentCaptor.forClass(RunReasonerEvent.class);
+        verify(watching, Mockito.times(2)).onNext(captor.capture());
+        RunReasonerResult result = captor.getValue().getResult();
+        assertThat(result.getCancelled()).isTrue();
+        assertThat(result.getSuccess()).isFalse();
+        assertThat(result.getErrorMessage()).isEmpty();
+    }
+
+    @Test
+    void cancelReasoner_whenNothingIsRunning_failsWithFailedPrecondition() {
+        @SuppressWarnings("unchecked")
+        StreamObserver<CancelReasonerResponse> cancelling = Mockito.mock(StreamObserver.class);
+
+        controller.cancelReasoner(CancelReasonerRequest.getDefaultInstance(), cancelling);
+
+        ArgumentCaptor<Throwable> error = ArgumentCaptor.forClass(Throwable.class);
+        verify(cancelling).onError(error.capture());
+        assertThat(Status.fromThrowable(error.getValue()).getCode()).isEqualTo(Status.Code.FAILED_PRECONDITION);
+        verify(cancelling, Mockito.never()).onNext(any());
+    }
+
+    @Test
+    void watchReasoner_beforeAnyRun_failsWithNotFound() {
+        @SuppressWarnings("unchecked")
+        StreamObserver<RunReasonerEvent> watching = Mockito.mock(StreamObserver.class);
+
+        controller.watchReasoner(WatchReasonerRequest.getDefaultInstance(), watching);
+
+        ArgumentCaptor<Throwable> error = ArgumentCaptor.forClass(Throwable.class);
+        verify(watching).onError(error.capture());
+        assertThat(Status.fromThrowable(error.getValue()).getCode()).isEqualTo(Status.Code.NOT_FOUND);
+    }
+
+    @Test
+    void watchReasoner_whileRunning_joinsTheRun() throws Exception {
+        CountDownLatch running = new CountDownLatch(1);
+        CountDownLatch proceed = new CountDownLatch(1);
+        when(tinkarService.runReasoner(any(ReasonerPhaseListener.class), any())).thenAnswer(invocation -> {
+            ReasonerPhaseListener listener = invocation.getArgument(0);
+            listener.onPhaseComplete(1, 4, "Loading data into reasoner");
+            running.countDown();
+            proceed.await(WAIT_MS, TimeUnit.MILLISECONDS);
+            throw new IllegalStateException("stop here");
+        });
+
+        @SuppressWarnings("unchecked")
+        StreamObserver<RunReasonerEvent> starter = Mockito.mock(StreamObserver.class);
+        controller.runReasoner(RunReasonerRequest.getDefaultInstance(), starter);
+        assertThat(running.await(WAIT_MS, TimeUnit.MILLISECONDS)).isTrue();
+
+        @SuppressWarnings("unchecked")
+        StreamObserver<RunReasonerEvent> rejoined = Mockito.mock(StreamObserver.class);
+        controller.watchReasoner(WatchReasonerRequest.getDefaultInstance(), rejoined);
+        proceed.countDown();
+
+        verify(rejoined, timeout(WAIT_MS)).onCompleted();
+        ArgumentCaptor<RunReasonerEvent> captor = ArgumentCaptor.forClass(RunReasonerEvent.class);
+        verify(rejoined, Mockito.times(3)).onNext(captor.capture());
+        List<RunReasonerEvent> events = captor.getAllValues();
+        assertThat(events.get(0).getRun().getStarted()).isFalse();
+        assertThat(events.get(1).getPhase().getStep()).isEqualTo(1);    // replayed
+        assertThat(events.get(2).getResult().getErrorMessage()).isEqualTo("stop here");
     }
 }

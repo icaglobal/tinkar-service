@@ -3,6 +3,8 @@ package dev.ikm.tinkar.service.controller.admin;
 import dev.ikm.tinkar.service.dto.EntityCountSummaryResponse;
 import dev.ikm.tinkar.service.dto.ReasonerPhaseEvent;
 import dev.ikm.tinkar.service.dto.ReasonerResultsResponse;
+import dev.ikm.tinkar.service.dto.ReasonerRunEvent;
+import dev.ikm.tinkar.service.service.ReasonerRunManager;
 import dev.ikm.tinkar.service.service.TinkarService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -11,6 +13,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -23,15 +26,22 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.List;
-import java.util.concurrent.ExecutorService;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 
 /**
  * Tier 3: Admin / Data Management — REST controller.
@@ -40,49 +50,44 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * and running the reasoner classification pipeline.
  * Target audience: platform operators, DevOps, CI/CD pipelines.
  */
-@Slf4j
 @RestController
 @RequestMapping("/api/ike/admin")
 @Tag(name = "IKE Admin (Tier 3)", description = "Data management operations: import changesets, export entities, and reasoner classification.")
 public class AdminRestController {
 
-    /**
-     * How long a streaming run may take before the container gives up, in milliseconds.
-     *
-     * <p>Generous because a classification is genuinely slow — roughly 11s on gudidsubset and
-     * minutes on a full dataset — and the default async timeout (30s) would abort a legitimate
-     * run mid-pipeline.
-     */
-    private static final long REASONER_STREAM_TIMEOUT_MS = 30L * 60L * 1000L;
+    private static final Logger log = LoggerFactory.getLogger(AdminRestController.class);
 
-    /**
-     * Guards against a second classification starting while one is in flight.
-     *
-     * <p>The pipeline is a single stateful run over one {@code ReasonerService} instance, so two
-     * concurrent runs would corrupt each other. Rejected rather than queued: a caller that is
-     * told "busy" can decide what to do, whereas a queued run gives it a stream that reports
-     * nothing for an unbounded time.
-     */
-    private final AtomicBoolean reasonerRunning = new AtomicBoolean(false);
+    /** How often an open stream is probed for a disconnected client. */
+    private static final long HEARTBEAT_INTERVAL_MS = 1000L;
 
-    /**
-     * Runs streaming classifications off the request thread.
-     *
-     * <p>An {@code SseEmitter} has to be returned before any event is written, so the work
-     * cannot happen inline. Single-threaded because {@link #reasonerRunning} already admits one
-     * run at a time; the queue should never hold more than the one task being executed.
-     */
-    private final ExecutorService reasonerExecutor =
-            Executors.newSingleThreadExecutor(runnable -> {
-                Thread thread = new Thread(runnable, "rest-reasoner");
+    /** Sends heartbeats for open streams. */
+    private final ScheduledExecutorService heartbeatScheduler =
+            Executors.newSingleThreadScheduledExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "rest-reasoner-heartbeat");
                 thread.setDaemon(true);
                 return thread;
             });
 
+    /**
+     * How long a stream may stay open, in milliseconds.
+     *
+     * <p>Only the stream: when it expires the caller is detached and the run carries on, and the
+     * caller can reconnect with GET /reasoner/stream. Configured by
+     * {@code reasoner.stream.timeout-ms}; without one, Spring's async default of about 30 seconds
+     * would close every real run's stream.
+     */
+    private final long reasonerStreamTimeoutMs;
+
     private final TinkarService tinkarService;
 
-    public AdminRestController(TinkarService tinkarService) {
+    private final ReasonerRunManager reasonerRuns;
+
+    public AdminRestController(TinkarService tinkarService,
+                               ReasonerRunManager reasonerRuns,
+                               @Value("${reasoner.stream.timeout-ms:14400000}") long reasonerStreamTimeoutMs) {
         this.tinkarService = tinkarService;
+        this.reasonerRuns = reasonerRuns;
+        this.reasonerStreamTimeoutMs = reasonerStreamTimeoutMs;
     }
 
     @Operation(summary = "Import a changeset",
@@ -119,90 +124,153 @@ public class AdminRestController {
     }
 
     @Operation(summary = "Run the reasoner",
-            description = "Runs the full reasoner classification pipeline: " +
-                    "init -> extractData -> loadData -> computeInferences -> writeInferredResults. " +
-                    "This may take several minutes for large datasets.")
+            description = "Runs the full reasoner classification pipeline and waits for it: "
+                    + "init -> extractData -> loadData -> computeInferences -> writeInferredResults. "
+                    + "If a run is already going, waits for that one instead of starting another. "
+                    + "The run belongs to the server: a caller that gives up waiting does not stop it.")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Reasoner completed",
-                    content = @Content(schema = @Schema(implementation = ReasonerResultsResponse.class))),
-            @ApiResponse(responseCode = "500", description = "Reasoner failed")
+            @ApiResponse(responseCode = "200", description = "Reasoner finished; success, cancelled, or failed",
+                    content = @Content(schema = @Schema(implementation = ReasonerResultsResponse.class)))
     })
     @PostMapping("/reasoner")
     public ResponseEntity<ReasonerResultsResponse> runReasoner() {
-        return ResponseEntity.ok(tinkarService.runReasoner());
+        CompletableFuture<ReasonerRunManager.Outcome> finished = new CompletableFuture<>();
+        reasonerRuns.runOrAttach(new ReasonerRunManager.Watcher() {
+            @Override
+            public void onPhase(ReasonerRunManager.Phase phase) {
+            }
+
+            @Override
+            public void onFinished(ReasonerRunManager.Outcome outcome) {
+                finished.complete(outcome);
+            }
+        });
+        try {
+            return ResponseEntity.ok(ReasonerResultsResponse.from(finished.get()));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return ResponseEntity.ok(ReasonerResultsResponse.error("Interrupted while waiting for the reasoner"));
+        } catch (ExecutionException e) {
+            return ResponseEntity.ok(ReasonerResultsResponse.error(e.getCause().toString()));
+        }
     }
 
     @Operation(summary = "Run the reasoner, streaming progress",
-            description = "Runs the same pipeline as POST /reasoner, but returns a text/event-stream: "
-                    + "one 'phase' event as each of the four phases completes, then a single 'result' "
-                    + "event carrying the counts. Use this when a caller needs to show progress; use "
-                    + "POST /reasoner when it only needs the outcome.")
+            description = "Starts a classification, or attaches to the one already running, and returns a "
+                    + "text/event-stream: a 'run' event saying which, one 'phase' event per completed phase "
+                    + "(replayed from the start when attaching), then a single 'result' event. "
+                    + "Closing the stream only stops watching — the run carries on. Reconnect with "
+                    + "GET /reasoner/stream; stop the run with POST /reasoner/cancel.")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Event stream opened"),
-            @ApiResponse(responseCode = "409", description = "A classification is already running")
+            @ApiResponse(responseCode = "200", description = "Event stream opened")
     })
     @PostMapping(value = "/reasoner/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public ResponseEntity<SseEmitter> runReasonerStreaming() {
-        if (!reasonerRunning.compareAndSet(false, true)) {
-            log.info("Rejecting reasoner stream request — a classification is already running");
-            return ResponseEntity.status(409).build();
+        return stream(watcher -> Optional.of(reasonerRuns.runOrAttach(watcher).run()));
+    }
+
+    @Operation(summary = "Watch the reasoner",
+            description = "Attaches to the running classification, or replays the most recent one if it has "
+                    + "finished, as the same event stream POST /reasoner/stream returns. Never starts a run. "
+                    + "Use it to get back to a run after leaving the page or closing Komet.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Event stream opened"),
+            @ApiResponse(responseCode = "204", description = "No run since the server started")
+    })
+    @GetMapping(value = "/reasoner/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public ResponseEntity<SseEmitter> watchReasoner() {
+        return stream(reasonerRuns::watch);
+    }
+
+    @Operation(summary = "Cancel the running reasoner",
+            description = "Asks the running classification to stop, and returns at once. Anyone watching "
+                    + "gets a 'result' event with cancelled=true once it has. A run already writing its "
+                    + "inferred results finishes the write rather than leave it half done, and reports "
+                    + "success.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "202", description = "Cancel requested"),
+            @ApiResponse(responseCode = "409", description = "No classification is running")
+    })
+    @PostMapping("/reasoner/cancel")
+    public ResponseEntity<Map<String, String>> cancelReasoner() {
+        if (!reasonerRuns.cancel()) {
+            return ResponseEntity.status(409).body(Map.of("error", "No reasoner run is in progress"));
         }
-
-        SseEmitter emitter = new SseEmitter(REASONER_STREAM_TIMEOUT_MS);
-        // Release the guard however the stream ends, including the client disconnecting
-        // mid-run; otherwise one abandoned request would block every later one.
-        emitter.onCompletion(() -> reasonerRunning.set(false));
-        emitter.onTimeout(() -> {
-            log.warn("Reasoner stream timed out after {}ms", REASONER_STREAM_TIMEOUT_MS);
-            reasonerRunning.set(false);
-        });
-        emitter.onError(throwable -> reasonerRunning.set(false));
-
-        reasonerExecutor.execute(() -> runAndStream(emitter));
-        return ResponseEntity.ok(emitter);
+        return ResponseEntity.accepted().body(Map.of("status", "Cancel requested"));
     }
 
     /**
-     * Runs the pipeline, writing each phase and then the outcome to {@code emitter}.
+     * Opens an event stream on a reasoner run.
      *
-     * <p>A failed classification is sent as a {@code result} event with {@code success} false
-     * rather than as a stream error, matching what the gRPC call does: the caller reads the
-     * reason from the same event it would read a successful outcome from, and handles one shape
-     * instead of two.
+     * <p>Every way the stream can end — the client closing it, a failed write, the timeout —
+     * detaches the stream and nothing more. None of them stops the run.
+     *
+     * @param attach attaches the given watcher to a run, or returns empty if there is none
      */
-    private void runAndStream(SseEmitter emitter) {
-        long startedAt = System.currentTimeMillis();
-        log.info("IkeAdmin runReasoner (streaming) started");
-        try {
-            var results = tinkarService.runReasoner((step, totalSteps, message) -> {
-                try {
-                    emitter.send(SseEmitter.event()
-                            .name("phase")
-                            .data(new ReasonerPhaseEvent(step, totalSteps, message)));
-                } catch (IOException e) {
-                    // The client has gone. Surface it so the pipeline unwinds rather than
-                    // running a long classification nobody is listening to.
-                    throw new IllegalStateException("Reasoner stream closed by the client", e);
-                }
-            });
+    private ResponseEntity<SseEmitter> stream(
+            Function<ReasonerRunManager.Watcher, Optional<ReasonerRunManager.Run>> attach) {
+        SseEmitter emitter = new SseEmitter(reasonerStreamTimeoutMs);
+        AtomicReference<ScheduledFuture<?>> heartbeat = new AtomicReference<>();
 
-            emitter.send(SseEmitter.event()
-                    .name("result")
-                    .data(ReasonerResultsResponse.from(
-                            results, System.currentTimeMillis() - startedAt)));
-            emitter.complete();
-        } catch (Exception e) {
-            log.error("Streaming reasoner failed: {}", e.getMessage(), e);
-            try {
-                emitter.send(SseEmitter.event()
-                        .name("result")
-                        .data(ReasonerResultsResponse.error(
-                                e.getMessage() == null ? e.toString() : e.getMessage())));
-                emitter.complete();
-            } catch (IOException sendFailure) {
-                // Nothing left to report through — the stream is already gone.
-                emitter.completeWithError(sendFailure);
+        ReasonerRunManager.Watcher watcher = new ReasonerRunManager.Watcher() {
+            @Override
+            public void onAttached(long startedAt, boolean started) throws IOException {
+                emitter.send(SseEmitter.event().name("run").data(new ReasonerRunEvent(startedAt, started)));
             }
+
+            @Override
+            public void onPhase(ReasonerRunManager.Phase phase) throws IOException {
+                emitter.send(SseEmitter.event()
+                        .name("phase")
+                        .data(new ReasonerPhaseEvent(phase.step(), phase.totalSteps(), phase.message())));
+            }
+
+            @Override
+            public void onFinished(ReasonerRunManager.Outcome outcome) throws IOException {
+                stopHeartbeat(heartbeat);
+                emitter.send(SseEmitter.event().name("result").data(ReasonerResultsResponse.from(outcome)));
+                emitter.complete();
+            }
+        };
+
+        Optional<ReasonerRunManager.Run> run = attach.apply(watcher);
+        if (run.isEmpty()) {
+            return ResponseEntity.noContent().build();
+        }
+
+        Runnable detach = () -> {
+            stopHeartbeat(heartbeat);
+            reasonerRuns.detach(run.get(), watcher);
+        };
+        emitter.onTimeout(() -> {
+            log.info("Reasoner stream timed out after {}ms — detaching; the run carries on",
+                    reasonerStreamTimeoutMs);
+            detach.run();
+        });
+        emitter.onError(throwable -> detach.run());
+        emitter.onCompletion(detach);
+
+        if (run.get().isRunning()) {
+            // A closed socket is invisible to the server until it next writes, and phase events
+            // are minutes apart, so without this a disconnected caller would stay attached until
+            // the next phase. A comment every second turns a disconnect into a failed write.
+            heartbeat.set(heartbeatScheduler.scheduleAtFixedRate(() -> {
+                try {
+                    emitter.send(SseEmitter.event().comment("heartbeat"));
+                } catch (IOException | IllegalStateException e) {
+                    // Spring reports a broken pipe as IllegalStateException ("Failed to send").
+                    log.info("Reasoner stream heartbeat failed — client gone, detaching; the run carries on");
+                    detach.run();
+                }
+            }, HEARTBEAT_INTERVAL_MS, HEARTBEAT_INTERVAL_MS, TimeUnit.MILLISECONDS));
+        }
+        return ResponseEntity.ok(emitter);
+    }
+
+    private static void stopHeartbeat(AtomicReference<ScheduledFuture<?>> heartbeat) {
+        ScheduledFuture<?> running = heartbeat.getAndSet(null);
+        if (running != null) {
+            running.cancel(false);
         }
     }
 }

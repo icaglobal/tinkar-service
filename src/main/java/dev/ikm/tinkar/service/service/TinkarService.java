@@ -15,6 +15,7 @@ import dev.ikm.tinkar.service.proto.CommitEntitiesResponse;
 import dev.ikm.tinkar.service.proto.TinkarConceptSemanticsResponse;
 import dev.ikm.tinkar.service.proto.TinkarSearchQueryResponse;
 import dev.ikm.tinkar.service.proto.TinkarSemanticInfoResponse;
+import dev.ikm.tinkar.common.service.TrackingCallable;
 import dev.ikm.tinkar.coordinate.view.calculator.ViewCalculatorWithCache;
 
 import java.io.File;
@@ -278,6 +279,41 @@ public interface TinkarService {
      */
     dev.ikm.tinkar.reasoner.service.ClassifierResults runReasoner(ReasonerPhaseListener listener)
             throws Exception;
+
+    /**
+     * Runs the reasoner, reporting phases and honouring cancellation through {@code tracker}.
+     *
+     * <p>Cancelling stops the run at the next point it is safe to: the classification is
+     * interrupted mid-flight, and the pipeline aborts before writing anything. Once
+     * <em>writing</em> inferred results has begun it runs to completion regardless — a partially
+     * written classification in a shared store is worse than a slow cancel, because nothing
+     * downstream can tell it is partial.
+     *
+     * @param listener notified per phase; use {@link ReasonerPhaseListener#NONE} for none
+     * @param tracker  cancel it to stop the run; from {@link #newCancellationTracker()}
+     * @return the classification results
+     * @throws java.util.concurrent.CancellationException if the run was cancelled before writing
+     * @throws Exception if any phase fails
+     */
+    dev.ikm.tinkar.reasoner.service.ClassifierResults runReasoner(
+            ReasonerPhaseListener listener, TrackingCallable<?> tracker) throws Exception;
+
+    /**
+     * A tracker to hand {@link #runReasoner(ReasonerPhaseListener, TrackingCallable)} and keep,
+     * so the caller can cancel the run by calling {@code cancel()} on it.
+     *
+     * <p>The reasoner phases already take a {@code TrackingCallable} for progress, so the handle
+     * that cancels a run is the same object that carries it — there is no second mechanism to
+     * keep in step.
+     */
+    static TrackingCallable<?> newCancellationTracker() {
+        return new TrackingCallable<Object>() {
+            @Override
+            protected Object compute() {
+                return null;
+            }
+        };
+    }
 
     /**
      * Commits client-authored entities to this store as a single transaction.

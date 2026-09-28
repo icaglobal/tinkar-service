@@ -17,15 +17,26 @@ import dev.ikm.tinkar.coordinate.view.ViewCoordinateRecord;
 import dev.ikm.tinkar.common.service.PrimitiveData;
 import dev.ikm.tinkar.service.proto.ReasonerResultsProto;
 import dev.ikm.tinkar.service.proto.RunReasonerRequest;
+import dev.ikm.tinkar.service.proto.ReasonerRunInfo;
+import dev.ikm.tinkar.service.proto.WatchReasonerRequest;
+import dev.ikm.tinkar.service.proto.CancelReasonerRequest;
+import dev.ikm.tinkar.service.proto.CancelReasonerResponse;
+import dev.ikm.tinkar.service.service.ReasonerRunManager;
 import dev.ikm.tinkar.service.service.TinkarService;
 import com.google.protobuf.ByteString;
+import io.grpc.Status;
+import io.grpc.stub.ServerCallStreamObserver;
 import io.grpc.stub.StreamObserver;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import net.devh.boot.grpc.server.service.GrpcService;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.nio.file.Files;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.List;
 
 /**
@@ -36,13 +47,17 @@ import java.util.List;
  * Target audience: platform operators, DevOps, CI/CD pipelines.
  */
 @GrpcService
-@Slf4j
 public class AdminGrpcController extends IkeAdminGrpc.IkeAdminImplBase {
+
+    private static final Logger log = LoggerFactory.getLogger(AdminGrpcController.class);
 
     private final TinkarService tinkarService;
 
-    public AdminGrpcController(TinkarService tinkarService) {
+    private final ReasonerRunManager reasonerRuns;
+
+    public AdminGrpcController(TinkarService tinkarService, ReasonerRunManager reasonerRuns) {
         this.tinkarService = tinkarService;
+        this.reasonerRuns = reasonerRuns;
     }
 
     @Override
@@ -100,36 +115,117 @@ public class AdminGrpcController extends IkeAdminGrpc.IkeAdminImplBase {
     public void runReasoner(RunReasonerRequest request,
             StreamObserver<RunReasonerEvent> responseObserver) {
         log.info("IkeAdmin runReasoner request");
-        long startedAt = System.currentTimeMillis();
+        follow(responseObserver, watcher -> Optional.of(reasonerRuns.runOrAttach(watcher).run()));
+    }
 
-        try {
-            ClassifierResults results = tinkarService.runReasoner(
-                    (step, totalSteps, message) -> responseObserver.onNext(
-                            RunReasonerEvent.newBuilder()
-                                    .setPhase(ReasonerPhase.newBuilder()
-                                            .setStep(step)
-                                            .setTotalSteps(totalSteps)
-                                            .setMessage(message)
-                                            .build())
-                                    .build()));
-
-            responseObserver.onNext(RunReasonerEvent.newBuilder()
-                    .setResult(toResult(results, System.currentTimeMillis() - startedAt))
-                    .build());
-        } catch (Exception e) {
-            log.error("Reasoner failed: {}", e.getMessage(), e);
-            // Reported as a result with success=false rather than onError, so the caller reads
-            // the reason from the same message it would read a successful outcome from.
-            responseObserver.onNext(RunReasonerEvent.newBuilder()
-                    .setResult(RunReasonerResult.newBuilder()
-                            .setSuccess(false)
-                            .setErrorMessage(e.getMessage() == null ? e.toString() : e.getMessage())
-                            .setDurationMs(System.currentTimeMillis() - startedAt)
-                            .setCreatedAt(System.currentTimeMillis())
-                            .build())
-                    .build());
+    @Override
+    public void watchReasoner(WatchReasonerRequest request,
+            StreamObserver<RunReasonerEvent> responseObserver) {
+        log.info("IkeAdmin watchReasoner request");
+        if (!follow(responseObserver, reasonerRuns::watch)) {
+            responseObserver.onError(Status.NOT_FOUND
+                    .withDescription("No reasoner run since the server started")
+                    .asRuntimeException());
         }
+    }
+
+    @Override
+    public void cancelReasoner(CancelReasonerRequest request,
+            StreamObserver<CancelReasonerResponse> responseObserver) {
+        log.info("IkeAdmin cancelReasoner request");
+        if (!reasonerRuns.cancel()) {
+            responseObserver.onError(Status.FAILED_PRECONDITION
+                    .withDescription("No reasoner run is in progress")
+                    .asRuntimeException());
+            return;
+        }
+        responseObserver.onNext(CancelReasonerResponse.getDefaultInstance());
         responseObserver.onCompleted();
+    }
+
+    /**
+     * Streams a reasoner run to {@code responseObserver}: the run, its phases, then the result.
+     *
+     * <p>Returns as soon as the watcher is attached; events are sent from the run's own thread.
+     * The call thread is not held for the length of a classification, which also means gRPC can
+     * deliver the call's cancel as soon as the client sends it.
+     *
+     * <p>A call that ends early — the client cancelling it, a dropped connection, Komet closing —
+     * is detached and nothing more. It does not stop the run; {@code CancelReasoner} does.
+     *
+     * @param attach attaches the given watcher to a run, or returns empty if there is none
+     * @return false if there was no run to follow, in which case nothing was sent
+     */
+    private boolean follow(StreamObserver<RunReasonerEvent> responseObserver,
+            Function<ReasonerRunManager.Watcher, Optional<ReasonerRunManager.Run>> attach) {
+        AtomicReference<ReasonerRunManager.Run> attached = new AtomicReference<>();
+        ReasonerRunManager.Watcher watcher = new ReasonerRunManager.Watcher() {
+            @Override
+            public void onAttached(long startedAt, boolean started) {
+                responseObserver.onNext(RunReasonerEvent.newBuilder()
+                        .setRun(ReasonerRunInfo.newBuilder()
+                                .setStartedAt(startedAt)
+                                .setStarted(started)
+                                .build())
+                        .build());
+            }
+
+            @Override
+            public void onPhase(ReasonerRunManager.Phase phase) {
+                responseObserver.onNext(RunReasonerEvent.newBuilder()
+                        .setPhase(ReasonerPhase.newBuilder()
+                                .setStep(phase.step())
+                                .setTotalSteps(phase.totalSteps())
+                                .setMessage(phase.message())
+                                .build())
+                        .build());
+            }
+
+            @Override
+            public void onFinished(ReasonerRunManager.Outcome outcome) {
+                responseObserver.onNext(RunReasonerEvent.newBuilder()
+                        .setResult(toResult(outcome))
+                        .build());
+                responseObserver.onCompleted();
+            }
+        };
+
+        if (responseObserver instanceof ServerCallStreamObserver<RunReasonerEvent> call) {
+            call.setOnCancelHandler(() -> {
+                ReasonerRunManager.Run run = attached.get();
+                if (run != null && run.isRunning()) {
+                    log.info("Reasoner call ended by the client — detaching; the run carries on");
+                    reasonerRuns.detach(run, watcher);
+                }
+            });
+        }
+
+        Optional<ReasonerRunManager.Run> run = attach.apply(watcher);
+        run.ifPresent(attached::set);
+        return run.isPresent();
+    }
+
+    /** Maps how a run ended onto the wire type, whichever way it ended. */
+    private RunReasonerResult toResult(ReasonerRunManager.Outcome outcome) {
+        return switch (outcome.state()) {
+            case SUCCEEDED -> toResult(outcome.results(), outcome.durationMs());
+            case CANCELLED -> RunReasonerResult.newBuilder()
+                    .setSuccess(false)
+                    .setCancelled(true)
+                    .setErrorMessage("")
+                    .setDurationMs(outcome.durationMs())
+                    .setCreatedAt(System.currentTimeMillis())
+                    .build();
+            case FAILED -> RunReasonerResult.newBuilder()
+                    // Reported as a result with success=false rather than onError, so the caller
+                    // reads the reason from the same message it would read a success from.
+                    .setSuccess(false)
+                    .setErrorMessage(outcome.errorMessage())
+                    .setDurationMs(outcome.durationMs())
+                    .setCreatedAt(System.currentTimeMillis())
+                    .build();
+            case RUNNING -> throw new IllegalArgumentException("A running run has no outcome yet");
+        };
     }
 
     /** Maps the reasoner's results onto the wire type. */

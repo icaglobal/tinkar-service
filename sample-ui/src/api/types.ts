@@ -59,6 +59,15 @@ export type ReasonerResultsResponse = {
   success: boolean;
   errorMessage: string | null;
   createdAt: number;
+  /** True when the run was cancelled; absent otherwise. */
+  cancelled?: boolean;
+};
+
+/** First event on a reasoner stream: which run it is watching. */
+export type ReasonerRunEvent = {
+  startedAt: number;
+  /** True if this request started the run; false if it joined one running or finished. */
+  started: boolean;
 };
 
 export type DescriptionType = 'FULLY_QUALIFIED_NAME' | 'REGULAR_NAME' | 'DEFINITION';
