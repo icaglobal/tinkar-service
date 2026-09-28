@@ -18,7 +18,8 @@ package dev.ikm.tinkar.service.service;
 import dev.ikm.tinkar.common.service.TrackingCallable;
 import dev.ikm.tinkar.reasoner.service.ClassifierResults;
 import jakarta.annotation.PreDestroy;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -45,9 +46,10 @@ import java.util.concurrent.Executors;
  * <p>The most recent run is kept after it ends, so a caller that reconnects later still sees how
  * it finished. It is held in memory only, until the next run starts or the server restarts.
  */
-@Slf4j
 @Component
 public class ReasonerRunManager {
+
+    private static final Logger log = LoggerFactory.getLogger(ReasonerRunManager.class);
 
     /** Where a run is. Every state but {@link #RUNNING} is final. */
     public enum State { RUNNING, SUCCEEDED, FAILED, CANCELLED }

@@ -44,7 +44,8 @@ import dev.ikm.tinkar.entity.graph.EntityVertex;
 import dev.ikm.tinkar.terms.EntityFacade;
 import dev.ikm.tinkar.terms.EntityProxy;
 import dev.ikm.tinkar.terms.TinkarTerm;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.eclipse.collections.api.factory.Lists;
 import org.eclipse.collections.api.set.primitive.MutableIntSet;
 import org.eclipse.collections.impl.factory.primitive.IntSets;
@@ -59,8 +60,9 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 
 @Service
-@Slf4j
 public class TinkarServiceImpl implements TinkarService {
+
+    private static final Logger log = LoggerFactory.getLogger(TinkarServiceImpl.class);
 
     private final TinkarPrimitive primitive;
 
