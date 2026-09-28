@@ -48,7 +48,6 @@ import java.util.List;
  */
 @GrpcService
 public class AdminGrpcController extends IkeAdminGrpc.IkeAdminImplBase {
-
     private static final Logger log = LoggerFactory.getLogger(AdminGrpcController.class);
 
     private final TinkarService tinkarService;

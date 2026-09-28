@@ -32,7 +32,6 @@ import java.util.List;
  */
 @GrpcService
 public class KnowledgeGraphGrpcController extends IkeKnowledgeGraphGrpc.IkeKnowledgeGraphImplBase {
-
     private static final Logger log = LoggerFactory.getLogger(KnowledgeGraphGrpcController.class);
 
     private final TinkarService tinkarService;

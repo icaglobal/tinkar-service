@@ -1,6 +1,6 @@
 schema: 1
-standards-version: '253'
-applied: '2026-09-17T19:04:39.948481Z'
+standards-version: '260'
+applied: '2026-09-27T22:37:18.421228Z'
 files:
   .gitignore:
     tier: tracked-block
@@ -8,7 +8,7 @@ files:
     applied-sha: sha256:cb6eae8aac140a128fcc5bdc2949919776c7c84249b91eb085a3b7e62b9efaac
   .mvn/wrapper/maven-wrapper.properties:
     tier: tool-owned
-    template-sha: sha256:d4b609014fb33a0e487722bad2ec6d7aad9850250880b2e253d7a71657563256
+    template-sha: sha256:eab6ba2299ec9ba62a381065b2db8d4275510650414b8d756dd8ba76f687c1f1
   CLAUDE.md:
     tier: tracked-block
     template-sha: sha256:af5ca4cbb4bbb0abcf0386f029a0b21e5e342dc48d50101aa5c620ee28834d50

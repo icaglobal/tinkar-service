@@ -34,7 +34,6 @@ import org.slf4j.LoggerFactory;
 @Service
 @ConditionalOnProperty(name = "tinkar.data.enabled", havingValue = "true", matchIfMissing = true)
 public final class TinkarPrimitiveImpl implements TinkarPrimitive {
-
     private static final Logger log = LoggerFactory.getLogger(TinkarPrimitiveImpl.class);
 
     /**

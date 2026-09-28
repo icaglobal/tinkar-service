@@ -50,11 +50,10 @@ import java.util.UUID;
  * <p>Coordinates are stored in RocksDB and survive server restarts.
  * Listing uses {@code PrimitiveData.get().semanticNidsForComponent(registryNid)},
  * keyed by the registry concept's full 64-bit {@code longKeyForNid} — immune to
- * the NidCodec6 element-sequence collision that breaks {@code semanticNidsOfPattern}.
+ * the nid element-sequence collision that breaks {@code semanticNidsOfPattern}.
  */
 @Component
 public class CoordinateStoreService {
-
     private static final Logger log = LoggerFactory.getLogger(CoordinateStoreService.class);
 
     /**
@@ -64,7 +63,7 @@ public class CoordinateStoreService {
      * {@code referencedComponentNid}.  Listing uses
      * {@code PrimitiveData.semanticNidsForComponent(registryNid)}, which is indexed
      * by the full 64-bit {@code longKeyForNid(componentNid)} and therefore immune to
-     * the NidCodec6 element-sequence collision that breaks {@code semanticNidsOfPattern}.
+     * the nid element-sequence collision that breaks {@code semanticNidsOfPattern}.
      */
     static final UUID STAMP_COORDINATE_REGISTRY_UUID =
             UUID.fromString("1409ec9e-3240-41ec-86e4-55a2d3f69968");
@@ -346,7 +345,7 @@ public class CoordinateStoreService {
      * Returns the NID for {@code registryUuid}, creating a {@code ConceptRecord} stub if absent.
      * The registry concept is used solely as the {@code referencedComponentNid} anchor for
      * coordinate semantics; lookup is via {@code semanticNidsForComponent} (exact 64-bit key),
-     * not {@code semanticNidsOfPattern} (which suffers from NidCodec6 element-sequence collisions).
+     * not {@code semanticNidsOfPattern} (which suffers from nid element-sequence collisions).
      */
     private int resolveOrCreateRegistryConcept(UUID registryUuid, String label) {
         PublicId pid = PublicIds.of(registryUuid);

@@ -32,7 +32,6 @@ import java.util.UUID;
  * Unspecified fields fall back to server defaults (same as Tier 1).
  */
 public class CoordinateFactory {
-
     private static final Logger log = LoggerFactory.getLogger(CoordinateFactory.class);
 
     /**

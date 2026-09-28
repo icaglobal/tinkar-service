@@ -18,7 +18,6 @@ import net.devh.boot.grpc.server.service.GrpcService;
  */
 @GrpcService
 public class GraphRAGGrpcController extends IkeGraphRAGGrpc.IkeGraphRAGImplBase {
-
     private static final Logger log = LoggerFactory.getLogger(GraphRAGGrpcController.class);
 
     private final TinkarService tinkarService;

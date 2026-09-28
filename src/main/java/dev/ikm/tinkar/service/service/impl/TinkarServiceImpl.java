@@ -61,7 +61,6 @@ import java.util.concurrent.CompletableFuture;
 
 @Service
 public class TinkarServiceImpl implements TinkarService {
-
     private static final Logger log = LoggerFactory.getLogger(TinkarServiceImpl.class);
 
     private final TinkarPrimitive primitive;

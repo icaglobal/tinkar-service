@@ -7,7 +7,7 @@
     <parent>
         <groupId>network.ike.platform</groupId>
         <artifactId>ike-parent</artifactId>
-        <version>178</version>
+        <version>186</version>
         <relativePath/>
     </parent>
 
@@ -26,8 +26,8 @@
     </scm>
 
     <properties>
-        <java.version>25</java.version>
-        <maven.compiler.release>25</maven.compiler.release>
+        <java.version>27</java.version>
+        <maven.compiler.release>${java.version}</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <!-- External library versions -->
@@ -39,7 +39,7 @@
         <springdoc-openapi.version>2.6.0</springdoc-openapi.version>
         <!-- Must match the lucene-core version resolved transitively via tinkar-core's
              search-provider module -->
-        <lucene.version>10.4.0</lucene.version>
+        <lucene.version>10.5.1</lucene.version>
 
         <!-- Tinkar Core dependency version -->
         <tinkar-core.version>1.127.7-SNAPSHOT</tinkar-core.version>
