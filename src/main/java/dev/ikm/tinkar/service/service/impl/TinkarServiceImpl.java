@@ -263,8 +263,7 @@ public class TinkarServiceImpl implements TinkarService {
                             r.highlightedString(),
                             getPlainText(r),
                             r.score(),
-                            r.fieldIndex(),
-                            r.latestVersion().isPresent() ? r.latestVersion().get().nid() : null))
+                            r.fieldIndex()))
                     .toList();
 
             String preferredName = getConceptPreferredName(topNid);
@@ -275,8 +274,7 @@ public class TinkarServiceImpl implements TinkarService {
                     highlightName(query, preferredName),
                     active,
                     topScore,
-                    matchingSemantics,
-                    topNid));
+                    matchingSemantics));
 
             totalSemanticCount += matchingSemantics.size();
         }
@@ -360,8 +358,9 @@ public class TinkarServiceImpl implements TinkarService {
      * The public ID of the semantic a search result matched, as UUID strings.
      *
      * <p>Sent so a remote client can identify the semantic behind the matched text.
-     * The nid already on the payload is local to this data store and means nothing
-     * to a caller holding a different one.
+     * It is the only identifier of the semantic in a result: a nid is local to this
+     * data store and means nothing to a caller holding a different one, so none is sent
+     * ({@code IKE-Network/ike-issues#1182}).
      *
      * @return the semantic's UUIDs, or null when the latest version is absent
      */

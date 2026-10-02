@@ -1,5 +1,7 @@
 package dev.ikm.tinkar.service.service.impl;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.ikm.tinkar.common.id.IntIdSet;
 import dev.ikm.tinkar.common.id.IntIds;
 import dev.ikm.tinkar.common.id.PublicIds;
@@ -31,6 +33,7 @@ import dev.ikm.tinkar.service.proto.TinkarConceptSemanticInfo;
 import dev.ikm.tinkar.service.proto.TinkarConceptSemanticsResponse;
 import dev.ikm.tinkar.service.proto.TinkarSemanticField;
 import dev.ikm.tinkar.service.proto.TinkarSemanticInfoResponse;
+import dev.ikm.tinkar.service.util.ProtoConversionUtils;
 import dev.ikm.tinkar.terms.EntityFacade;
 import dev.ikm.tinkar.terms.EntityProxy;
 import dev.ikm.tinkar.terms.State;
@@ -125,6 +128,7 @@ class ResponseTextTest {
     private File dataRoot;
     private int undescribedNid;
     private int holderNid;
+    private int commentNid;
 
     @BeforeAll
     void startStoreAndWriteTheComponentsUnderTest() throws IOException {
@@ -316,10 +320,26 @@ class ResponseTextTest {
             assertThat(group.matchingSemantics()).hasSize(1);
             assertThat(group.matchingSemantics().getFirst().plainText()).contains(SEARCH_WORD);
             assertThat(group.matchingSemantics().getFirst().publicId()).containsExactly(COMMENT.toString());
-            assertNoNid("the names of a grouped result",
-                    group.fullyQualifiedName() + "\n" + group.matchingSemantics().getFirst().plainText()
-                            + "\n" + group.matchingSemantics().getFirst().highlightedText(),
-                    undescribedNid);
+            // The whole of the result, as the REST controller returns it and as the gRPC
+            // controller sends it: neither has a field for a nid (IKE-Network/ike-issues#1182).
+            assertNoNid("a grouped result", group.toString(), undescribedNid, commentNid);
+            assertNoNid("a grouped result as a gRPC message",
+                    ProtoConversionUtils.toConceptSearchWithSortProto(response).toString(), undescribedNid, commentNid);
+        }
+    }
+
+    @Test
+    void theJsonOfASearchResponseHasNoKeyForANid() throws IOException {
+        ObjectMapper json = new ObjectMapper();
+        for (SearchSortOption sort : SearchSortOption.values()) {
+            String text = json.writeValueAsString(service.conceptSearchWithSort(SEARCH_WORD, 10, sort));
+
+            List<String> keys = new ArrayList<>();
+            collectKeys(json.readTree(text), keys);
+            assertThat(keys).as("the keys of a " + sort + " response").contains("publicId", "fullyQualifiedName");
+            assertThat(keys).as("keys named for a nid in " + text)
+                    .noneMatch(key -> key.toLowerCase().contains("nid"));
+            assertNoNid("the JSON of a " + sort + " response", text, undescribedNid, commentNid);
         }
     }
 
@@ -334,8 +354,7 @@ class ResponseTextTest {
             assertThat(result.publicId()).containsExactly(UNDESCRIBED.toString());
             assertThat(result.fullyQualifiedName()).isEqualTo(UNDESCRIBED.toString());
             assertThat(result.regularName()).isNull();
-            // A flat result holds no nid field, so the whole of it is examined.
-            assertNoNid("a flat result", result.toString(), undescribedNid);
+            assertNoNid("a flat result", result.toString(), undescribedNid, commentNid);
         }
     }
 
@@ -451,7 +470,7 @@ class ResponseTextTest {
                 undescribedNid, version, Lists.immutable.of(IntIds.set.empty(), IntIds.set.empty())));
         int commentedNid = put(transaction, SemanticRecord.build(COMMENTED, TinkarTerm.STATED_NAVIGATION_PATTERN.nid(),
                 undescribedNid, version, Lists.immutable.of(IntIds.set.of(holderNid), IntIds.set.empty())));
-        put(transaction, SemanticRecord.build(COMMENT, TinkarTerm.COMMENT_PATTERN.nid(),
+        commentNid = put(transaction, SemanticRecord.build(COMMENT, TinkarTerm.COMMENT_PATTERN.nid(),
                 commentedNid, version, fields(SEARCH_WORD + " is a word no description holds")));
 
         transaction.commit();
@@ -524,6 +543,16 @@ class ResponseTextTest {
 
     private static String uuidOf(EntityFacade component) {
         return component.publicId().asUuidArray()[0].toString();
+    }
+
+    /** Adds every key of a JSON value, at any depth. */
+    private static void collectKeys(JsonNode node, List<String> keys) {
+        if (node.isObject()) {
+            node.fieldNames().forEachRemaining(keys::add);
+        }
+        for (JsonNode child : node) {
+            collectKeys(child, keys);
+        }
     }
 
     /** The one semantic of a pattern among a concept's semantics. */

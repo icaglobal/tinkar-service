@@ -237,7 +237,7 @@ class ProtoConversionUtilsTest {
 
     @Test
     void toConceptSearchWithSortProto_groupedResults_mapsGroupAndSemantics() {
-        var matchingSemantic = new MatchingSemantic(List.of("semantic-uuid"), "<b>diab</b>", "diab", 0.8f, 2, 999);
+        var matchingSemantic = new MatchingSemantic(List.of("semantic-uuid"), "<b>diab</b>", "diab", 0.8f, 2);
         var group = new GroupedSearchResult(
                 List.of("group-uuid"),
                 "Diabetes mellitus (disorder)",
@@ -245,8 +245,7 @@ class ProtoConversionUtilsTest {
                 "<B>Diab</B>etes mellitus",
                 true,
                 0.9f,
-                List.of(matchingSemantic),
-                42);
+                List.of(matchingSemantic));
 
         ConceptSearchResponse dto = ConceptSearchResponse.successGrouped(
                 "diab", SearchSortOption.TOP_COMPONENT, List.of(group), 1L);
@@ -261,7 +260,6 @@ class ProtoConversionUtilsTest {
         assertThat(g.getHighlightedName()).isEqualTo("<B>Diab</B>etes mellitus");
         assertThat(g.getActive()).isTrue();
         assertThat(g.getTopScore()).isEqualTo(0.9f);
-        assertThat(g.getConceptNid()).isEqualTo(42);
 
         assertThat(g.getMatchingSemanticsList()).hasSize(1);
         var m = g.getMatchingSemantics(0);
@@ -270,7 +268,6 @@ class ProtoConversionUtilsTest {
         assertThat(m.getPublicIdList()).containsExactly("semantic-uuid");
         assertThat(m.getScore()).isEqualTo(0.8f);
         assertThat(m.getFieldIndex()).isEqualTo(2);
-        assertThat(m.getSemanticNid()).isEqualTo(999);
     }
 
     @Test

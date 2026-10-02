@@ -117,7 +117,6 @@ public final class ProtoConversionUtils {
                         .setTopScore(group.topScore() != null ? group.topScore() : 0f)
                         .setActive(group.active() != null && group.active());
                 if (group.publicId() != null) groupBuilder.addAllPublicId(group.publicId());
-                if (group.conceptNid() != null) groupBuilder.setConceptNid(group.conceptNid());
                 if (group.preferredName() != null) groupBuilder.setPreferredName(group.preferredName());
                 if (group.highlightedName() != null) groupBuilder.setHighlightedName(group.highlightedName());
 
@@ -128,7 +127,6 @@ public final class ProtoConversionUtils {
                         if (semantic.highlightedText() != null) semanticBuilder.setHighlightedText(semantic.highlightedText());
                         if (semantic.plainText() != null) semanticBuilder.setPlainText(semantic.plainText());
                         if (semantic.fieldIndex() != null) semanticBuilder.setFieldIndex(semantic.fieldIndex());
-                        if (semantic.semanticNid() != null) semanticBuilder.setSemanticNid(semantic.semanticNid());
                         if (semantic.publicId() != null) semanticBuilder.addAllPublicId(semantic.publicId());
                         groupBuilder.addMatchingSemantics(semanticBuilder.build());
                     }
