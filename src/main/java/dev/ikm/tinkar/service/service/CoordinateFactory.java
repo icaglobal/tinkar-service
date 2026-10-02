@@ -9,7 +9,6 @@ import dev.ikm.tinkar.service.dto.StampCoordinateDto;
 import dev.ikm.tinkar.common.id.IntIdList;
 import dev.ikm.tinkar.common.id.IntIdSet;
 import dev.ikm.tinkar.common.id.IntIds;
-import dev.ikm.tinkar.common.id.PublicId;
 import dev.ikm.tinkar.common.id.PublicIds;
 import dev.ikm.tinkar.coordinate.Calculators;
 import dev.ikm.tinkar.coordinate.Coordinates;
@@ -20,12 +19,11 @@ import dev.ikm.tinkar.coordinate.stamp.StampPositionRecord;
 import dev.ikm.tinkar.coordinate.stamp.StateSet;
 import dev.ikm.tinkar.coordinate.view.ViewCoordinateRecord;
 import dev.ikm.tinkar.coordinate.view.calculator.ViewCalculatorWithCache;
-import dev.ikm.tinkar.entity.EntityService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
-import java.util.UUID;
+import java.util.OptionalInt;
 
 /**
  * Builds a {@link ViewCalculatorWithCache} from optional coordinate overrides.
@@ -146,12 +144,33 @@ public class CoordinateFactory {
             return Coordinates.Stamp.DevelopmentLatest().stampPosition().getPathForPositionNid();
         }
         try {
-            PublicId publicId = PublicIds.of(UUID.fromString(pathId));
-            return EntityService.get().nidForPublicId(publicId);
+            OptionalInt pathNid = KnownComponents.nid(PublicIds.of(pathId));
+            if (pathNid.isPresent()) {
+                return pathNid.getAsInt();
+            }
+            log.warn("No path with UUID '{}' in this knowledge base, using default development path", pathId);
         } catch (Exception e) {
             log.warn("Failed to resolve path UUID '{}', using default development path: {}", pathId, e.getMessage());
-            return Coordinates.Stamp.DevelopmentLatest().stampPosition().getPathForPositionNid();
         }
+        return Coordinates.Stamp.DevelopmentLatest().stampPosition().getPathForPositionNid();
+    }
+
+    /**
+     * The nid of a module a coordinate in a request names, or {@code Integer.MIN_VALUE} when the
+     * knowledge base does not hold it or the text is not a UUID. No nid is assigned for an
+     * unknown module ({@code IKE-Network/ike-issues#1188}).
+     */
+    private static int moduleNidOrNone(String moduleId, String what) {
+        try {
+            OptionalInt moduleNid = KnownComponents.nid(PublicIds.of(moduleId));
+            if (moduleNid.isPresent()) {
+                return moduleNid.getAsInt();
+            }
+            log.warn("No {} with UUID '{}' in this knowledge base, leaving it out", what, moduleId);
+        } catch (Exception e) {
+            log.warn("Failed to resolve {} UUID '{}': {}", what, moduleId, e.getMessage());
+        }
+        return Integer.MIN_VALUE;
     }
 
     private static IntIdSet resolveModuleNids(List<String> moduleIds) {
@@ -159,15 +178,7 @@ public class CoordinateFactory {
             return IntIds.set.empty();
         }
         int[] nids = moduleIds.stream()
-                .mapToInt(id -> {
-                    try {
-                        PublicId publicId = PublicIds.of(UUID.fromString(id));
-                        return EntityService.get().nidForPublicId(publicId);
-                    } catch (Exception e) {
-                        log.warn("Failed to resolve module UUID '{}': {}", id, e.getMessage());
-                        return Integer.MIN_VALUE;
-                    }
-                })
+                .mapToInt(id -> moduleNidOrNone(id, "module"))
                 .filter(nid -> nid != Integer.MIN_VALUE)
                 .toArray();
         return IntIds.set.of(nids);
@@ -178,15 +189,7 @@ public class CoordinateFactory {
             return IntIds.list.empty();
         }
         int[] nids = modulePriorityIds.stream()
-                .mapToInt(id -> {
-                    try {
-                        PublicId publicId = PublicIds.of(UUID.fromString(id));
-                        return EntityService.get().nidForPublicId(publicId);
-                    } catch (Exception e) {
-                        log.warn("Failed to resolve module priority UUID '{}': {}", id, e.getMessage());
-                        return Integer.MIN_VALUE;
-                    }
-                })
+                .mapToInt(id -> moduleNidOrNone(id, "module priority"))
                 .filter(nid -> nid != Integer.MIN_VALUE)
                 .toArray();
         return IntIds.list.of(nids);

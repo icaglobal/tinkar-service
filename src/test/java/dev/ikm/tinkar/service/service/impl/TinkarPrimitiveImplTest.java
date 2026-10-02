@@ -8,6 +8,7 @@ import dev.ikm.tinkar.coordinate.Calculators;
 import dev.ikm.tinkar.coordinate.navigation.calculator.NavigationCalculator;
 import dev.ikm.tinkar.coordinate.view.calculator.ViewCalculatorWithCache;
 import dev.ikm.tinkar.provider.search.Searcher;
+import dev.ikm.tinkar.service.service.KnownComponents;
 import org.eclipse.collections.api.list.ImmutableList;
 import org.eclipse.collections.impl.factory.Lists;
 import org.junit.jupiter.api.Test;
@@ -43,29 +44,35 @@ class TinkarPrimitiveImplTest {
 
     // ── getPublicId ──────────────────────────────────────────────────────────
 
+    // The lookup that decides whether the knowledge base holds the component is mocked here.
+    // It is tested against a real store in UnknownComponentRequestTest.
+
     @Test
     void getPublicId_validUuid_returnsPublicIdWithUuid() {
-        try (MockedStatic<PrimitiveData> pdMock = Mockito.mockStatic(PrimitiveData.class)) {
+        try (MockedStatic<PrimitiveData> pdMock = Mockito.mockStatic(PrimitiveData.class);
+             MockedStatic<KnownComponents> knownMock = Mockito.mockStatic(KnownComponents.class)) {
             TinkarPrimitiveImpl impl = createImpl(pdMock);
             String uuidStr = "550e8400-e29b-41d4-a716-446655440000";
+            knownMock.when(() -> KnownComponents.nidOrRefuse(any(PublicId.class))).thenReturn(42);
 
             PublicId result = impl.getPublicId(uuidStr);
             ImmutableList<UUID> uuids = result.asUuidList();
 
             assertThat(uuids).hasSize(1);
             assertThat(uuids.get(0)).isEqualTo(UUID.fromString(uuidStr));
+            knownMock.verify(() -> KnownComponents.nidOrRefuse(result));
         }
     }
 
     @Test
-    void getPublicId_invalidUuid_lazyParsingThrowsOnAccess() {
-        try (MockedStatic<PrimitiveData> pdMock = Mockito.mockStatic(PrimitiveData.class)) {
+    void getPublicId_invalidUuid_isRefusedAtOnce() {
+        try (MockedStatic<PrimitiveData> pdMock = Mockito.mockStatic(PrimitiveData.class);
+             MockedStatic<KnownComponents> knownMock = Mockito.mockStatic(KnownComponents.class)) {
             TinkarPrimitiveImpl impl = createImpl(pdMock);
 
-            PublicId result = impl.getPublicId("not-valid-uuid");
-
-            assertThatThrownBy(result::asUuidList)
+            assertThatThrownBy(() -> impl.getPublicId("not-valid-uuid"))
                     .isInstanceOf(IllegalArgumentException.class);
+            knownMock.verifyNoInteractions();
         }
     }
 

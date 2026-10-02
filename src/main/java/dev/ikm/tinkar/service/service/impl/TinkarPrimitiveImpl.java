@@ -4,17 +4,17 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.LongConsumer;
 
 import dev.ikm.tinkar.common.service.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
+import dev.ikm.tinkar.service.service.KnownComponents;
 import dev.ikm.tinkar.service.service.TinkarPrimitive;
 import dev.ikm.tinkar.common.id.PublicId;
+import dev.ikm.tinkar.common.id.PublicIds;
 import dev.ikm.tinkar.coordinate.Calculators;
 import dev.ikm.tinkar.coordinate.navigation.calculator.NavigationCalculator;
 import dev.ikm.tinkar.coordinate.stamp.calculator.Latest;
@@ -313,31 +313,16 @@ public final class TinkarPrimitiveImpl implements TinkarPrimitive {
     }
 
     /**
-     * Retrieves the PublicId for a given concept.
+     * {@inheritDoc}
      *
-     * @param concept The concept for which to retrieve the PublicId.
-     * @return The PublicId of the given concept.
+     * <p>The text is read as a UUID at once, so text that is not one is refused here and not
+     * where the id is first used.
      */
     @Override
     public PublicId getPublicId(String concept) {
-        return new PublicId() {
-            @Override
-            public int uuidCount() {
-                return 1;
-            }
-
-            @Override
-            public void forEach(LongConsumer longConsumer) {
-                UUID uuid = UUID.fromString(concept);
-                longConsumer.accept(uuid.getMostSignificantBits());
-                longConsumer.accept(uuid.getLeastSignificantBits());
-            }
-
-            @Override
-            public org.eclipse.collections.api.list.ImmutableList<UUID> asUuidList() {
-                return org.eclipse.collections.impl.factory.Lists.immutable.with(UUID.fromString(concept));
-            }
-        };
+        PublicId publicId = PublicIds.of(concept);
+        KnownComponents.nidOrRefuse(publicId);
+        return publicId;
     }
 
     /**
