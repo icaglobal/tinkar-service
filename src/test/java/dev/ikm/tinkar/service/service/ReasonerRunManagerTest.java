@@ -42,7 +42,7 @@ class ReasonerRunManagerTest {
     @BeforeEach
     void setUp() throws Exception {
         tinkarService = mock(TinkarService.class);
-        manager = new ReasonerRunManager(tinkarService);
+        manager = new ReasonerRunManager(tinkarService, new AdminJobQueue(3_600_000L));
         proceed = new CountDownLatch(1);
         firstPhaseReported = new CountDownLatch(1);
 

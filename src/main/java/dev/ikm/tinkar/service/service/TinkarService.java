@@ -259,6 +259,39 @@ public interface TinkarService {
     EntityCountSummaryResponse importChangeset(File importFile, boolean useMultiPass);
 
     /**
+     * Imports a changeset, reporting progress, and persists what it imported.
+     *
+     * <p>Not cancellable, deliberately: an import stopped part way leaves some of its entities
+     * written. Importing merges versions, so re-running a file is safe, but nothing should be left
+     * half imported by choice.
+     *
+     * @param progress notified as the loader advances; may be null
+     * @return the counts of what was imported
+     * @throws Exception if the file cannot be read or any entity in it fails to import
+     */
+    dev.ikm.tinkar.common.service.EntityCountSummary importChangeset(
+            File importFile, boolean useMultiPass,
+            dev.ikm.tinkar.common.service.TrackingListener<dev.ikm.tinkar.common.service.EntityCountSummary> progress)
+            throws Exception;
+
+    /**
+     * Exports entities to {@code targetFile} as a changeset zip — the format the import reads, and
+     * the one Komet's Export Dataset writes.
+     *
+     * @param request which entities; must already be {@link dev.ikm.tinkar.service.dto.ExportRequest#validate() valid}
+     * @param progress notified as the export advances; may be null
+     * @param cancelled polled during the export; once true it stops and throws
+     *                  {@link java.util.concurrent.CancellationException}. May be null
+     * @return the counts of what was written
+     * @throws Exception if the export fails; the partial file is the caller's to remove
+     */
+    dev.ikm.tinkar.common.service.EntityCountSummary exportEntities(
+            File targetFile, dev.ikm.tinkar.service.dto.ExportRequest request,
+            dev.ikm.tinkar.common.service.TrackingListener<dev.ikm.tinkar.common.service.EntityCountSummary> progress,
+            java.util.function.BooleanSupplier cancelled)
+            throws Exception;
+
+    /**
      * Runs the full reasoner classification pipeline:
      * init -> extractData -> loadData -> computeInferences -> writeInferredResults.
      * @return ReasonerResultsResponse with classification results

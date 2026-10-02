@@ -2,6 +2,12 @@ package dev.ikm.tinkar.service.service.impl;
 
 import dev.ikm.tinkar.common.id.*;
 import dev.ikm.tinkar.common.service.EntityCountSummary;
+import dev.ikm.tinkar.common.service.TrackingListener;
+import dev.ikm.tinkar.entity.export.ExportEntitiesToProtobufFile;
+import dev.ikm.tinkar.service.dto.ExportRequest;
+import dev.ikm.tinkar.common.id.PublicId;
+import dev.ikm.tinkar.common.id.PublicIds;
+import java.util.UUID;
 import dev.ikm.tinkar.common.service.DataServiceController;
 import dev.ikm.tinkar.common.service.PluggableService;
 import dev.ikm.tinkar.common.service.PrimitiveData;
@@ -2427,29 +2433,62 @@ public class TinkarServiceImpl implements TinkarService {
 
     @Override
     public EntityCountSummaryResponse importChangeset(File importFile, boolean useMultiPass) {
-        log.info("Importing changeset from: {} (multiPass={})", importFile.getAbsolutePath(), useMultiPass);
         try {
-            LoadEntitiesFromProtobufFile loader = new LoadEntitiesFromProtobufFile(importFile, useMultiPass);
-            EntityCountSummary summary = loader.compute();
-
-            log.info("Import complete: {} concepts, {} semantics, {} patterns, {} stamps",
+            EntityCountSummary summary = importChangeset(importFile, useMultiPass, null);
+            return EntityCountSummaryResponse.success(
                     summary.conceptCount(), summary.semanticCount(),
                     summary.patternCount(), summary.stampCount());
-
-            // Rebuild search index so newly imported entities are searchable
-            log.info("Rebuilding search index after import...");
-            PrimitiveData.get().recreateLuceneIndex();
-
-            // Clear caches so queries reflect the imported data
-            dev.ikm.tinkar.common.service.CachingService.clearAll();
-
-            return EntityCountSummaryResponse.success(
-                    summary.conceptCount(), summary.conceptCount(),
-                    summary.conceptCount(), summary.conceptCount());
         } catch (Exception e) {
             log.error("Import failed: {}", e.getMessage(), e);
             return EntityCountSummaryResponse.error(e.getMessage());
         }
+    }
+
+    @Override
+    public EntityCountSummary importChangeset(File importFile, boolean useMultiPass,
+                                              TrackingListener<EntityCountSummary> progress) throws Exception {
+        log.info("Importing changeset from: {} (multiPass={})", importFile.getAbsolutePath(), useMultiPass);
+        LoadEntitiesFromProtobufFile loader = new LoadEntitiesFromProtobufFile(importFile, useMultiPass);
+        if (progress != null) {
+            loader.addListener(progress);
+        }
+        // The loader keeps the search index current itself — live for a small changeset, a rebuild
+        // past its threshold — so no second rebuild here.
+        EntityCountSummary summary = loader.compute();
+        log.info("Import complete: {} concepts, {} semantics, {} patterns, {} stamps",
+                summary.conceptCount(), summary.semanticCount(),
+                summary.patternCount(), summary.stampCount());
+
+        // Was missing: without it the import lived only in the store's write-back caches and was
+        // lost on restart, the same gap commitEntities had.
+        saveDataStore();
+        dev.ikm.tinkar.common.service.CachingService.clearAll();
+        return summary;
+    }
+
+    @Override
+    public EntityCountSummary exportEntities(File targetFile, ExportRequest request,
+                                             TrackingListener<EntityCountSummary> progress,
+                                             java.util.function.BooleanSupplier cancelled) throws Exception {
+        log.info("Exporting {} to: {}", request.describe(), targetFile.getAbsolutePath());
+        ExportEntitiesToProtobufFile exporter = switch (request.type()) {
+            case FULL -> new ExportEntitiesToProtobufFile(targetFile);
+            case TEMPORAL -> new ExportEntitiesToProtobufFile(
+                    targetFile, request.fromEpochMillis(), request.toEpochMillis());
+            case MEMBERSHIP -> new ExportEntitiesToProtobufFile(targetFile,
+                    request.membershipTagIds().stream()
+                            .map(id -> (PublicId) PublicIds.of(UUID.fromString(id.trim())))
+                            .toList());
+        };
+        if (progress != null) {
+            exporter.addListener(progress);
+        }
+        exporter.cancelWhen(cancelled);
+        EntityCountSummary summary = exporter.compute();
+        log.info("Export complete: {} concepts, {} semantics, {} patterns, {} stamps ({} bytes)",
+                summary.conceptCount(), summary.semanticCount(),
+                summary.patternCount(), summary.stampCount(), targetFile.length());
+        return summary;
     }
 
     @Override

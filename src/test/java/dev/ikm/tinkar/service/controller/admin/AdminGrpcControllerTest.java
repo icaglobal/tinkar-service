@@ -23,6 +23,7 @@ import io.grpc.stub.ServerCallStreamObserver;
 import dev.ikm.tinkar.service.proto.CancelReasonerRequest;
 import dev.ikm.tinkar.service.proto.CancelReasonerResponse;
 import dev.ikm.tinkar.service.proto.WatchReasonerRequest;
+import dev.ikm.tinkar.service.service.AdminJobQueue;
 import dev.ikm.tinkar.service.service.ReasonerRunManager;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -57,7 +58,7 @@ class AdminGrpcControllerTest {
 
     @BeforeEach
     void createController() {
-        reasonerRuns = new ReasonerRunManager(tinkarService);
+        reasonerRuns = new ReasonerRunManager(tinkarService, new AdminJobQueue(3_600_000L));
         controller = new AdminGrpcController(tinkarService, reasonerRuns);
     }
 

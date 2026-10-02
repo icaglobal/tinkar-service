@@ -22,12 +22,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * Owns the reasoner run, so that a run belongs to the server rather than to the call that
@@ -38,10 +36,10 @@ import java.util.concurrent.Executors;
  * only <em>watch</em> a run: a caller that goes away is detached and the run carries on. Stopping
  * a run is a separate, explicit {@link #cancel()}.
  *
- * <p>At most one run exists at a time, shared by every protocol. The pipeline is a single
- * stateful run over one {@code ReasonerService} instance, so two concurrent runs would corrupt
- * each other — whether they arrived over REST, gRPC, or one of each. A request to run while one
- * is already going attaches to it instead of starting a second.
+ * <p>At most one reasoner run exists at a time, shared by every protocol, and a request to run
+ * while one is queued or running attaches to it instead of starting a second. Runs go through the
+ * {@link AdminJobQueue} with imports and exports, so a classification never overlaps either —
+ * one asked for while an import runs waits its turn, and is told what it waits behind.
  *
  * <p>The most recent run is kept after it ends, so a caller that reconnects later still sees how
  * it finished. It is held in memory only, until the next run starts or the server restarts.
@@ -51,7 +49,7 @@ public class ReasonerRunManager {
 
     private static final Logger log = LoggerFactory.getLogger(ReasonerRunManager.class);
 
-    /** Where a run is. Every state but {@link #RUNNING} is final. */
+    /** Where a run is. Every state but {@link #RUNNING} is final; a queued run counts as running. */
     public enum State { RUNNING, SUCCEEDED, FAILED, CANCELLED }
 
     /** One completed phase, kept so a caller attaching late can be shown the ones it missed. */
@@ -73,18 +71,22 @@ public class ReasonerRunManager {
      * completes, then the outcome.
      *
      * <p>Calls are serialized per run, so an implementation that writes to a stream needs no
-     * locking of its own. Throwing from either method means the caller has gone: the watcher is
+     * locking of its own. Throwing from any method means the caller has gone: the watcher is
      * detached and nothing else happens — in particular the run is not cancelled.
      */
     public interface Watcher {
         /**
          * Called first, before any replayed phase.
          *
-         * @param startedAt when the run started, in epoch milliseconds
+         * @param startedAt when the run was asked for, in epoch milliseconds
          * @param started   true if this watcher's request started the run, false if it joined
-         *                  one already running or already finished
+         *                  one already queued, running or finished
          */
         default void onAttached(long startedAt, boolean started) throws Exception {
+        }
+
+        /** While the run waits for another job — an import, say — to finish: the jobs ahead of it. */
+        default void onQueued(List<AdminJobQueue.Summary> ahead) throws Exception {
         }
 
         void onPhase(Phase phase) throws Exception;
@@ -101,128 +103,68 @@ public class ReasonerRunManager {
     public record Attachment(Run run, boolean started) {
     }
 
-    /** One classification, from start to outcome. */
+    /** One classification, from request to outcome. */
     public static final class Run {
-        private final long startedAt = System.currentTimeMillis();
-        private final TrackingCallable<?> tracker = TinkarService.newCancellationTracker();
-        private final List<Phase> phases = new ArrayList<>();
-        private final List<Watcher> watchers = new ArrayList<>();
-        private Outcome outcome;
+        private final AdminJobQueue.Job<ClassifierResults> job;
 
+        private Run(AdminJobQueue.Job<ClassifierResults> job) {
+            this.job = job;
+        }
+
+        /** When the run was asked for. */
         public long startedAt() {
-            return startedAt;
+            return job.summary().queuedAt();
         }
 
-        public synchronized boolean isRunning() {
-            return outcome == null;
+        /** True while the run is queued or running. */
+        public boolean isRunning() {
+            return !job.finished();
         }
 
-        /** How the run ended, or empty while it is still running. */
-        public synchronized Optional<Outcome> outcome() {
-            return Optional.ofNullable(outcome);
-        }
-
-        /**
-         * Replays what has happened so far to {@code watcher}, then keeps it informed. A run that
-         * has already ended replays its phases and outcome, and keeps no watcher.
-         */
-        synchronized void attach(Watcher watcher, boolean started) {
-            if (!deliver(watcher, () -> watcher.onAttached(startedAt, started))) {
-                return;
-            }
-            for (Phase phase : phases) {
-                if (!deliver(watcher, () -> watcher.onPhase(phase))) {
-                    return;
-                }
-            }
-            if (outcome != null) {
-                deliver(watcher, () -> watcher.onFinished(outcome));
-                return;
-            }
-            watchers.add(watcher);
-        }
-
-        synchronized void detach(Watcher watcher) {
-            watchers.remove(watcher);
-        }
-
-        // Both iterate a copy: a delivery can end its caller's stream, and a stream's completion
-        // callback detaches it — re-entering this lock on the same thread to edit the list.
-        synchronized void publish(Phase phase) {
-            phases.add(phase);
-            for (Watcher watcher : List.copyOf(watchers)) {
-                if (!deliver(watcher, () -> watcher.onPhase(phase))) {
-                    watchers.remove(watcher);
-                }
-            }
-        }
-
-        synchronized void finish(Outcome finished) {
-            outcome = finished;
-            List<Watcher> notify = List.copyOf(watchers);
-            watchers.clear();
-            for (Watcher watcher : notify) {
-                deliver(watcher, () -> watcher.onFinished(finished));
-            }
-        }
-
-        /** @return false if the watcher failed, meaning its caller has gone */
-        private static boolean deliver(Watcher watcher, Delivery delivery) {
-            try {
-                delivery.run();
-                return true;
-            } catch (Exception | Error e) {
-                log.info("Reasoner watcher detached — its caller has gone ({})", e.toString());
-                return false;
-            }
-        }
-
-        @FunctionalInterface
-        private interface Delivery {
-            void run() throws Exception;
+        /** How the run ended, or empty while it is still queued or running. */
+        public Optional<Outcome> outcome() {
+            return job.outcome().map(ReasonerRunManager::toOutcome);
         }
     }
 
     private final TinkarService tinkarService;
 
-    /**
-     * Runs classifications. Single-threaded because only one run exists at a time; the queue
-     * never holds more than the one task being executed.
-     */
-    private final ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> {
-        Thread thread = new Thread(runnable, "reasoner-run");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private final AdminJobQueue queue;
 
-    /** The running run, or the last one to finish; null only before the first run. */
+    /** Each watcher's adapter onto the queue, so {@link #detach} can find the one to remove. */
+    private final Map<Watcher, AdminJobQueue.Watcher<ClassifierResults>> adapters = new IdentityHashMap<>();
+
+    /** The queued or running run, or the last one to finish; null only before the first run. */
     private Run current;
 
-    public ReasonerRunManager(TinkarService tinkarService) {
+    public ReasonerRunManager(TinkarService tinkarService, AdminJobQueue queue) {
         this.tinkarService = tinkarService;
+        this.queue = queue;
     }
 
     /**
-     * Attaches {@code watcher} to the running classification, starting one first if none is
-     * running.
+     * Attaches {@code watcher} to the queued or running classification, asking for one first if
+     * there is none.
      */
     public synchronized Attachment runOrAttach(Watcher watcher) {
         if (current != null && current.isRunning()) {
-            log.info("Reasoner already running since {} — attaching to it", current.startedAt());
-            current.attach(watcher, false);
+            log.info("Reasoner already asked for at {} — attaching to it", current.startedAt());
+            queue.watch(current.job, adapterFor(watcher));
             return new Attachment(current, false);
         }
-        Run run = new Run();
-        // Attached before the run is submitted, so the watcher cannot miss its first phase.
-        run.attach(watcher, true);
-        current = run;
-        executor.execute(() -> execute(run));
-        return new Attachment(run, true);
+        AdminJobQueue.Job<ClassifierResults> job = queue.submit(
+                AdminJobQueue.Kind.REASONER, "Reasoner classification", true,
+                running -> tinkarService.runReasoner(
+                        (step, totalSteps, message) -> running.progress(step, totalSteps, message),
+                        running.tracker()),
+                adapterFor(watcher));
+        current = new Run(job);
+        return new Attachment(current, true);
     }
 
     /**
-     * Attaches {@code watcher} to the running classification, or replays the last one if it has
-     * finished. Never starts a run.
+     * Attaches {@code watcher} to the queued or running classification, or replays the last one if
+     * it has finished. Never starts a run.
      *
      * @return the run watched, or empty if no run has happened since the server started
      */
@@ -230,65 +172,84 @@ public class ReasonerRunManager {
         if (current == null) {
             return Optional.empty();
         }
-        current.attach(watcher, false);
+        queue.watch(current.job, adapterFor(watcher));
         return Optional.of(current);
     }
 
     /** Stops {@code watcher} receiving events. The run itself is unaffected. */
     public void detach(Run run, Watcher watcher) {
-        run.detach(watcher);
+        AdminJobQueue.Watcher<ClassifierResults> adapter;
+        synchronized (adapters) {
+            adapter = adapters.remove(watcher);
+        }
+        if (adapter != null) {
+            queue.detach(run.job, adapter);
+        }
     }
 
     /**
-     * Asks the running classification to stop.
+     * Asks the queued or running classification to stop.
      *
-     * <p>Returns at once; watchers learn that the run stopped from its outcome. A run already
-     * writing its inferred results finishes the write and ends {@link State#SUCCEEDED} — see
+     * <p>Returns at once; watchers learn that the run stopped from its outcome. A queued run ends
+     * without starting. A run already writing its inferred results finishes the write and ends
+     * {@link State#SUCCEEDED} — see
      * {@link TinkarService#runReasoner(ReasonerPhaseListener, TrackingCallable)}.
      *
-     * @return false if nothing is running
+     * @return false if nothing is queued or running
      */
     public synchronized boolean cancel() {
         if (current == null || !current.isRunning()) {
             return false;
         }
-        log.info("Cancelling the reasoner run started at {}", current.startedAt());
-        current.tracker.cancel();
-        return true;
+        log.info("Cancelling the reasoner run asked for at {}", current.startedAt());
+        return queue.cancel(current.job);
     }
 
-    private void execute(Run run) {
-        log.info("Reasoner run started");
-        Outcome outcome;
-        try {
-            ClassifierResults results = tinkarService.runReasoner(
-                    (step, totalSteps, message) -> run.publish(new Phase(step, totalSteps, message)),
-                    run.tracker);
-            outcome = ended(run, State.SUCCEEDED, results, null);
-            log.info("Reasoner run finished in {}ms", outcome.durationMs());
-        } catch (CancellationException e) {
-            outcome = ended(run, State.CANCELLED, null, null);
-            log.info("Reasoner run cancelled: {}", e.getMessage());
-        } catch (Exception | Error e) {
-            // Error too: an OutOfMemoryError from ELK on a large dataset would otherwise end the
-            // thread with the run never finished, so it would count as running for good and
-            // every later request would attach to a run that no longer exists.
-            outcome = ended(run, State.FAILED, null,
-                    e.getMessage() == null ? e.toString() : e.getMessage());
-            log.error("Reasoner run failed: {}", e.getMessage(), e);
+    private AdminJobQueue.Watcher<ClassifierResults> adapterFor(Watcher watcher) {
+        AdminJobQueue.Watcher<ClassifierResults> adapter = new AdminJobQueue.Watcher<>() {
+            @Override
+            public void onAttached(AdminJobQueue.Summary job, boolean submitted) throws Exception {
+                watcher.onAttached(job.queuedAt(), submitted);
+            }
+
+            @Override
+            public void onQueued(List<AdminJobQueue.Summary> ahead) throws Exception {
+                watcher.onQueued(ahead);
+            }
+
+            @Override
+            public void onProgress(AdminJobQueue.Progress progress) throws Exception {
+                watcher.onPhase(new Phase((int) progress.done(), (int) progress.total(), progress.message()));
+            }
+
+            @Override
+            public void onFinished(AdminJobQueue.Outcome<ClassifierResults> outcome) throws Exception {
+                synchronized (adapters) {
+                    adapters.remove(watcher);
+                }
+                watcher.onFinished(toOutcome(outcome));
+            }
+        };
+        synchronized (adapters) {
+            adapters.put(watcher, adapter);
         }
-        // Last: finishing is what lets the next run start, so it waits until this one is done.
-        run.finish(outcome);
+        return adapter;
     }
 
-    private static Outcome ended(Run run, State state, ClassifierResults results, String error) {
-        long now = System.currentTimeMillis();
-        return new Outcome(state, results, error, now - run.startedAt(), now);
+    /** Maps a reasoner job's outcome, as {@link AdminJobQueue} reports it, onto this class's. */
+    public static Outcome toOutcome(AdminJobQueue.Outcome<ClassifierResults> outcome) {
+        State state = switch (outcome.state()) {
+            case SUCCEEDED -> State.SUCCEEDED;
+            case FAILED -> State.FAILED;
+            case CANCELLED -> State.CANCELLED;
+            case QUEUED, RUNNING -> State.RUNNING;
+        };
+        return new Outcome(state, outcome.result(), outcome.errorMessage(),
+                outcome.durationMs(), outcome.finishedAt());
     }
 
     @PreDestroy
     void shutdown() {
         cancel();
-        executor.shutdownNow();
     }
 }
