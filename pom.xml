@@ -458,7 +458,11 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.3</version>
                 <configuration>
-                    <argLine>--enable-preview -Dnet.bytebuddy.experimental=true</argLine>
+                    <!-- Lucene 10.5.1 turns its Vector API code on only up to Java 26 and warns on 27.
+                         The property raises that limit; the full suite passes with it. Drop it when
+                         a Lucene release supports Java 27. -->
+                    <argLine>--enable-preview --enable-native-access=ALL-UNNAMED -Dnet.bytebuddy.experimental=true
+                        --add-modules jdk.incubator.vector -Dorg.apache.lucene.vectorization.upperJavaFeatureVersion=27</argLine>
                 </configuration>
             </plugin>
             <plugin>
