@@ -1,0 +1,5 @@
+# Test-classpath registration of the in-memory store the store-backed tests load the starter
+# data into. The data-ephemeral-provider jar declares its controller only in module-info, which
+# is not consulted on the classpath. The other lifecycle controllers come from the service's own
+# registrations and from the provider jars.
+dev.ikm.tinkar.provider.ephemeral.ProviderEphemeral$NewController

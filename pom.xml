@@ -45,6 +45,10 @@
         <tinkar-core.version>1.127.7-64bit-SNAPSHOT</tinkar-core.version>
         <!-- tinkar-schema must include Tinkar.proto in the jar (added in 1.43.0). -->
         <tinkar-schema.version>1.43.5-64bit-SNAPSHOT</tinkar-schema.version>
+        <!-- Tinkar starter dataset for the store-backed tests, loaded into an ephemeral store.
+             Pinned to the version komet/framework and komet-claude-plugin use; ike-parent does
+             not manage it. -->
+        <tinkar-starter-data.version>1.1.2</tinkar-starter-data.version>
     </properties>
 
     <repositories>
@@ -213,6 +217,15 @@
             <version>${spring-boot.version}</version>
             <scope>test</scope>
         </dependency>
+        <!-- The in-memory store the store-backed tests load the starter data into. The service
+             itself ships no ephemeral store. Its controller is registered for the test
+             classpath in src/test/resources/META-INF/services. -->
+        <dependency>
+            <groupId>dev.ikm.tinkar</groupId>
+            <artifactId>data-ephemeral-provider</artifactId>
+            <version>${tinkar-core.version}</version>
+            <scope>test</scope>
+        </dependency>
 
         <!-- Static analysis -->
         <dependency>
@@ -350,6 +363,34 @@
                                     <outputDirectory>${project.build.directory}/proto-downstream</outputDirectory>
                                 </artifactItem>
                             </artifactItems>
+                        </configuration>
+                    </execution>
+                    <!-- Copy the Tinkar starter dataset into target/data so the store-backed
+                         tests can load it into an ephemeral store (the same artifact and
+                         stripped layout komet/framework and komet-claude-plugin use:
+                         target/data/tinkar-starter-data-reasoned-pb.zip). -->
+                    <execution>
+                        <id>copy-starter-data</id>
+                        <phase>process-test-resources</phase>
+                        <goals>
+                            <goal>copy</goal>
+                        </goals>
+                        <configuration>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>dev.ikm.data.tinkar</groupId>
+                                    <artifactId>tinkar-starter-data</artifactId>
+                                    <version>${tinkar-starter-data.version}</version>
+                                    <classifier>reasoned-pb</classifier>
+                                    <type>zip</type>
+                                    <overWrite>false</overWrite>
+                                    <outputDirectory>${project.build.directory}/data</outputDirectory>
+                                </artifactItem>
+                            </artifactItems>
+                            <stripVersion>true</stripVersion>
+                            <outputDirectory>${project.build.directory}/data</outputDirectory>
+                            <overWriteReleases>false</overWriteReleases>
+                            <overWriteSnapshots>true</overWriteSnapshots>
                         </configuration>
                     </execution>
                 </executions>

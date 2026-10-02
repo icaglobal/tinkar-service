@@ -40,6 +40,7 @@ import dev.ikm.tinkar.service.service.TinkarPrimitive;
 import dev.ikm.tinkar.service.service.ReasonerPhaseListener;
 import dev.ikm.tinkar.service.service.TinkarService;
 import dev.ikm.tinkar.entity.graph.DiTreeEntity;
+import dev.ikm.tinkar.entity.graph.DiTreeText;
 import dev.ikm.tinkar.entity.graph.EntityVertex;
 import dev.ikm.tinkar.terms.EntityFacade;
 import dev.ikm.tinkar.terms.EntityProxy;
@@ -66,6 +67,12 @@ public class TinkarServiceImpl implements TinkarService {
     private final TinkarPrimitive primitive;
 
     private static final int MAX_RESULTS = 100;
+
+    /**
+     * The text written for a component this store has no public id for. It has no identifier in
+     * it: the only one there is, the nid, is never written in a response.
+     */
+    static final String UNIDENTIFIED = "unidentified component";
 
     public TinkarServiceImpl(TinkarPrimitive primitive) {
         this.primitive = primitive;
@@ -328,13 +335,25 @@ public class TinkarServiceImpl implements TinkarService {
         return getConceptName(nid, Calculators.View.Default());
     }
 
+    /**
+     * The fully qualified name of a component, falling back to
+     * {@link #getDescriptionForNid(int, ViewCalculatorWithCache) its description}.
+     *
+     * @param nid  the component's nid in this store
+     * @param calc the view calculator that selects the description
+     * @return the fully qualified name, else another description, else the component's first
+     *         UUID; never a nid
+     */
     private String getConceptName(int nid, ViewCalculatorWithCache calc) {
         try {
-            return calc.languageCalculator()
-                    .getFullyQualifiedDescriptionTextWithFallbackOrNid(nid);
+            Optional<String> fullyQualifiedName = calc.languageCalculator().getFullyQualifiedNameText(nid);
+            if (fullyQualifiedName.isPresent() && !fullyQualifiedName.get().isBlank()) {
+                return fullyQualifiedName.get();
+            }
         } catch (Exception e) {
-            return "nid: " + nid;
+            log.debug("Fully qualified name lookup failed for {}: {}", identifierFor(nid), e.getMessage());
         }
+        return getDescriptionForNid(nid, calc);
     }
 
     /**
@@ -361,6 +380,10 @@ public class TinkarServiceImpl implements TinkarService {
      *
      * <p>Remote clients cannot do this themselves: nids are local to a data store, so a
      * client holding only a public ID has nothing to resolve descriptions against.
+     *
+     * <p>When no description resolves there is no preferred name, and the result is null: the
+     * caller's label then falls back to the fully qualified name, which names an undescribed
+     * concept by its UUID.
      */
     private String getConceptPreferredName(int nid) {
         return getConceptPreferredName(nid, Calculators.View.Default());
@@ -368,7 +391,9 @@ public class TinkarServiceImpl implements TinkarService {
 
     private String getConceptPreferredName(int nid, ViewCalculatorWithCache calc) {
         try {
-            return calc.languageCalculator().getDescriptionTextOrNid(nid);
+            return calc.languageCalculator().getDescriptionText(nid)
+                    .filter(text -> !text.isBlank())
+                    .orElse(null);
         } catch (Exception e) {
             return null;
         }
@@ -926,6 +951,50 @@ public class TinkarServiceImpl implements TinkarService {
         }
     }
 
+    /**
+     * The first UUID of a component's public id.
+     *
+     * @param nid the component's nid in this store
+     * @return the first UUID, or empty when the store has no public id for the nid
+     */
+    private static Optional<UUID> firstUuidFor(int nid) {
+        try {
+            PublicId publicId = PrimitiveData.publicId(nid);
+            if (publicId == null) {
+                return Optional.empty();
+            }
+            UUID[] uuids = publicId.asUuidArray();
+            return uuids.length > 0 ? Optional.of(uuids[0]) : Optional.empty();
+        } catch (RuntimeException unresolvable) {
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * The identifier written for a component in response text: its first UUID.
+     *
+     * <p>A nid is local to this store. The caller holds another store, or none, and response
+     * text is kept — in gRPC mode it is what the assistant's tools return — so a component is
+     * identified in text by its public id only ({@code IKE-Network/ike-issues#1177}). These are
+     * the rules the assistant follows for a local store ({@code IKE-Network/ike-issues#1170}),
+     * so a component reads the same in both modes.
+     *
+     * @param nid the component's nid in this store
+     * @return the first UUID as a string, or {@link #UNIDENTIFIED} when the store has no public
+     *         id for the nid; never a nid
+     */
+    static String identifierFor(int nid) {
+        return firstUuidFor(nid).map(UUID::toString).orElse(UNIDENTIFIED);
+    }
+
+    /**
+     * The name written for a component under the default view. The parts of a stamp and the
+     * values of semantic fields are named this way, whatever view the request names.
+     *
+     * @param nid the component's nid in this store
+     * @return the description; when none resolves, the {@link #identifierFor(int) identifier};
+     *         never a nid
+     */
     private String getDescriptionForNid(int nid) {
         try {
             var lc = Calculators.View.Default().languageCalculator();
@@ -935,9 +1004,17 @@ public class TinkarServiceImpl implements TinkarService {
             if (desc != null) return desc;
         } catch (Exception ignored) {}
         String raw = getFallbackDescriptionText(nid);
-        return raw.isBlank() ? "nid: " + nid : raw;
+        return raw.isBlank() ? identifierFor(nid) : raw;
     }
 
+    /**
+     * The name written for a component under the request's view.
+     *
+     * @param nid  the component's nid in this store
+     * @param calc the view calculator that selects the description
+     * @return the description; for a semantic, which has none of its own, what the semantic is;
+     *         when nothing resolves, the {@link #identifierFor(int) identifier}; never a nid
+     */
     private String getDescriptionForNid(int nid, ViewCalculatorWithCache calc) {
         // First try the provided calculator's language coordinate — this works on a full DB
         // where patterns have field definitions and returns the dialect-preferred description.
@@ -960,9 +1037,10 @@ public class TinkarServiceImpl implements TinkarService {
             return raw;
         }
         // A semantic instance has no description semantics of its own, so every lookup above
-        // fails for one. Describe what it IS rather than returning a bare nid.
+        // fails for one. Describe what it IS; a component that is not a semantic is named by
+        // its UUID.
         String semanticDescription = describeSemanticEntity(nid, calc);
-        return semanticDescription != null ? semanticDescription : "nid: " + nid;
+        return semanticDescription != null ? semanticDescription : identifierFor(nid);
     }
 
     /**
@@ -970,7 +1048,7 @@ public class TinkarServiceImpl implements TinkarService {
      * {@code "<Pattern> semantic on <referenced component>"} — e.g.
      * {@code "Test Performed Pattern semantic on BioFire® Respiratory Panel 2.1"}. Used as the
      * last-resort description so a caller that passed a semantic's public ID sees what the
-     * entity is instead of {@code "nid: -1476395007"}.
+     * entity is instead of a bare identifier.
      *
      * <p>When the referenced component is itself a semantic, only its pattern name is used —
      * deliberately not a recursive description — so a semantic-on-semantic chain (or a cycle)
@@ -1171,22 +1249,69 @@ public class TinkarServiceImpl implements TinkarService {
         return "Field";
     }
 
-    private String formatFieldValue(Object value) {
+    /**
+     * The text of a semantic field value.
+     *
+     * <p>A component is its name. A list or set of components is a list of names, each with an
+     * explicitly typed identifier. A definition tree or a vertex is written with names only,
+     * in the layout the assistant writes for a local store. Any other value — a string, a
+     * number, a boolean, an instant — is its own text.
+     *
+     * <p>No value is written with the {@code toString()} of a component, a tree, or a vertex:
+     * each of those writes a nid ({@code IKE-Network/ike-issues#1177}).
+     *
+     * @param value the field value; may be null
+     * @return the text, or null for a null value; never a nid
+     */
+    String formatFieldValue(Object value) {
         if (value == null) {
             return null;
+        }
+        // Before the public id case: a vertex has a UUID of its own, so it is a public id, but
+        // it is not a component, and asking the store for its nid would assign it one.
+        if (value instanceof EntityVertex vertex) {
+            return DiTreeText.vertex(vertex, this::getDescriptionForNid);
+        }
+        if (value instanceof DiTreeEntity tree) {
+            return '\n' + DiTreeText.tree(tree, this::getDescriptionForNid);
         }
         if (value instanceof PublicId publicId) {
             try {
                 int nid = EntityService.get().nidForPublicId(publicId);
                 return getDescriptionForNid(nid);
             } catch (Exception e) {
-                return publicId.toString();
+                // The component is not in this store. It is written by its UUIDs.
+                return uuidsOf(publicId);
             }
+        }
+        if (value instanceof EntityFacade facade) {
+            return getDescriptionForNid(facade.nid());
         }
         if (value instanceof IntIdCollection idCollection) {
             return formatIdCollection(idCollection);
         }
         return value.toString();
+    }
+
+    /**
+     * The UUIDs of a public id, joined by commas.
+     *
+     * @param publicId the public id
+     * @return its UUIDs, or {@link #UNIDENTIFIED} when it holds none
+     */
+    static String uuidsOf(PublicId publicId) {
+        UUID[] uuids = publicId.asUuidArray();
+        if (uuids.length == 0) {
+            return UNIDENTIFIED;
+        }
+        StringBuilder text = new StringBuilder();
+        for (int i = 0; i < uuids.length; i++) {
+            if (i > 0) {
+                text.append(", ");
+            }
+            text.append(uuids[i]);
+        }
+        return text.toString();
     }
 
     /**
@@ -1218,7 +1343,8 @@ public class TinkarServiceImpl implements TinkarService {
 
     /**
      * An explicitly-typed identifier for a component: its SNOMED SCTID when it carries one,
-     * else its public UUID, else its nid labelled as such. Never a bare number.
+     * else its public UUID. Never a bare number, and never a nid: a component this store has
+     * no public id for is marked as unidentified.
      *
      * @param nid the component nid
      * @return the bracketed identifier, e.g. {@code "[SCTID 260373001]"}
@@ -1228,15 +1354,9 @@ public class TinkarServiceImpl implements TinkarService {
         if (sctid != null) {
             return "[SCTID " + sctid + "]";
         }
-        try {
-            UUID[] uuids = PrimitiveData.publicId(nid).asUuidArray();
-            if (uuids.length > 0) {
-                return "[UUID " + uuids[0] + "]";
-            }
-        } catch (Exception ignored) {
-            // fall through to the nid, explicitly labelled
-        }
-        return "[nid " + nid + "]";
+        return firstUuidFor(nid)
+                .map(uuid -> "[UUID " + uuid + "]")
+                .orElse("[" + UNIDENTIFIED + "]");
     }
 
     /**
