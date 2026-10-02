@@ -2471,6 +2471,12 @@ public class TinkarServiceImpl implements TinkarService {
         return runReasoner(listener, TinkarService.newCancellationTracker());
     }
 
+    private static void throwIfCancelled(TrackingCallable<?> tracker, String when) {
+        if (tracker.isCancelled()) {
+            throw new CancellationException("Reasoner cancelled " + when);
+        }
+    }
+
     @Override
     public ClassifierResults runReasoner(ReasonerPhaseListener listener, TrackingCallable<?> tracker)
             throws Exception {
@@ -2496,8 +2502,13 @@ public class TinkarServiceImpl implements TinkarService {
 
             // Phases and wording match Komet's local RunReasonerTaskBase so that a remote run
             // performs the same work, in the same order, and reports it the same way.
+            // Checked between the steps of the first phase too: extracting and loading are the
+            // slowest part of a large run, and a cancel made then should not have to wait for the
+            // classifier to notice it.
             rs.extractData(tracker);
+            throwIfCancelled(tracker, "while extracting data");
             rs.loadData(tracker);
+            throwIfCancelled(tracker, "while loading data");
             listener.onPhaseComplete(ReasonerPhaseListener.Phase.LOAD_DATA);
 
             // The tracker-taking overload, not computeInferences(): the no-arg form fabricates a
@@ -2515,9 +2526,7 @@ public class TinkarServiceImpl implements TinkarService {
             // The last clean abort point. Everything above is read-only; writeInferredResults
             // stages entities into a transaction over a store other clients read, so once it
             // starts it is allowed to finish.
-            if (tracker.isCancelled()) {
-                throw new CancellationException("Reasoner cancelled before writing results");
-            }
+            throwIfCancelled(tracker, "before writing results");
 
             ClassifierResults results = rs.writeInferredResults(tracker);
             listener.onPhaseComplete(ReasonerPhaseListener.Phase.PROCESS_RESULTS);
