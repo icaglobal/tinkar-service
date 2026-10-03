@@ -2706,7 +2706,7 @@ public class TinkarServiceImpl implements TinkarService {
             // Stamps first: every entity version cites its stamp by NID, so the stamp has to be
             // resolvable before the entity citing it is stored.
             for (StampEntity<StampEntityVersion> stamp : decodedStamps) {
-                EntityService.get().putStamp(stamp);
+                EntityService.get().putEntity(stamp);
             }
             for (Entity<? extends EntityVersion> entity : decodedEntities) {
                 EntityService.get().putEntity(entity);
