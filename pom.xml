@@ -234,6 +234,18 @@
             <version>4.9.8</version>
             <scope>provided</scope>
         </dependency>
+        <!-- The shared test logging configuration (log4j2-test.xml); a library ships none of its own. -->
+        <dependency>
+            <groupId>dev.ikm.tinkar</groupId>
+            <artifactId>test-logging</artifactId>
+            <version>${tinkar-core.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-jul</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <profiles>
@@ -461,7 +473,7 @@
                     <!-- Lucene 10.5.1 turns its Vector API code on only up to Java 26 and warns on 27.
                          The property raises that limit; the full suite passes with it. Drop it when
                          a Lucene release supports Java 27. -->
-                    <argLine>--enable-preview --enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow -Dnet.bytebuddy.experimental=true
+                    <argLine>--enable-preview --enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow -Djava.util.logging.manager=org.apache.logging.log4j.jul.LogManager -Dnet.bytebuddy.experimental=true
                         --add-modules jdk.incubator.vector -Dorg.apache.lucene.vectorization.upperJavaFeatureVersion=27</argLine>
                 </configuration>
             </plugin>
