@@ -8,6 +8,7 @@ import dev.ikm.tinkar.common.service.ServiceKeys;
 import dev.ikm.tinkar.common.service.ServiceProperties;
 import dev.ikm.tinkar.coordinate.Coordinates;
 import dev.ikm.tinkar.coordinate.stamp.StampCoordinateRecord;
+import dev.ikm.tinkar.entity.EntityService;
 import dev.ikm.tinkar.entity.load.LoadEntitiesFromProtobufFile;
 import dev.ikm.tinkar.service.dto.ChangeHistoryResponse;
 import dev.ikm.tinkar.service.dto.ConceptChangeHistoryResponse;
@@ -332,13 +333,13 @@ class UnknownComponentRequestTest {
 
     private static int conceptCount() {
         AtomicInteger count = new AtomicInteger();
-        PrimitiveData.get().forEachConceptNid(nid -> count.incrementAndGet());
+        EntityService.get().forEachConceptEntity(concept -> count.incrementAndGet());
         return count.get();
     }
 
     private static int semanticCount() {
         AtomicInteger count = new AtomicInteger();
-        PrimitiveData.get().forEachSemanticNid(nid -> count.incrementAndGet());
+        EntityService.get().forEachSemanticEntity(semantic -> count.incrementAndGet());
         return count.get();
     }
 }

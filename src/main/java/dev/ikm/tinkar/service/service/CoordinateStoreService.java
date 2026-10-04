@@ -9,15 +9,11 @@ import dev.ikm.tinkar.service.dto.StampCoordinateDto;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.ikm.tinkar.common.id.PublicId;
 import dev.ikm.tinkar.common.id.PublicIds;
-import dev.ikm.tinkar.common.service.PrimitiveData;
 import dev.ikm.tinkar.coordinate.language.LanguageCoordinateRecord;
 import dev.ikm.tinkar.coordinate.navigation.NavigationCoordinateRecord;
 import dev.ikm.tinkar.coordinate.stamp.StampCoordinateRecord;
 import dev.ikm.tinkar.entity.ConceptRecord;
-import dev.ikm.tinkar.entity.Entity;
-import dev.ikm.tinkar.entity.EntityHandle;
 import dev.ikm.tinkar.entity.EntityService;
-import dev.ikm.tinkar.entity.EntityVersion;
 import dev.ikm.tinkar.entity.SemanticEntity;
 import dev.ikm.tinkar.entity.SemanticEntityVersion;
 import dev.ikm.tinkar.entity.SemanticRecord;
@@ -50,9 +46,10 @@ import java.util.UUID;
  * </ol>
  *
  * <p>Coordinates are stored in RocksDB and survive server restarts.
- * Listing uses {@code PrimitiveData.get().semanticNidsForComponent(registryNid)},
- * keyed by the registry concept's full 64-bit {@code longKeyForNid} — immune to
- * the nid element-sequence collision that breaks {@code semanticNidsOfPattern}.
+ * Listing uses {@code EntityService.get().forEachSemanticForComponent(registryNid, ...)}
+ * (and lookup by id {@code semanticsForComponent(registryNid)}), keyed by the registry
+ * concept's full 64-bit {@code longKeyForNid} — immune to the nid element-sequence
+ * collision that breaks {@code semanticsOfPattern}.
  */
 @Component
 public class CoordinateStoreService {
@@ -63,9 +60,9 @@ public class CoordinateStoreService {
      *
      * <p>All saved coordinate semantics use the registry concept as their
      * {@code referencedComponentNid}.  Listing uses
-     * {@code PrimitiveData.semanticNidsForComponent(registryNid)}, which is indexed
+     * {@code EntityService.get().semanticsForComponent(registryNid)}, which is indexed
      * by the full 64-bit {@code longKeyForNid(componentNid)} and therefore immune to
-     * the nid element-sequence collision that breaks {@code semanticNidsOfPattern}.
+     * the nid element-sequence collision that breaks {@code semanticsOfPattern}.
      */
     static final UUID STAMP_COORDINATE_REGISTRY_UUID =
             UUID.fromString("1409ec9e-3240-41ec-86e4-55a2d3f69968");
@@ -139,24 +136,19 @@ public class CoordinateStoreService {
 
     /** List all saved StampCoordinates in the dataset. */
     public List<SavedStampCoordinateResponse> findAllStamp() {
-        int[] semanticNids = PrimitiveData.get().semanticNidsForComponent(stampRegistryNid());
         List<SavedStampCoordinateResponse> results = new ArrayList<>();
-        for (int sNid : semanticNids) {
-            deserializeStampSemantic(sNid).ifPresent(results::add);
-        }
+        EntityService.get().forEachSemanticForComponent(stampRegistryNid(),
+                semantic -> deserializeStampSemantic(semantic).ifPresent(results::add));
         return results;
     }
 
     /** Look up a saved StampCoordinate by its content-derived UUID string. */
     public Optional<SavedStampCoordinateResponse> findStampById(String coordinateId) {
-        int[] semanticNids = PrimitiveData.get().semanticNidsForComponent(stampRegistryNid());
-        for (int sNid : semanticNids) {
-            Optional<SavedStampCoordinateResponse> result = deserializeStampSemantic(sNid);
-            if (result.isPresent() && result.get().id().equals(coordinateId)) {
-                return result;
-            }
-        }
-        return Optional.empty();
+        return EntityService.get().semanticsForComponent(stampRegistryNid())
+                .map(this::deserializeStampSemantic)
+                .flatMap(Optional::stream)
+                .filter(result -> result.id().equals(coordinateId))
+                .findFirst();
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -216,24 +208,19 @@ public class CoordinateStoreService {
 
     /** List all saved NavigationCoordinates in the dataset. */
     public List<SavedNavigationCoordinateResponse> findAllNavigation() {
-        int[] semanticNids = PrimitiveData.get().semanticNidsForComponent(navigationRegistryNid());
         List<SavedNavigationCoordinateResponse> results = new ArrayList<>();
-        for (int sNid : semanticNids) {
-            deserializeNavigationSemantic(sNid).ifPresent(results::add);
-        }
+        EntityService.get().forEachSemanticForComponent(navigationRegistryNid(),
+                semantic -> deserializeNavigationSemantic(semantic).ifPresent(results::add));
         return results;
     }
 
     /** Look up a saved NavigationCoordinate by its content-derived UUID string. */
     public Optional<SavedNavigationCoordinateResponse> findNavigationById(String coordinateId) {
-        int[] semanticNids = PrimitiveData.get().semanticNidsForComponent(navigationRegistryNid());
-        for (int sNid : semanticNids) {
-            Optional<SavedNavigationCoordinateResponse> result = deserializeNavigationSemantic(sNid);
-            if (result.isPresent() && result.get().id().equals(coordinateId)) {
-                return result;
-            }
-        }
-        return Optional.empty();
+        return EntityService.get().semanticsForComponent(navigationRegistryNid())
+                .map(this::deserializeNavigationSemantic)
+                .flatMap(Optional::stream)
+                .filter(result -> result.id().equals(coordinateId))
+                .findFirst();
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -293,24 +280,19 @@ public class CoordinateStoreService {
 
     /** List all saved LanguageCoordinates in the dataset. */
     public List<SavedLanguageCoordinateResponse> findAllLanguage() {
-        int[] semanticNids = PrimitiveData.get().semanticNidsForComponent(languageRegistryNid());
         List<SavedLanguageCoordinateResponse> results = new ArrayList<>();
-        for (int sNid : semanticNids) {
-            deserializeLanguageSemantic(sNid).ifPresent(results::add);
-        }
+        EntityService.get().forEachSemanticForComponent(languageRegistryNid(),
+                semantic -> deserializeLanguageSemantic(semantic).ifPresent(results::add));
         return results;
     }
 
     /** Look up a saved LanguageCoordinate by its content-derived UUID string. */
     public Optional<SavedLanguageCoordinateResponse> findLanguageById(String coordinateId) {
-        int[] semanticNids = PrimitiveData.get().semanticNidsForComponent(languageRegistryNid());
-        for (int sNid : semanticNids) {
-            Optional<SavedLanguageCoordinateResponse> result = deserializeLanguageSemantic(sNid);
-            if (result.isPresent() && result.get().id().equals(coordinateId)) {
-                return result;
-            }
-        }
-        return Optional.empty();
+        return EntityService.get().semanticsForComponent(languageRegistryNid())
+                .map(this::deserializeLanguageSemantic)
+                .flatMap(Optional::stream)
+                .filter(result -> result.id().equals(coordinateId))
+                .findFirst();
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -346,8 +328,8 @@ public class CoordinateStoreService {
     /**
      * Returns the NID for {@code registryUuid}, creating a {@code ConceptRecord} stub if absent.
      * The registry concept is used solely as the {@code referencedComponentNid} anchor for
-     * coordinate semantics; lookup is via {@code semanticNidsForComponent} (exact 64-bit key),
-     * not {@code semanticNidsOfPattern} (which suffers from nid element-sequence collisions).
+     * coordinate semantics; lookup is via {@code semanticsForComponent} (exact 64-bit key),
+     * not {@code semanticsOfPattern} (which suffers from nid element-sequence collisions).
      */
     private int resolveOrCreateRegistryConcept(UUID registryUuid, String label) {
         PublicId pid = PublicIds.of(registryUuid);
@@ -380,56 +362,53 @@ public class CoordinateStoreService {
     // Deserialization helpers
     // field[0] = coordinate UUID string, field[1] = settings JSON
 
-    private Optional<SavedStampCoordinateResponse> deserializeStampSemantic(int sNid) {
+    private Optional<SavedStampCoordinateResponse> deserializeStampSemantic(SemanticEntity<SemanticEntityVersion> sem) {
         try {
-            Optional<Entity<? extends EntityVersion>> entityOpt = EntityHandle.get(sNid).entity().filter(e -> !e.canceled());
-            if (entityOpt.isEmpty() || !(entityOpt.get() instanceof SemanticEntity<?> sem) || sem.versions().isEmpty()) {
+            if (sem.canceled() || sem.versions().isEmpty()) {
                 return Optional.empty();
             }
-            SemanticEntityVersion ver = (SemanticEntityVersion) sem.versions().get(0);
+            SemanticEntityVersion ver = sem.versions().get(0);
             String id = (String) ver.fieldValues().get(0);
             String json = (String) ver.fieldValues().get(1);
             StampCoordinateDto settings = objectMapper.readValue(json, StampCoordinateDto.class);
             long time = EntityService.get().getStampFast(ver.stampNid()).time();
             return Optional.of(new SavedStampCoordinateResponse(id, settings, Instant.ofEpochMilli(time).toString()));
         } catch (Exception e) {
-            log.warn("Failed to deserialize stamp coordinate semantic nid={}: {}", sNid, e.getMessage());
+            log.warn("Failed to deserialize stamp coordinate semantic nid={}: {}", sem.nid(), e.getMessage());
             return Optional.empty();
         }
     }
 
-    private Optional<SavedNavigationCoordinateResponse> deserializeNavigationSemantic(int sNid) {
+    private Optional<SavedNavigationCoordinateResponse> deserializeNavigationSemantic(SemanticEntity<SemanticEntityVersion> sem) {
         try {
-            Optional<Entity<? extends EntityVersion>> entityOpt = EntityHandle.get(sNid).entity().filter(e -> !e.canceled());
-            if (entityOpt.isEmpty() || !(entityOpt.get() instanceof SemanticEntity<?> sem) || sem.versions().isEmpty()) {
+            if (sem.canceled() || sem.versions().isEmpty()) {
                 return Optional.empty();
             }
-            SemanticEntityVersion ver = (SemanticEntityVersion) sem.versions().get(0);
+            SemanticEntityVersion ver = sem.versions().get(0);
             String id = (String) ver.fieldValues().get(0);
             String json = (String) ver.fieldValues().get(1);
             NavigationCoordinateDto settings = objectMapper.readValue(json, NavigationCoordinateDto.class);
             long time = EntityService.get().getStampFast(ver.stampNid()).time();
             return Optional.of(new SavedNavigationCoordinateResponse(id, settings, Instant.ofEpochMilli(time).toString()));
         } catch (Exception e) {
-            log.warn("Failed to deserialize navigation coordinate semantic nid={}: {}", sNid, e.getMessage());
+            log.warn("Failed to deserialize navigation coordinate semantic nid={}: {}", sem.nid(), e.getMessage());
             return Optional.empty();
         }
     }
 
-    private Optional<SavedLanguageCoordinateResponse> deserializeLanguageSemantic(int sNid) {
+    private Optional<SavedLanguageCoordinateResponse> deserializeLanguageSemantic(SemanticEntity<SemanticEntityVersion> sem) {
         try {
-            Optional<Entity<? extends EntityVersion>> entityOpt = EntityHandle.get(sNid).entity().filter(e -> !e.canceled());
-            if (entityOpt.isEmpty() || !(entityOpt.get() instanceof SemanticEntity<?> sem) || sem.versions().isEmpty()) {
+            if (sem.canceled() || sem.versions().isEmpty()) {
                 return Optional.empty();
             }
-            SemanticEntityVersion ver = (SemanticEntityVersion) sem.versions().get(0);
+            SemanticEntityVersion ver = sem.versions().get(0);
             String id = (String) ver.fieldValues().get(0);
             String json = (String) ver.fieldValues().get(1);
             LanguageCoordinateDto settings = objectMapper.readValue(json, LanguageCoordinateDto.class);
             long time = EntityService.get().getStampFast(ver.stampNid()).time();
             return Optional.of(new SavedLanguageCoordinateResponse(id, settings, Instant.ofEpochMilli(time).toString()));
         } catch (Exception e) {
-            log.warn("Failed to deserialize language coordinate semantic nid={}: {}", sNid, e.getMessage());
+            log.warn("Failed to deserialize language coordinate semantic nid={}: {}", sem.nid(), e.getMessage());
             return Optional.empty();
         }
     }
