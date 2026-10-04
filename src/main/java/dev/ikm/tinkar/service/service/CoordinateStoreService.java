@@ -15,7 +15,9 @@ import dev.ikm.tinkar.coordinate.navigation.NavigationCoordinateRecord;
 import dev.ikm.tinkar.coordinate.stamp.StampCoordinateRecord;
 import dev.ikm.tinkar.entity.ConceptRecord;
 import dev.ikm.tinkar.entity.Entity;
+import dev.ikm.tinkar.entity.EntityHandle;
 import dev.ikm.tinkar.entity.EntityService;
+import dev.ikm.tinkar.entity.EntityVersion;
 import dev.ikm.tinkar.entity.SemanticEntity;
 import dev.ikm.tinkar.entity.SemanticEntityVersion;
 import dev.ikm.tinkar.entity.SemanticRecord;
@@ -380,7 +382,7 @@ public class CoordinateStoreService {
 
     private Optional<SavedStampCoordinateResponse> deserializeStampSemantic(int sNid) {
         try {
-            Optional<Entity<?>> entityOpt = EntityService.get().packagePrivateGetEntity(sNid);
+            Optional<Entity<? extends EntityVersion>> entityOpt = EntityHandle.get(sNid).entity().filter(e -> !e.canceled());
             if (entityOpt.isEmpty() || !(entityOpt.get() instanceof SemanticEntity<?> sem) || sem.versions().isEmpty()) {
                 return Optional.empty();
             }
@@ -398,7 +400,7 @@ public class CoordinateStoreService {
 
     private Optional<SavedNavigationCoordinateResponse> deserializeNavigationSemantic(int sNid) {
         try {
-            Optional<Entity<?>> entityOpt = EntityService.get().packagePrivateGetEntity(sNid);
+            Optional<Entity<? extends EntityVersion>> entityOpt = EntityHandle.get(sNid).entity().filter(e -> !e.canceled());
             if (entityOpt.isEmpty() || !(entityOpt.get() instanceof SemanticEntity<?> sem) || sem.versions().isEmpty()) {
                 return Optional.empty();
             }
@@ -416,7 +418,7 @@ public class CoordinateStoreService {
 
     private Optional<SavedLanguageCoordinateResponse> deserializeLanguageSemantic(int sNid) {
         try {
-            Optional<Entity<?>> entityOpt = EntityService.get().packagePrivateGetEntity(sNid);
+            Optional<Entity<? extends EntityVersion>> entityOpt = EntityHandle.get(sNid).entity().filter(e -> !e.canceled());
             if (entityOpt.isEmpty() || !(entityOpt.get() instanceof SemanticEntity<?> sem) || sem.versions().isEmpty()) {
                 return Optional.empty();
             }

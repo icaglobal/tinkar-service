@@ -694,7 +694,7 @@ public class TinkarServiceImpl implements TinkarService {
         StampVersion.Builder stampBuilder = StampVersion.newBuilder();
 
         try {
-            Entity<?> entity = EntityService.get().getEntityFast(nid);
+            Entity<?> entity = EntityHandle.get(nid).orNull();
             if (entity != null && !entity.versions().isEmpty()) {
                 int stampNid = entity.versions().get(0).stampNid();
                 StampEntity<?> stampEntity = EntityService.get().getStampFast(stampNid);
@@ -715,7 +715,7 @@ public class TinkarServiceImpl implements TinkarService {
 
     private void setPublicIdIfPresent(StampVersion.Builder stampBuilder, int nid, String fieldType) {
         try {
-            Entity<?> entity = EntityService.get().getEntityFast(nid);
+            Entity<?> entity = EntityHandle.get(nid).orNull();
             if (entity != null && entity.publicId() != null) {
                 dev.ikm.tinkar.schema.PublicId protoPublicId = dev.ikm.tinkar.schema.PublicId.newBuilder()
                         .addUuids(entity.publicId().asUuidList().getFirst().toString())
@@ -923,7 +923,7 @@ public class TinkarServiceImpl implements TinkarService {
         try {
             PublicId publicId = primitive.getPublicId(conceptId);
             int nid = EntityService.get().nidForPublicId(publicId);
-            Entity<?> entity = EntityService.get().getEntityFast(nid);
+            Entity<?> entity = EntityHandle.get(nid).orNull();
             if (entity == null || entity.versions().isEmpty()) {
                 return null;
             }
@@ -1060,13 +1060,13 @@ public class TinkarServiceImpl implements TinkarService {
      */
     private String describeSemanticEntity(int nid, ViewCalculatorWithCache calc) {
         try {
-            Entity<?> entity = EntityService.get().getEntityFast(nid);
+            Entity<?> entity = EntityHandle.get(nid).orNull();
             if (!(entity instanceof SemanticEntity<?> semantic)) {
                 return null;
             }
             String patternName = getDescriptionForNid(semantic.patternNid(), calc);
             int referencedNid = semantic.referencedComponentNid();
-            Entity<?> referenced = EntityService.get().getEntityFast(referencedNid);
+            Entity<?> referenced = EntityHandle.get(referencedNid).orNull();
             String referencedName;
             if (referenced instanceof SemanticEntity<?> referencedSemantic) {
                 referencedName = getDescriptionForNid(referencedSemantic.patternNid(), calc) + " semantic";
@@ -1107,7 +1107,7 @@ public class TinkarServiceImpl implements TinkarService {
             TreeMap<Integer, String> dialectMatches = new TreeMap<>();
 
             for (int semanticNid : EntityService.get().semanticNidsForComponent(nid)) {
-                Entity<?> entity = EntityService.get().getEntityFast(semanticNid);
+                Entity<?> entity = EntityHandle.get(semanticNid).orNull();
                 if (!(entity instanceof SemanticEntity<?> semantic) || semantic.versions().isEmpty()) continue;
                 if (semantic.patternNid() != descPatternNid) continue;
                 var version = (SemanticEntityVersion) semantic.versions().get(0);
@@ -1131,7 +1131,7 @@ public class TinkarServiceImpl implements TinkarService {
 
                 // Check dialect acceptability semantics attached to this description semantic
                 for (int dialectSemNid : EntityService.get().semanticNidsForComponent(semanticNid)) {
-                    Entity<?> dEntity = EntityService.get().getEntityFast(dialectSemNid);
+                    Entity<?> dEntity = EntityHandle.get(dialectSemNid).orNull();
                     if (!(dEntity instanceof SemanticEntity<?> dSem) || dSem.versions().isEmpty()) continue;
                     int dialectPatNid = dSem.patternNid();
                     // manual indexOf since IntIdList has no indexOf method
@@ -1174,7 +1174,7 @@ public class TinkarServiceImpl implements TinkarService {
         try {
             int[] semanticNids = EntityService.get().semanticNidsForComponent(nid);
             for (int semanticNid : semanticNids) {
-                Entity<?> entity = EntityService.get().getEntityFast(semanticNid);
+                Entity<?> entity = EntityHandle.get(semanticNid).orNull();
                 if (!(entity instanceof SemanticEntity<?> semantic) || semantic.versions().isEmpty()) continue;
                 SemanticEntityVersion version = (SemanticEntityVersion) semantic.versions().get(0);
                 for (Object field : version.fieldValues()) {
@@ -1371,7 +1371,7 @@ public class TinkarServiceImpl implements TinkarService {
             int[] identifierSemantics = EntityService.get()
                     .semanticNidsForComponentOfPattern(nid, TinkarTerm.IDENTIFIER_PATTERN.nid());
             for (int identifierSemanticNid : identifierSemantics) {
-                Entity<?> entity = EntityService.get().getEntityFast(identifierSemanticNid);
+                Entity<?> entity = EntityHandle.get(identifierSemanticNid).orNull();
                 if (!(entity instanceof SemanticEntity<?> semantic) || semantic.versions().isEmpty()) {
                     continue;
                 }
@@ -1605,7 +1605,7 @@ public class TinkarServiceImpl implements TinkarService {
             // 1. Fetch the concept entity
             PublicId publicId = primitive.getPublicId(conceptId);
             int conceptNid = EntityService.get().nidForPublicId(publicId);
-            Entity<?> conceptEntity = EntityService.get().getEntityFast(conceptNid);
+            Entity<?> conceptEntity = EntityHandle.get(conceptNid).orNull();
             if (conceptEntity == null) {
                 return TinkarConceptEntityResponse.newBuilder()
                         .setSuccess(false)
@@ -1621,7 +1621,7 @@ public class TinkarServiceImpl implements TinkarService {
             Set<Integer> patternNids = new HashSet<>();
             for (int semanticNid : semanticNids) {
                 if (includedNids.contains(semanticNid)) continue;
-                Entity<?> semanticEntity = EntityService.get().getEntityFast(semanticNid);
+                Entity<?> semanticEntity = EntityHandle.get(semanticNid).orNull();
                 if (semanticEntity instanceof SemanticEntity<?> semantic) {
                     addToResponse(builder, transformer, includedNids, semantic);
                     patternNids.add(semantic.patternNid());
@@ -1646,7 +1646,7 @@ public class TinkarServiceImpl implements TinkarService {
             patternNids.add(EntityBinding.Stamp.Version.pattern().nid());
             for (int patternNid : patternNids) {
                 if (includedNids.contains(patternNid)) continue;
-                Entity<?> patternEntity = EntityService.get().getEntityFast(patternNid);
+                Entity<?> patternEntity = EntityHandle.get(patternNid).orNull();
                 if (patternEntity != null) {
                     addToResponse(builder, transformer, includedNids, patternEntity);
                     patternEntity.versions().forEach(v -> {
@@ -1665,7 +1665,7 @@ public class TinkarServiceImpl implements TinkarService {
                             patternNid, TinkarTerm.DESCRIPTION_PATTERN.nid());
                     for (int patDescNid : patDescNids) {
                         if (includedNids.contains(patDescNid)) continue;
-                        Entity<?> descEntity = EntityService.get().getEntityFast(patDescNid);
+                        Entity<?> descEntity = EntityHandle.get(patDescNid).orNull();
                         if (descEntity instanceof SemanticEntity<?> descSem) {
                             addToResponse(builder, transformer, includedNids, descSem);
                             descSem.versions().forEach(v -> stampNids.add(v.stampNid()));
@@ -1694,14 +1694,14 @@ public class TinkarServiceImpl implements TinkarService {
             Set<Integer> descStampNids = new HashSet<>();
             for (int refNid : referencedNids) {
                 if (includedNids.contains(refNid)) continue;
-                Entity<?> refEntity = EntityService.get().getEntityFast(refNid);
+                Entity<?> refEntity = EntityHandle.get(refNid).orNull();
                 if (refEntity == null) continue;
                 addToResponse(builder, transformer, includedNids, refEntity);
                 // Include description semantics so text() lookups work on the client
                 int[] descSemNids = EntityService.get().semanticNidsForComponent(refNid);
                 for (int descSemNid : descSemNids) {
                     if (includedNids.contains(descSemNid)) continue;
-                    Entity<?> descEntity = EntityService.get().getEntityFast(descSemNid);
+                    Entity<?> descEntity = EntityHandle.get(descSemNid).orNull();
                     if (descEntity instanceof SemanticEntity<?> descSem) {
                         addToResponse(builder, transformer, includedNids, descSem);
                         descSem.versions().forEach(v -> descStampNids.add(v.stampNid()));
@@ -1712,7 +1712,7 @@ public class TinkarServiceImpl implements TinkarService {
             // 6. Stamps for the referenced-entity description semantics
             for (int descStampNid : descStampNids) {
                 if (includedNids.contains(descStampNid)) continue;
-                Entity<?> stampEntity = EntityService.get().getEntityFast(descStampNid);
+                Entity<?> stampEntity = EntityHandle.get(descStampNid).orNull();
                 if (stampEntity != null) {
                     addToResponse(builder, transformer, includedNids, stampEntity);
                 }
@@ -1727,7 +1727,7 @@ public class TinkarServiceImpl implements TinkarService {
             //    enough for state-filtering and preferred-description-text lookups in the UI.
             Set<Integer> navNeighborNids = new HashSet<>();
             for (int semanticNid : semanticNids) {
-                Entity<?> sem = EntityService.get().getEntityFast(semanticNid);
+                Entity<?> sem = EntityHandle.get(semanticNid).orNull();
                 if (!(sem instanceof SemanticEntity<?> semantic)) continue;
                 int patNid = semantic.patternNid();
                 if (patNid != TinkarTerm.INFERRED_NAVIGATION_PATTERN.nid() &&
@@ -1745,7 +1745,7 @@ public class TinkarServiceImpl implements TinkarService {
             Set<Integer> navStampNids = new HashSet<>();
             for (int neighborNid : navNeighborNids) {
                 if (includedNids.contains(neighborNid)) continue;
-                Entity<?> neighborEntity = EntityService.get().getEntityFast(neighborNid);
+                Entity<?> neighborEntity = EntityHandle.get(neighborNid).orNull();
                 if (neighborEntity == null) continue;
                 addToResponse(builder, transformer, includedNids, neighborEntity);
                 neighborEntity.versions().forEach(v -> navStampNids.add(v.stampNid()));
@@ -1754,7 +1754,7 @@ public class TinkarServiceImpl implements TinkarService {
                         neighborNid, TinkarTerm.DESCRIPTION_PATTERN.nid());
                 for (int neighborDescNid : neighborDescNids) {
                     if (includedNids.contains(neighborDescNid)) continue;
-                    Entity<?> descEntity = EntityService.get().getEntityFast(neighborDescNid);
+                    Entity<?> descEntity = EntityHandle.get(neighborDescNid).orNull();
                     if (descEntity instanceof SemanticEntity<?> descSem) {
                         addToResponse(builder, transformer, includedNids, descSem);
                         descSem.versions().forEach(v -> navStampNids.add(v.stampNid()));
@@ -1763,7 +1763,7 @@ public class TinkarServiceImpl implements TinkarService {
             }
             for (int navStampNid : navStampNids) {
                 if (includedNids.contains(navStampNid)) continue;
-                Entity<?> stampEntity = EntityService.get().getEntityFast(navStampNid);
+                Entity<?> stampEntity = EntityHandle.get(navStampNid).orNull();
                 if (stampEntity != null) {
                     addToResponse(builder, transformer, includedNids, stampEntity);
                 }
@@ -1789,7 +1789,7 @@ public class TinkarServiceImpl implements TinkarService {
 
             PublicId publicId = primitive.getPublicId(entityId);
             int nid = EntityService.get().nidForPublicId(publicId);
-            Entity<?> entity = EntityService.get().getEntityFast(nid);
+            Entity<?> entity = EntityHandle.get(nid).orNull();
             if (entity == null) {
                 return TinkarConceptEntityResponse.newBuilder()
                         .setSuccess(false)
@@ -1815,7 +1815,7 @@ public class TinkarServiceImpl implements TinkarService {
                 if (includedNids.contains(descriptionNid)) {
                     continue;
                 }
-                Entity<?> descriptionEntity = EntityService.get().getEntityFast(descriptionNid);
+                Entity<?> descriptionEntity = EntityHandle.get(descriptionNid).orNull();
                 if (descriptionEntity != null) {
                     addToResponse(builder, transformer, includedNids, descriptionEntity);
                     descriptionEntity.versions().forEach(v -> stampNids.add(v.stampNid()));
@@ -1909,7 +1909,7 @@ public class TinkarServiceImpl implements TinkarService {
 
     private TinkarConceptSemanticInfo buildSemanticInfoProto(int semanticNid, ViewCalculatorWithCache calc) {
         try {
-            Entity<?> entity = EntityService.get().getEntityFast(semanticNid);
+            Entity<?> entity = EntityHandle.get(semanticNid).orNull();
             if (!(entity instanceof SemanticEntity<?> semanticEntity)) {
                 return null;
             }
@@ -2104,7 +2104,7 @@ public class TinkarServiceImpl implements TinkarService {
     private ConceptChangeHistoryResponse.SemanticChangeHistory buildSemanticChangeHistory(
             int semanticNid, ViewCalculatorWithCache calc) {
         try {
-            Entity<?> entity = EntityService.get().getEntityFast(semanticNid);
+            Entity<?> entity = EntityHandle.get(semanticNid).orNull();
             if (!(entity instanceof SemanticEntity<?> semanticEntity)) {
                 return null;
             }
@@ -2328,7 +2328,7 @@ public class TinkarServiceImpl implements TinkarService {
 
                 if (parentNavSemantics.length > 0) {
                     // Parent already has a navigation semantic - update it by adding the new child
-                    Entity<?> existingEntity = EntityService.get().getEntityFast(parentNavSemantics[0]);
+                    Entity<?> existingEntity = EntityHandle.get(parentNavSemantics[0]).orNull();
                     SemanticEntity<?> existingSemantic = (SemanticEntity<?>) existingEntity;
                     navSemanticUuid = existingSemantic.publicId().asUuidArray()[0];
 
@@ -2346,8 +2346,8 @@ public class TinkarServiceImpl implements TinkarService {
                 } else {
                     // Parent doesn't have a navigation semantic yet - create a new one
                     navSemanticUuid = dev.ikm.tinkar.common.util.uuid.UuidT5Generator.singleSemanticUuid(
-                            EntityService.get().getEntityFast(TinkarTerm.INFERRED_NAVIGATION_PATTERN.nid()),
-                            EntityService.get().getEntityFast(parentNid));
+                            EntityHandle.get(TinkarTerm.INFERRED_NAVIGATION_PATTERN.nid()).expectPattern(),
+                            EntityHandle.get(parentNid).expectEntity());
                     destinationSet = IntIds.set.of(newConceptNid);
                     originSet = IntIds.set.empty();
                 }
@@ -2430,7 +2430,7 @@ public class TinkarServiceImpl implements TinkarService {
             }
 
             // Get the existing semantic
-            Entity<?> existingEntity = EntityService.get().getEntityFast(parentNavSemantics[0]);
+            Entity<?> existingEntity = EntityHandle.get(parentNavSemantics[0]).orNull();
             log.debug("removeDescendant: existingEntity type={}", existingEntity != null ? existingEntity.getClass().getSimpleName() : "null");
 
             if (!(existingEntity instanceof SemanticEntity<?> existingSemantic)) {
@@ -2949,7 +2949,7 @@ public class TinkarServiceImpl implements TinkarService {
         for (String parentId : parentConceptIds) {
             PublicId parentPublicId = primitive.getPublicId(parentId);
             int parentNid = EntityService.get().nidForPublicId(parentPublicId);
-            parents.add(EntityProxy.Concept.make(EntityService.get().getEntityFast(parentNid).publicId()));
+            parents.add(EntityProxy.Concept.make(EntityHandle.get(parentNid).expectEntity().publicId()));
         }
         return parents;
     }

@@ -3,7 +3,7 @@ package dev.ikm.tinkar.service.service;
 import dev.ikm.tinkar.common.id.PublicId;
 import dev.ikm.tinkar.common.service.PrimitiveData;
 import dev.ikm.tinkar.common.service.PrimitiveDataService;
-import dev.ikm.tinkar.entity.EntityService;
+import dev.ikm.tinkar.entity.EntityHandle;
 
 import java.util.OptionalInt;
 
@@ -40,7 +40,7 @@ public final class KnownComponents {
             return OptionalInt.empty();
         }
         int nid = store.nidForPublicId(publicId);
-        return EntityService.get().getEntityFast(nid) == null ? OptionalInt.empty() : OptionalInt.of(nid);
+        return EntityHandle.get(nid).isAbsent() ? OptionalInt.empty() : OptionalInt.of(nid);
     }
 
     /**
