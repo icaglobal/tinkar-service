@@ -42,6 +42,7 @@ import dev.ikm.tinkar.service.service.TinkarService;
 import dev.ikm.tinkar.entity.graph.DiTreeEntity;
 import dev.ikm.tinkar.entity.graph.DiTreeText;
 import dev.ikm.tinkar.entity.graph.EntityVertex;
+import dev.ikm.tinkar.terms.EntityBinding;
 import dev.ikm.tinkar.terms.EntityFacade;
 import dev.ikm.tinkar.terms.EntityProxy;
 import dev.ikm.tinkar.terms.TinkarTerm;
@@ -1638,10 +1639,11 @@ public class TinkarServiceImpl implements TinkarService {
             //    Also collect field-definition dataType/purpose/meaning concept NIDs so the
             //    client can resolve FieldDefinitionForEntity.dataType(), .purpose(), .meaning()
             //    without hitting getConceptOrThrow on absent entities.
-            //    Always include STAMP_PATTERN — required by StampCalculator.changeChronology()
-            //    to determine what fields stamps contain. Without it, latest(STAMP_PATTERN)
-            //    returns empty and the History tab shows nothing in gRPC mode.
-            patternNids.add(TinkarTerm.STAMP_PATTERN.nid());
+            //    Always include the stamp version pattern — required by
+            //    StampCalculator.changeChronology() to determine what fields stamps contain.
+            //    Without it, latest(stamp version pattern) returns empty and the History tab
+            //    shows nothing in gRPC mode.
+            patternNids.add(EntityBinding.Stamp.Version.pattern().nid());
             for (int patternNid : patternNids) {
                 if (includedNids.contains(patternNid)) continue;
                 Entity<?> patternEntity = EntityService.get().getEntityFast(patternNid);

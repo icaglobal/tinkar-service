@@ -364,7 +364,7 @@ public class KnowledgeGraphRestController {
 
     @Operation(summary = "Load full entity graph for a concept",
             description = "Returns the complete binary entity graph (concept + semantics + patterns + stamps + " +
-                    "navigation neighbors + STAMP_PATTERN) as serialized protobuf bytes " +
+                    "navigation neighbors + the stamp version pattern) as serialized protobuf bytes " +
                     "(Content-Type: application/x-protobuf). Deserialize as TinkarConceptEntityResponse " +
                     "and load entities into a local entity store to power the concept detail view, " +
                     "Hierarchy tab, and History tab.")
