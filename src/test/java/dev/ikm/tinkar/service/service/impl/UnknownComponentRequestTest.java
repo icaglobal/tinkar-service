@@ -58,7 +58,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * store the service uses by default does, so a request added to the store and was then answered
  * as though the component existed; the write endpoints wrote on a concept that does not exist.
  *
- * <p>The tests run the service, with no part of it replaced, against the Tinkar starter data.
+ * <p>The tests run the service, with no part of it replaced, against the IKE starter set.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class UnknownComponentRequestTest {

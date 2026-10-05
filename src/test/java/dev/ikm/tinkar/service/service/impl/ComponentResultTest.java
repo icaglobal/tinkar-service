@@ -37,7 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * A component in a search, child, descendant, or entity response is described from the store:
  * its public id, its descriptions as the default view gives them, and the stamp of its version.
  *
- * <p>The tests run the service, with no part of it replaced, against the Tinkar starter data, so
+ * <p>The tests run the service, with no part of it replaced, against the IKE starter set, so
  * each result is assembled through the same lookups a running service uses.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)

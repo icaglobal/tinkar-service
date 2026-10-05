@@ -72,7 +72,7 @@ import static org.assertj.core.api.Assertions.fail;
  * named by its first UUID, and a component the store has no public id for is written as
  * {@code unidentified component}.
  *
- * <p>The tests run the service, with no part of it replaced, against the Tinkar starter data in
+ * <p>The tests run the service, with no part of it replaced, against the IKE starter set in
  * an ephemeral store. Every concept of the starter data has a description, so the fallbacks are
  * reached with components written here: a concept with no description, and semantics that hold
  * it in a component field, in an id set, and in a definition tree.
