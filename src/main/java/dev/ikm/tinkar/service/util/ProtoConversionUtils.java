@@ -13,7 +13,9 @@ import dev.ikm.tinkar.service.proto.TinkarMatchingSemantic;
 import dev.ikm.tinkar.service.proto.TinkarSearchResult;
 import dev.ikm.tinkar.service.proto.TinkarSemanticSearchResult;
 
+import java.util.Comparator;
 import java.util.List;
+import java.util.UUID;
 
 public final class ProtoConversionUtils {
 
@@ -45,15 +47,46 @@ public final class ProtoConversionUtils {
     }
 
     private static Stamp toStampDto(StampVersion proto) {
-        String statusPublicId = proto.hasStatusPublicId() && !proto.getStatusPublicId().getUuidsList().isEmpty()
-                ? proto.getStatusPublicId().getUuids(0) : null;
-        String authorPublicId = proto.hasAuthorPublicId() && !proto.getAuthorPublicId().getUuidsList().isEmpty()
-                ? proto.getAuthorPublicId().getUuids(0) : null;
-        String modulePublicId = proto.hasModulePublicId() && !proto.getModulePublicId().getUuidsList().isEmpty()
-                ? proto.getModulePublicId().getUuids(0) : null;
-        String pathPublicId = proto.hasPathPublicId() && !proto.getPathPublicId().getUuidsList().isEmpty()
-                ? proto.getPathPublicId().getUuids(0) : null;
+        String statusPublicId = proto.hasStatusPublicId() ? leastUuid(proto.getStatusPublicId()) : null;
+        String authorPublicId = proto.hasAuthorPublicId() ? leastUuid(proto.getAuthorPublicId()) : null;
+        String modulePublicId = proto.hasModulePublicId() ? leastUuid(proto.getModulePublicId()) : null;
+        String pathPublicId = proto.hasPathPublicId() ? leastUuid(proto.getPathPublicId()) : null;
         return new Stamp(statusPublicId, authorPublicId, modulePublicId, pathPublicId, proto.getTime());
+    }
+
+    /**
+     * The one UUID of a wire public id that stands for its component where a single UUID must
+     * (a DTO field, a lookup handle). Any of a public id's UUIDs identifies the component; the
+     * least, by {@link UUID#compareTo}, is chosen so the result does not depend on the order
+     * the UUIDs are listed in — as {@code PublicId.leastUuid()} chooses.
+     *
+     * <p>The text is passed through as the wire carries it: an element that is not a UUID is
+     * not refused here, but left for whatever resolves it to refuse, and is chosen only when
+     * no element is a UUID.
+     *
+     * @param publicId a wire public id, or null
+     * @return the least UUID as a string, or null when the public id is null or lists none
+     */
+    public static String leastUuid(dev.ikm.tinkar.schema.PublicId publicId) {
+        if (publicId == null) {
+            return null;
+        }
+        return publicId.getUuidsList().stream()
+                .min(BY_UUID)
+                .orElse(null);
+    }
+
+    /** UUID text by {@link UUID#compareTo}; text that is not a UUID after every UUID, by text. */
+    private static final Comparator<String> BY_UUID = Comparator
+            .comparing(ProtoConversionUtils::parse, Comparator.nullsLast(Comparator.<UUID>naturalOrder()))
+            .thenComparing(Comparator.naturalOrder());
+
+    private static UUID parse(String text) {
+        try {
+            return UUID.fromString(text);
+        } catch (IllegalArgumentException notAUuid) {
+            return null;
+        }
     }
 
     // ── Sort option conversion ────────────────────────────────────────────────

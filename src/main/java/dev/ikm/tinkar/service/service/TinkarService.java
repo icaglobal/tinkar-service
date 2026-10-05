@@ -172,7 +172,7 @@ public interface TinkarService {
      * The caller can load these entities into a local entity store (e.g. an ephemeral provider) and
      * then use the standard concept detail view to display the concept.
      *
-     * @param conceptId the first UUID string of the concept's public ID
+     * @param conceptId a UUID string of the concept's public ID (any of its UUIDs identifies it)
      * @return TinkarConceptEntityResponse containing all TinkarMsg entities
      */
     dev.ikm.tinkar.service.proto.TinkarConceptEntityResponse loadConceptEntityGraph(String conceptId);
@@ -183,7 +183,7 @@ public interface TinkarService {
      * already in the local in-memory store, this call fetches just that entity (not a full concept
      * graph) so the client can cache and return the bytes.
      *
-     * @param entityId the first UUID string of the entity's public ID
+     * @param entityId a UUID string of the entity's public ID (any of its UUIDs identifies it)
      * @return TinkarConceptEntityResponse containing the entity and its stamps
      */
     dev.ikm.tinkar.service.proto.TinkarConceptEntityResponse getEntityByPublicId(String entityId);

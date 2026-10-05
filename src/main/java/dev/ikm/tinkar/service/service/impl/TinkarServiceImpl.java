@@ -39,6 +39,7 @@ import dev.ikm.tinkar.service.proto.TinkarSearchQueryResponse;
 import dev.ikm.tinkar.service.service.TinkarPrimitive;
 import dev.ikm.tinkar.service.service.ReasonerPhaseListener;
 import dev.ikm.tinkar.service.service.TinkarService;
+import dev.ikm.tinkar.service.util.ProtoConversionUtils;
 import dev.ikm.tinkar.entity.graph.DiTreeEntity;
 import dev.ikm.tinkar.entity.graph.DiTreeText;
 import dev.ikm.tinkar.entity.graph.EntityVertex;
@@ -629,11 +630,7 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     private TinkarSearchResult publicIdToSearchResult(PublicId publicId, ViewCalculatorWithCache calc) {
-        dev.ikm.tinkar.schema.PublicId protoPublicId = dev.ikm.tinkar.schema.PublicId.newBuilder()
-                .addAllUuids(publicId.asUuidList().stream()
-                        .map(java.util.UUID::toString)
-                        .toList())
-                .build();
+        dev.ikm.tinkar.schema.PublicId protoPublicId = protoPublicId(publicId);
 
         int nid;
         try {
@@ -717,9 +714,7 @@ public class TinkarServiceImpl implements TinkarService {
         try {
             Entity<?> entity = EntityHandle.get(nid).orNull();
             if (entity != null && entity.publicId() != null) {
-                dev.ikm.tinkar.schema.PublicId protoPublicId = dev.ikm.tinkar.schema.PublicId.newBuilder()
-                        .addUuids(entity.publicId().asUuidList().getFirst().toString())
-                        .build();
+                dev.ikm.tinkar.schema.PublicId protoPublicId = protoPublicId(entity.publicId());
 
                 switch (fieldType) {
                     case "status" -> stampBuilder.setStatusPublicId(protoPublicId);
@@ -952,26 +947,42 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     /**
-     * The first UUID of a component's public id.
+     * A wire public id carrying every UUID of a component's public id. Any of them identifies the
+     * component, so none is dropped.
+     *
+     * @param publicId the component's public id
+     * @return the wire public id, listing every UUID
+     */
+    private static dev.ikm.tinkar.schema.PublicId protoPublicId(PublicId publicId) {
+        return dev.ikm.tinkar.schema.PublicId.newBuilder()
+                .addAllUuids(publicId.asUuidList().stream()
+                        .map(UUID::toString)
+                        .toList())
+                .build();
+    }
+
+    /**
+     * The one UUID that stands for a component in response text: the least of its public id's
+     * UUIDs ({@link PublicId#leastUuid()}). Any of them resolves the component; the least is
+     * chosen so the text does not depend on the order the store lists them in.
      *
      * @param nid the component's nid in this store
-     * @return the first UUID, or empty when the store has no public id for the nid
+     * @return the least UUID, or empty when the store has no public id for the nid
      */
-    private static Optional<UUID> firstUuidFor(int nid) {
+    private static Optional<UUID> leastUuidFor(int nid) {
         try {
             PublicId publicId = PrimitiveData.publicId(nid);
-            if (publicId == null) {
+            if (publicId == null || publicId.uuidCount() == 0) {
                 return Optional.empty();
             }
-            UUID[] uuids = publicId.asUuidArray();
-            return uuids.length > 0 ? Optional.of(uuids[0]) : Optional.empty();
+            return Optional.of(publicId.leastUuid());
         } catch (RuntimeException unresolvable) {
             return Optional.empty();
         }
     }
 
     /**
-     * The identifier written for a component in response text: its first UUID.
+     * The identifier written for a component in response text: the least of its UUIDs.
      *
      * <p>A nid is local to this store. The caller holds another store, or none, and response
      * text is kept — in gRPC mode it is what the assistant's tools return — so a component is
@@ -980,11 +991,11 @@ public class TinkarServiceImpl implements TinkarService {
      * so a component reads the same in both modes.
      *
      * @param nid the component's nid in this store
-     * @return the first UUID as a string, or {@link #UNIDENTIFIED} when the store has no public
+     * @return the least UUID as a string, or {@link #UNIDENTIFIED} when the store has no public
      *         id for the nid; never a nid
      */
     static String identifierFor(int nid) {
-        return firstUuidFor(nid).map(UUID::toString).orElse(UNIDENTIFIED);
+        return leastUuidFor(nid).map(UUID::toString).orElse(UNIDENTIFIED);
     }
 
     /**
@@ -1350,7 +1361,7 @@ public class TinkarServiceImpl implements TinkarService {
         if (sctid != null) {
             return "[SCTID " + sctid + "]";
         }
-        return firstUuidFor(nid)
+        return leastUuidFor(nid)
                 .map(uuid -> "[UUID " + uuid + "]")
                 .orElse("[" + UNIDENTIFIED + "]");
     }
@@ -1463,13 +1474,11 @@ public class TinkarServiceImpl implements TinkarService {
 
     private ConceptSemanticsResponse convertProtoToDto(TinkarConceptSemanticsResponse proto) {
         if (!proto.getSuccess()) {
-            String conceptId = proto.getConceptPublicId().getUuidsCount() > 0
-                    ? proto.getConceptPublicId().getUuids(0) : null;
+            String conceptId = ProtoConversionUtils.leastUuid(proto.getConceptPublicId());
             return ConceptSemanticsResponse.error(conceptId, proto.getErrorMessage());
         }
 
-        String conceptId = proto.getConceptPublicId().getUuidsCount() > 0
-                ? proto.getConceptPublicId().getUuids(0) : null;
+        String conceptId = ProtoConversionUtils.leastUuid(proto.getConceptPublicId());
 
         List<SemanticInfo> semantics = new ArrayList<>();
         for (TinkarConceptSemanticInfo protoSemantic : proto.getSemanticsList()) {
@@ -1480,8 +1489,7 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     private SemanticInfo convertProtoSemanticToDto(TinkarConceptSemanticInfo protoSemantic) {
-        String semanticId = protoSemantic.getSemanticPublicId().getUuidsCount() > 0
-                ? protoSemantic.getSemanticPublicId().getUuids(0) : null;
+        String semanticId = ProtoConversionUtils.leastUuid(protoSemantic.getSemanticPublicId());
 
         List<FieldValue> fields = new ArrayList<>();
         for (int i = 0; i < protoSemantic.getFieldsCount(); i++) {
@@ -1896,14 +1904,11 @@ public class TinkarServiceImpl implements TinkarService {
             }
             SemanticEntityVersion latestVersion = latestResult.get();
 
-            // Get the semantic's public ID
-            String semanticId = semanticEntity.publicId().asUuidList().get(0).toString();
-
             // Get the pattern name
             String patternName = getDescriptionForNid(semanticEntity.patternNid(), calc);
 
             TinkarConceptSemanticInfo.Builder semanticBuilder = TinkarConceptSemanticInfo.newBuilder()
-                    .setSemanticPublicId(dev.ikm.tinkar.schema.PublicId.newBuilder().addUuids(semanticId).build())
+                    .setSemanticPublicId(protoPublicId(semanticEntity.publicId()))
                     .setPatternName(patternName);
 
             // Build field values
@@ -2084,8 +2089,8 @@ public class TinkarServiceImpl implements TinkarService {
                 return null;
             }
 
-            // Get the semantic's public ID
-            String semanticId = semanticEntity.publicId().asUuidList().get(0).toString();
+            // The semantic's identifier in response text
+            String semanticId = identifierFor(semanticNid);
 
             // Get the pattern name
             String patternName = getDescriptionForNid(semanticEntity.patternNid(), calc);
@@ -2300,12 +2305,12 @@ public class TinkarServiceImpl implements TinkarService {
 
                 IntIdSet destinationSet;
                 IntIdSet originSet;
-                UUID navSemanticUuid;
+                PublicId navSemanticId;
 
                 if (parentNavSemantic.isPresent()) {
                     // Parent already has a navigation semantic - update it by adding the new child
                     SemanticEntity<SemanticEntityVersion> existingSemantic = parentNavSemantic.get();
-                    navSemanticUuid = existingSemantic.publicId().asUuidArray()[0];
+                    navSemanticId = existingSemantic.publicId();
 
                     // Get the existing field values
                     SemanticEntityVersion latestVersion = existingSemantic.versions().get(
@@ -2320,16 +2325,15 @@ public class TinkarServiceImpl implements TinkarService {
                     originSet = existingOrigin;
                 } else {
                     // Parent doesn't have a navigation semantic yet - create a new one
-                    navSemanticUuid = dev.ikm.tinkar.common.util.uuid.UuidT5Generator.singleSemanticUuid(
+                    navSemanticId = PublicIds.of(dev.ikm.tinkar.common.util.uuid.UuidT5Generator.singleSemanticUuid(
                             EntityHandle.get(TinkarTerm.INFERRED_NAVIGATION_PATTERN.nid()).expectPattern(),
-                            EntityHandle.get(parentNid).expectEntity());
+                            EntityHandle.get(parentNid).expectEntity()));
                     destinationSet = IntIds.set.of(newConceptNid);
                     originSet = IntIds.set.empty();
                 }
 
-                SemanticRecord navSemantic = SemanticRecord.build(
-                        navSemanticUuid,
-                        TinkarTerm.INFERRED_NAVIGATION_PATTERN.nid(),  // Use INFERRED pattern (default coordinate)
+                SemanticRecord navSemantic = navigationSemantic(
+                        navSemanticId,
                         parentNid,  // Attached to PARENT, not child
                         stamp.versions().get(0),
                         Lists.immutable.of(destinationSet, originSet)
@@ -2468,10 +2472,8 @@ public class TinkarServiceImpl implements TinkarService {
                         TinkarTerm.DEVELOPMENT_PATH.nid()
                 );
 
-                UUID navSemanticUuid = existingSemantic.publicId().asUuidArray()[0];
-                SemanticRecord navSemantic = SemanticRecord.build(
-                        navSemanticUuid,
-                        TinkarTerm.INFERRED_NAVIGATION_PATTERN.nid(),
+                SemanticRecord navSemantic = navigationSemantic(
+                        existingSemantic.publicId(),
                         parentNid,
                         stamp.versions().get(0),
                         Lists.immutable.of(newDestinationSet, existingOrigin)
@@ -2510,6 +2512,27 @@ public class TinkarServiceImpl implements TinkarService {
                     descendantConceptId, parentConceptId, e.getMessage(), e);
             return DescendantOperationResponse.error(parentConceptId, descendantConceptId, e.getMessage());
         }
+    }
+
+    /**
+     * An {@link TinkarTerm#INFERRED_NAVIGATION_PATTERN} semantic with one version. When it
+     * rewrites a navigation semantic the store already holds, it keeps that semantic's whole
+     * public id: every UUID identifies it, so none may be dropped.
+     *
+     * @param semanticId   the semantic's public id
+     * @param parentNid    the concept the semantic is attached to
+     * @param stampVersion the version's stamp
+     * @param fields       the destination and origin sets
+     * @return the semantic record
+     */
+    private static SemanticRecord navigationSemantic(PublicId semanticId, int parentNid,
+                                                     StampEntityVersion stampVersion,
+                                                     org.eclipse.collections.api.list.ImmutableList<Object> fields) {
+        RecordListBuilder<SemanticVersionRecord> versionRecords = RecordListBuilder.make();
+        SemanticRecord semanticRecord = SemanticRecord.makeNew(semanticId,
+                TinkarTerm.INFERRED_NAVIGATION_PATTERN.nid(), parentNid, versionRecords);
+        versionRecords.add(new SemanticVersionRecord(semanticRecord, stampVersion.stampNid(), fields)).build();
+        return semanticRecord;
     }
 
     // ── Admin: Import / Export / Reasoner ────────────────────────────
@@ -2876,8 +2899,9 @@ public class TinkarServiceImpl implements TinkarService {
                     fullyQualifiedName,
                     resolved.values().stream()
                             .flatMap(List::stream)
-                            .map(parent -> parent.publicId().asUuidArray()[0].toString())
+                            .mapToInt(EntityProxy.Concept::nid)
                             .distinct()
+                            .mapToObj(TinkarServiceImpl::identifierFor)
                             .toList());
         } catch (Exception e) {
             log.error("Failed to create concept '{}': {}", fullyQualifiedName, e.getMessage(), e);

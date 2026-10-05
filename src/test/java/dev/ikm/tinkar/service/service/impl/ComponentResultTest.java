@@ -84,25 +84,26 @@ class ComponentResultTest {
                 .hasSize(1);
         StampEntity stamp = EntityHandle.getStampOrThrow(active.versions().getFirst().stampNid());
 
-        TinkarSearchQueryResponse response = service.getEntity(firstUuid(TinkarTerm.ACTIVE_STATE.publicId()));
+        TinkarSearchQueryResponse response = service.getEntity(anyUuid(TinkarTerm.ACTIVE_STATE.publicId()));
 
         assertThat(response.getSuccess()).as(response.getErrorMessage()).isTrue();
         assertThat(response.getResultsList()).hasSize(1);
         TinkarSearchResult result = response.getResults(0);
         SoftAssertions each = new SoftAssertions();
         each.assertThat(result.getPublicId().getUuidsList()).as("public id")
-                .containsExactlyElementsOf(uuidStrings(active.publicId()));
+                .containsExactlyInAnyOrderElementsOf(uuidStrings(active.publicId()));
         assertNamedAsTheDefaultViewNamesIt(each, result, active.nid());
         StampVersion reported = result.getStamp();
         each.assertThat(reported.getTime()).as("stamp time").isEqualTo(stamp.time());
-        each.assertThat(reported.getStatusPublicId().getUuids(0)).as("status")
-                .isEqualTo(firstUuid(EntityHandle.get(stamp.stateNid()).expectEntity().publicId()));
-        each.assertThat(reported.getAuthorPublicId().getUuids(0)).as("author")
-                .isEqualTo(firstUuid(EntityHandle.get(stamp.authorNid()).expectEntity().publicId()));
-        each.assertThat(reported.getModulePublicId().getUuids(0)).as("module")
-                .isEqualTo(firstUuid(EntityHandle.get(stamp.moduleNid()).expectEntity().publicId()));
-        each.assertThat(reported.getPathPublicId().getUuids(0)).as("path")
-                .isEqualTo(firstUuid(EntityHandle.get(stamp.pathNid()).expectEntity().publicId()));
+        // Each part of the stamp carries every UUID of its public id.
+        each.assertThat(reported.getStatusPublicId().getUuidsList()).as("status")
+                .containsExactlyInAnyOrderElementsOf(uuidStrings(EntityHandle.get(stamp.stateNid()).expectEntity().publicId()));
+        each.assertThat(reported.getAuthorPublicId().getUuidsList()).as("author")
+                .containsExactlyInAnyOrderElementsOf(uuidStrings(EntityHandle.get(stamp.authorNid()).expectEntity().publicId()));
+        each.assertThat(reported.getModulePublicId().getUuidsList()).as("module")
+                .containsExactlyInAnyOrderElementsOf(uuidStrings(EntityHandle.get(stamp.moduleNid()).expectEntity().publicId()));
+        each.assertThat(reported.getPathPublicId().getUuidsList()).as("path")
+                .containsExactlyInAnyOrderElementsOf(uuidStrings(EntityHandle.get(stamp.pathNid()).expectEntity().publicId()));
         each.assertAll();
     }
 
@@ -111,7 +112,7 @@ class ComponentResultTest {
         List<PublicId> children = primitive.childrenOf(TinkarTerm.STATUS_VALUE.publicId());
         assertThat(children).as("precondition: the status value concept has children").isNotEmpty();
 
-        TinkarSearchQueryResponse response = service.getChildConcepts(firstUuid(TinkarTerm.STATUS_VALUE.publicId()));
+        TinkarSearchQueryResponse response = service.getChildConcepts(anyUuid(TinkarTerm.STATUS_VALUE.publicId()));
 
         assertDescribesEach(response, children);
     }
@@ -122,7 +123,7 @@ class ComponentResultTest {
         assertThat(descendants).as("precondition: the status value concept has descendants").isNotEmpty();
 
         TinkarSearchQueryResponse response =
-                service.getDescendantConcepts(firstUuid(TinkarTerm.STATUS_VALUE.publicId()));
+                service.getDescendantConcepts(anyUuid(TinkarTerm.STATUS_VALUE.publicId()));
 
         assertDescribesEach(response, descendants);
     }
@@ -135,14 +136,14 @@ class ComponentResultTest {
             PublicId publicId = expected.get(i);
             TinkarSearchResult result = response.getResults(i);
             each.assertThat(result.getPublicId().getUuidsList()).as("public id of result " + i)
-                    .containsExactlyElementsOf(uuidStrings(publicId));
+                    .containsExactlyInAnyOrderElementsOf(uuidStrings(publicId));
             Entity<?> entity = EntityHandle.get(publicId).expectEntity();
             assertNamedAsTheDefaultViewNamesIt(each, result, entity.nid());
             // The service reports the stamp of the entity's first version.
             StampEntity stamp = EntityHandle.getStampOrThrow(entity.versions().getFirst().stampNid());
             each.assertThat(result.getStamp().getTime()).as("stamp time of " + publicId).isEqualTo(stamp.time());
-            each.assertThat(result.getStamp().getStatusPublicId().getUuids(0)).as("status of " + publicId)
-                    .isEqualTo(firstUuid(EntityHandle.get(stamp.stateNid()).expectEntity().publicId()));
+            each.assertThat(result.getStamp().getStatusPublicId().getUuidsList()).as("status of " + publicId)
+                    .containsExactlyInAnyOrderElementsOf(uuidStrings(EntityHandle.get(stamp.stateNid()).expectEntity().publicId()));
         }
         each.assertAll();
     }
@@ -156,8 +157,9 @@ class ComponentResultTest {
                 .isEqualTo(names.getRegularDescriptionText(nid).orElse(""));
     }
 
-    private static String firstUuid(PublicId publicId) {
-        return publicId.asUuidList().getFirst().toString();
+    /** A request may name a component by any of its UUIDs; the least is as good as any. */
+    private static String anyUuid(PublicId publicId) {
+        return publicId.leastUuid().toString();
     }
 
     private static List<String> uuidStrings(PublicId publicId) {

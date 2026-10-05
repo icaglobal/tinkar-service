@@ -141,12 +141,12 @@ public final class TinkarPrimitiveImpl implements TinkarPrimitive {
         if (log.isInfoEnabled()) {
             log.debug(
                     "Descendants of ID: {}, Description: {}",
-                    parentConceptId.asUuidList().getFirst(),
+                    parentConceptId.idString(),
                     this.descriptionsOf(Collections.singletonList(parentConceptId))
                             .getFirst());
             descendants.forEach(descendant -> {
                 List<String> strings = this.descriptionsOf(Collections.singletonList(descendant));
-                log.debug("Descendant ID: {}, Description: {}", descendant.asUuidList().getFirst(), strings.getFirst());
+                log.debug("Descendant ID: {}, Description: {}", descendant.idString(), strings.getFirst());
             });
         }
 
@@ -165,11 +165,11 @@ public final class TinkarPrimitiveImpl implements TinkarPrimitive {
         if (log.isDebugEnabled()) {
             log.debug(
                     "Parents of ID: {}, Description: {}",
-                    conceptId.asUuidList().getFirst(),
+                    conceptId.idString(),
                     this.descriptionsOf(Collections.singletonList(conceptId)).getFirst());
             parents.forEach(parent -> {
                 List<String> strings = this.descriptionsOf(Collections.singletonList(parent));
-                log.debug("Parent ID: {}, Description: {}", parent.asUuidList().getFirst(), strings.getFirst());
+                log.debug("Parent ID: {}, Description: {}", parent.idString(), strings.getFirst());
             });
         }
 
@@ -188,11 +188,11 @@ public final class TinkarPrimitiveImpl implements TinkarPrimitive {
         if (log.isDebugEnabled()) {
             log.debug(
                     "Parents of ID: {}, Description: {}",
-                    conceptId.asUuidList().getFirst(),
+                    conceptId.idString(),
                     this.descriptionsOf(Collections.singletonList(conceptId)).getFirst());
             ancestors.forEach(ancestor -> {
                 List<String> strings = this.descriptionsOf(Collections.singletonList(ancestor));
-                log.debug("Parent ID: {}, Description: {}", ancestor.asUuidList().getFirst(), strings.getFirst());
+                log.debug("Parent ID: {}, Description: {}", ancestor.idString(), strings.getFirst());
             });
         }
 
@@ -216,12 +216,12 @@ public final class TinkarPrimitiveImpl implements TinkarPrimitive {
         if (log.isInfoEnabled()) {
             log.debug(
                     "Children of ID: {}, Description: {}",
-                    parentConceptId.asUuidList().getFirst(),
+                    parentConceptId.idString(),
                     this.descriptionsOf(Collections.singletonList(parentConceptId))
                             .getFirst());
             children.forEach(child -> {
                 List<String> strings = this.descriptionsOf(Collections.singletonList(child));
-                log.debug("Child ID: {}, Description: {}", child.asUuidList().getFirst(), strings.getFirst());
+                log.debug("Child ID: {}, Description: {}", child.idString(), strings.getFirst());
             });
         }
 
@@ -255,11 +255,11 @@ public final class TinkarPrimitiveImpl implements TinkarPrimitive {
         if (log.isDebugEnabled()) {
             log.debug(
                     "Members for Member ID: {}, Description: {}",
-                    member.asUuidList().getFirst(),
+                    member.idString(),
                     this.descriptionsOf(Collections.singletonList(member)).getFirst());
             memberOfList.forEach(memberOf -> {
                 List<String> strings = this.descriptionsOf(Collections.singletonList(memberOf));
-                log.debug("Member ID: {}, Description: {}", memberOf.asUuidList().getFirst(), strings.getFirst());
+                log.debug("Member ID: {}, Description: {}", memberOf.idString(), strings.getFirst());
             });
         }
 

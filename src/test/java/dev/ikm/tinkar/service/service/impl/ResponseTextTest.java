@@ -385,7 +385,7 @@ class ResponseTextTest {
         assertThat(role.toString()).as("the vertex's own text ends its component in a nid").contains("<" + undescribedNid + ">");
         assertNoNid("the vertex", text, undescribedNid);
         // A vertex has a UUID of its own, which makes it a public id, but it is not a component.
-        assertThat(PrimitiveData.get().hasUuid(role.asUuidList().get(0)))
+        assertThat(role.asUuidList().anySatisfy(uuid -> PrimitiveData.get().hasUuid(uuid)))
                 .as("writing a vertex must not ask the store for a nid for the vertex's own UUID")
                 .isFalse();
     }
@@ -541,8 +541,9 @@ class ResponseTextTest {
                 .orElseThrow();
     }
 
+    /** The UUID response text names a component by: the least of its UUIDs, as the service writes it. */
     private static String uuidOf(EntityFacade component) {
-        return component.publicId().asUuidArray()[0].toString();
+        return component.publicId().leastUuid().toString();
     }
 
     /** Adds every key of a JSON value, at any depth. */

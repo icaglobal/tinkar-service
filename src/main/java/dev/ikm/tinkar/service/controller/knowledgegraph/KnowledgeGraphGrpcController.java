@@ -15,6 +15,7 @@ import dev.ikm.tinkar.coordinate.navigation.NavigationCoordinateRecord;
 import dev.ikm.tinkar.coordinate.stamp.StampCoordinateRecord;
 import dev.ikm.tinkar.coordinate.view.calculator.ViewCalculatorWithCache;
 import dev.ikm.tinkar.schema.PublicId;
+import dev.ikm.tinkar.service.util.ProtoConversionUtils;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import org.slf4j.Logger;
@@ -364,9 +365,7 @@ public class KnowledgeGraphGrpcController extends IkeKnowledgeGraphGrpc.IkeKnowl
     }
 
     private String extractConceptId(PublicId publicId) {
-        if (publicId == null || publicId.getUuidsList().isEmpty()) {
-            return "";
-        }
-        return publicId.getUuids(0);
+        String conceptId = ProtoConversionUtils.leastUuid(publicId);
+        return conceptId == null ? "" : conceptId;
     }
 }

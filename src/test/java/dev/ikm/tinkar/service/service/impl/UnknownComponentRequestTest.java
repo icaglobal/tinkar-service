@@ -327,8 +327,9 @@ class UnknownComponentRequestTest {
         return new Outcome(Boolean.TRUE.equals(response.success()), response.errorMessage());
     }
 
+    /** The UUID a request names a component by: any of them would do; the least, as the service writes it. */
     private static String uuidOf(EntityFacade component) {
-        return component.publicId().asUuidArray()[0].toString();
+        return component.publicId().leastUuid().toString();
     }
 
     private static int conceptCount() {

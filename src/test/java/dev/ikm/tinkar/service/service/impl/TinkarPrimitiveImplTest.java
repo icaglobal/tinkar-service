@@ -58,8 +58,7 @@ class TinkarPrimitiveImplTest {
             PublicId result = impl.getPublicId(uuidStr);
             ImmutableList<UUID> uuids = result.asUuidList();
 
-            assertThat(uuids).hasSize(1);
-            assertThat(uuids.get(0)).isEqualTo(UUID.fromString(uuidStr));
+            assertThat(uuids).containsExactly(UUID.fromString(uuidStr));
             knownMock.verify(() -> KnownComponents.nidOrRefuse(result));
         }
     }
