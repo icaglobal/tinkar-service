@@ -8,11 +8,12 @@ import { TestRunner } from './components/TestRunner/TestRunner';
 import { CoordinatesPanel } from './components/CoordinatesPanel';
 import { CreateConceptPanel } from './components/CreateConceptPanel';
 import { ReasonerPanel } from './components/ReasonerPanel';
+import { ChangesetPanel } from './components/ChangesetPanel';
 import { conceptSearchWithSort, getDescendants, kgGetSemantics, removeDescendant, createAndAddDescendant } from './api/tinkarApi';
 import type { SearchSortOption } from './api/types';
 import './App.css';
 
-type ViewMode = 'search' | 'descendants' | 'semantics' | 'test-runner' | 'coordinates' | 'create-concept' | 'reasoner';
+type ViewMode = 'search' | 'descendants' | 'semantics' | 'test-runner' | 'coordinates' | 'create-concept' | 'reasoner' | 'changesets';
 
 const SORT_OPTIONS: { value: SearchSortOption; label: string }[] = [
   { value: 'TOP_COMPONENT', label: 'Top Component (by score)' },
@@ -157,6 +158,12 @@ function App() {
               Reasoner
             </button>
             <button
+              className={`changeset-button ${viewMode === 'changesets' ? 'active' : ''}`}
+              onClick={() => setViewMode('changesets')}
+            >
+              Import / Export
+            </button>
+            <button
               className={`test-runner-button ${viewMode === 'test-runner' ? 'active' : ''}`}
               onClick={() => setViewMode('test-runner')}
             >
@@ -167,7 +174,7 @@ function App() {
       </header>
 
       <main className="app-main">
-        {viewMode !== 'test-runner' && viewMode !== 'coordinates' && viewMode !== 'create-concept' && viewMode !== 'reasoner' && (
+        {viewMode !== 'test-runner' && viewMode !== 'coordinates' && viewMode !== 'create-concept' && viewMode !== 'reasoner' && viewMode !== 'changesets' && (
           <SearchBox onSearch={handleSearch} isLoading={isLoading} />
         )}
 
@@ -319,6 +326,10 @@ function App() {
 
         {viewMode === 'reasoner' && (
           <ReasonerPanel onBack={handleBack} />
+        )}
+
+        {viewMode === 'changesets' && (
+          <ChangesetPanel onBack={handleBack} />
         )}
       </main>
     </div>

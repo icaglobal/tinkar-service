@@ -1916,3 +1916,165 @@
   background-color: #d9534f;
   color: white;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   Import / Export (changesets) Panel
+   ═══════════════════════════════════════════════════════════ */
+
+.changeset-button {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  background-color: transparent;
+  color: #1d4ed8;
+  border: 1px solid #1d4ed8;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.changeset-button:hover,
+.changeset-button.active {
+  background-color: #1d4ed8;
+  color: white;
+}
+
+.changeset-panel {
+  width: 100%;
+  max-width: 720px;
+}
+
+.changeset-section {
+  margin-top: 1.5rem;
+}
+
+.changeset-section h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  color: #213547;
+}
+
+.changeset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.changeset-row label {
+  font-size: 0.9rem;
+  color: #495057;
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.changeset-row select,
+.changeset-row input[type='datetime-local'] {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.9rem;
+}
+
+.changeset-tags {
+  width: 100%;
+  min-height: 4.5rem;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.85rem;
+  padding: 0.4rem;
+  box-sizing: border-box;
+}
+
+.changeset-run {
+  padding: 0.5rem 1.1rem;
+  font-size: 0.95rem;
+  background-color: #1d4ed8;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.changeset-run:disabled {
+  background-color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.changeset-job {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border: 1px solid #dbe4ff;
+  border-radius: 6px;
+  background-color: #f8faff;
+}
+
+.changeset-job-head {
+  margin-bottom: 0.5rem;
+  color: #213547;
+}
+
+.changeset-progress-fill {
+  height: 100%;
+  background-color: #1d4ed8;
+  transition: width 0.3s ease;
+}
+
+/* Total not known yet: a sliding bar instead of a percentage. */
+.reasoner-progress-bar.indeterminate .changeset-progress-fill {
+  animation: changeset-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes changeset-slide {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(340%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reasoner-progress-bar.indeterminate .changeset-progress-fill {
+    animation: none;
+  }
+}
+
+.changeset-download {
+  font-weight: 600;
+  color: #1d4ed8;
+}
+
+.changeset-jobs {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.changeset-jobs td {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid #f1f3f5;
+  color: #213547;
+}
+
+.changeset-job-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.changeset-job-actions a,
+.link-button {
+  margin-left: 0.6rem;
+  font-size: 0.85rem;
+  color: #1d4ed8;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.job-state {
+  text-transform: capitalize;
+  font-weight: 600;
+}
+
+.job-queued { color: #6c757d; }
+.job-running { color: #1d4ed8; }
+.job-succeeded { color: #28a745; }
+.job-failed { color: #d9534f; }
+.job-cancelled { color: #b45309; }
