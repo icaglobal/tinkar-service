@@ -46,7 +46,7 @@ import dev.ikm.tinkar.entity.graph.EntityVertex;
 import dev.ikm.tinkar.terms.EntityBinding;
 import dev.ikm.tinkar.terms.EntityFacade;
 import dev.ikm.tinkar.terms.EntityProxy;
-import dev.ikm.tinkar.terms.TinkarTerm;
+import dev.ikm.tinkar.terms.KernelTerm;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.eclipse.collections.api.factory.Lists;
@@ -167,7 +167,7 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     /**
-     * Returns true when the exception indicates a missing TinkarTerm concept in the database —
+     * Returns true when the exception indicates a missing kernel concept in the database —
      * the expected state on a fresh DB that has not had starter data imported yet.
      * In this case, search should return empty results rather than an error.
      */
@@ -623,7 +623,7 @@ public class TinkarServiceImpl implements TinkarService {
         try {
             calc = Calculators.View.Default();
         } catch (IllegalStateException e) {
-            // Fresh DB: some TinkarTerm UUID stubs are missing; descriptions will be empty
+            // Fresh DB: some kernel UUID stubs are missing; descriptions will be empty
             log.debug("ViewCalculator init failed (fresh DB?): {}", e.getMessage());
         }
         return publicIdToSearchResult(publicId, calc);
@@ -647,7 +647,7 @@ public class TinkarServiceImpl implements TinkarService {
                     .build();
         }
 
-        // Build descriptions — guard against missing TinkarTerm concepts on a fresh DB.
+        // Build descriptions — guard against missing kernel concepts on a fresh DB.
         // calc may be null when ViewCalculator initialization failed (missing UUID stubs).
         // If the language calculator throws (e.g. DESCRIPTION_PATTERN stub has no field
         // definitions so indexOfMeaning() returns -1), fall back to direct semantic scan.
@@ -782,16 +782,16 @@ public class TinkarServiceImpl implements TinkarService {
                 StampEntity<?> stamp = transaction.getStamp(
                         dev.ikm.tinkar.terms.State.ACTIVE,
                         currentTime,
-                        TinkarTerm.USER.nid(),
-                        TinkarTerm.SOLOR_OVERLAY_MODULE.nid(),
-                        TinkarTerm.DEVELOPMENT_PATH.nid()
+                        KernelTerm.USER.nid(),
+                        KernelTerm.SOLOR_OVERLAY_MODULE.nid(),
+                        KernelTerm.DEVELOPMENT_PATH.nid()
                 );
 
                 // Build the semantic record with the comment pattern
                 // Comment pattern has one field: the comment text
                 SemanticRecord semanticRecord = SemanticRecord.build(
                         semanticUuid,
-                        TinkarTerm.COMMENT_PATTERN.nid(),
+                        KernelTerm.COMMENT_PATTERN.nid(),
                         conceptNid,
                         stamp.versions().get(0),
                         Lists.immutable.of(comment)
@@ -848,7 +848,7 @@ public class TinkarServiceImpl implements TinkarService {
         StampInfo stampInfo = new StampInfo(status, author, module, path, time, formattedTime);
 
         // Build field change for the comment field (newly added)
-        String patternName = getDescriptionForNid(TinkarTerm.COMMENT_PATTERN.nid());
+        String patternName = getDescriptionForNid(KernelTerm.COMMENT_PATTERN.nid());
         FieldChange commentFieldChange = new FieldChange(
                 patternName + " [0]",
                 0,
@@ -1108,10 +1108,10 @@ public class TinkarServiceImpl implements TinkarService {
             IntIdList dialectPreference = langCoords.isEmpty()
                     ? IntIds.list.empty()
                     : langCoords.get(0).dialectPatternPreferenceNidList();
-            int descPatternNid = TinkarTerm.DESCRIPTION_PATTERN.nid();
-            int regularNameNid = TinkarTerm.REGULAR_NAME_DESCRIPTION_TYPE.nid();
-            int fqnNid         = TinkarTerm.FULLY_QUALIFIED_NAME_DESCRIPTION_TYPE.nid();
-            int preferredNid   = TinkarTerm.PREFERRED.nid();
+            int descPatternNid = KernelTerm.DESCRIPTION_PATTERN.nid();
+            int regularNameNid = KernelTerm.REGULAR_NAME_DESCRIPTION_TYPE.nid();
+            int fqnNid         = KernelTerm.FULLY_QUALIFIED_NAME_DESCRIPTION_TYPE.nid();
+            int preferredNid   = KernelTerm.PREFERRED.nid();
 
             String fqnCandidate = null;
             // key = position in dialectPreference list (lower = more preferred), value = text
@@ -1368,7 +1368,7 @@ public class TinkarServiceImpl implements TinkarService {
 
     /**
      * The SNOMED CT identifier of a component, read from its
-     * {@link TinkarTerm#IDENTIFIER_PATTERN} semantic whose source is {@link TinkarTerm#SCTID}.
+     * {@link KernelTerm#IDENTIFIER_PATTERN} semantic whose source is {@link KernelTerm#SCTID}.
      *
      * @param nid the component nid
      * @return the SCTID, or {@code null} when the component carries none
@@ -1376,7 +1376,7 @@ public class TinkarServiceImpl implements TinkarService {
     private String sctidForNid(int nid) {
         try {
             List<SemanticEntity<SemanticEntityVersion>> identifierSemantics = EntityService.get()
-                    .semanticsForComponentOfPattern(nid, TinkarTerm.IDENTIFIER_PATTERN.nid()).toList();
+                    .semanticsForComponentOfPattern(nid, KernelTerm.IDENTIFIER_PATTERN.nid()).toList();
             for (SemanticEntity<SemanticEntityVersion> semantic : identifierSemantics) {
                 if (semantic.versions().isEmpty()) {
                     continue;
@@ -1391,7 +1391,7 @@ public class TinkarServiceImpl implements TinkarService {
                         sourceNid = facade.nid();
                     }
                 }
-                if (identifierValue != null && sourceNid == TinkarTerm.SCTID.nid()) {
+                if (identifierValue != null && sourceNid == KernelTerm.SCTID.nid()) {
                     return identifierValue;
                 }
             }
@@ -1433,7 +1433,7 @@ public class TinkarServiceImpl implements TinkarService {
 
             // Get all comment semantics for this concept using the Comment Pattern
             List<SemanticEntity<SemanticEntityVersion>> commentSemantics = EntityService.get()
-                    .semanticsForComponentOfPattern(conceptNid, TinkarTerm.COMMENT_PATTERN.nid()).toList();
+                    .semanticsForComponentOfPattern(conceptNid, KernelTerm.COMMENT_PATTERN.nid()).toList();
 
             List<SemanticInfo> semantics = new ArrayList<>();
             for (SemanticEntity<SemanticEntityVersion> commentSemantic : commentSemantics) {
@@ -1661,7 +1661,7 @@ public class TinkarServiceImpl implements TinkarService {
                     // Include DESCRIPTION_PATTERN semantics so the client can resolve the
                     // pattern's preferred name and FQN without a separate round-trip.
                     List<SemanticEntity<SemanticEntityVersion>> patDescSemantics = EntityService.get()
-                            .semanticsForComponentOfPattern(patternNid, TinkarTerm.DESCRIPTION_PATTERN.nid()).toList();
+                            .semanticsForComponentOfPattern(patternNid, KernelTerm.DESCRIPTION_PATTERN.nid()).toList();
                     for (SemanticEntity<SemanticEntityVersion> descSem : patDescSemantics) {
                         if (includedNids.contains(descSem.nid())) continue;
                         addToResponse(builder, transformer, includedNids, descSem);
@@ -1722,8 +1722,8 @@ public class TinkarServiceImpl implements TinkarService {
             Set<Integer> navNeighborNids = new HashSet<>();
             for (SemanticEntity<SemanticEntityVersion> semantic : conceptSemantics) {
                 int patNid = semantic.patternNid();
-                if (patNid != TinkarTerm.INFERRED_NAVIGATION_PATTERN.nid() &&
-                        patNid != TinkarTerm.STATED_NAVIGATION_PATTERN.nid()) continue;
+                if (patNid != KernelTerm.INFERRED_NAVIGATION_PATTERN.nid() &&
+                        patNid != KernelTerm.STATED_NAVIGATION_PATTERN.nid()) continue;
                 semantic.versions().forEach(v -> v.fieldValues().forEach(fv -> {
                     if (fv instanceof IntIdCollection intIds) {
                         intIds.forEach(nid -> navNeighborNids.add(nid));
@@ -1739,7 +1739,7 @@ public class TinkarServiceImpl implements TinkarService {
                 neighborEntity.versions().forEach(v -> navStampNids.add(v.stampNid()));
                 // Load description semantics for preferred-description-text lookups in hierarchy view
                 List<SemanticEntity<SemanticEntityVersion>> neighborDescSemantics = EntityService.get()
-                        .semanticsForComponentOfPattern(neighborNid, TinkarTerm.DESCRIPTION_PATTERN.nid()).toList();
+                        .semanticsForComponentOfPattern(neighborNid, KernelTerm.DESCRIPTION_PATTERN.nid()).toList();
                 for (SemanticEntity<SemanticEntityVersion> descSem : neighborDescSemantics) {
                     if (includedNids.contains(descSem.nid())) continue;
                     addToResponse(builder, transformer, includedNids, descSem);
@@ -1795,7 +1795,7 @@ public class TinkarServiceImpl implements TinkarService {
             // This is the on-demand counterpart to loadConceptEntityGraph, which already ships
             // descriptions; callers of this cheaper single-entity path need a name just as much.
             List<SemanticEntity<SemanticEntityVersion>> descriptions = EntityService.get()
-                    .semanticsForComponentOfPattern(nid, TinkarTerm.DESCRIPTION_PATTERN.nid()).toList();
+                    .semanticsForComponentOfPattern(nid, KernelTerm.DESCRIPTION_PATTERN.nid()).toList();
             for (SemanticEntity<SemanticEntityVersion> descriptionEntity : descriptions) {
                 if (includedNids.contains(descriptionEntity.nid())) {
                     continue;
@@ -2196,9 +2196,9 @@ public class TinkarServiceImpl implements TinkarService {
                 StampEntity<?> stamp = transaction.getStamp(
                         dev.ikm.tinkar.terms.State.ACTIVE,
                         currentTime,
-                        TinkarTerm.USER.nid(),
-                        TinkarTerm.SOLOR_OVERLAY_MODULE.nid(),
-                        TinkarTerm.DEVELOPMENT_PATH.nid()
+                        KernelTerm.USER.nid(),
+                        KernelTerm.SOLOR_OVERLAY_MODULE.nid(),
+                        KernelTerm.DEVELOPMENT_PATH.nid()
                 );
 
                 // Build the semantic record with STATED_NAVIGATION_PATTERN
@@ -2208,7 +2208,7 @@ public class TinkarServiceImpl implements TinkarService {
 
                 SemanticRecord semanticRecord = SemanticRecord.build(
                         semanticUuid,
-                        TinkarTerm.STATED_NAVIGATION_PATTERN.nid(),
+                        KernelTerm.STATED_NAVIGATION_PATTERN.nid(),
                         descendantNid,  // The semantic is attached to the descendant concept
                         stamp.versions().get(0),
                         Lists.immutable.of(destinationSet, originSet)
@@ -2258,9 +2258,9 @@ public class TinkarServiceImpl implements TinkarService {
                 StampEntity<?> stamp = transaction.getStamp(
                         dev.ikm.tinkar.terms.State.ACTIVE,
                         currentTime,
-                        TinkarTerm.USER.nid(),
-                        TinkarTerm.SOLOR_OVERLAY_MODULE.nid(),
-                        TinkarTerm.DEVELOPMENT_PATH.nid()
+                        KernelTerm.USER.nid(),
+                        KernelTerm.SOLOR_OVERLAY_MODULE.nid(),
+                        KernelTerm.DEVELOPMENT_PATH.nid()
                 );
 
                 // Create the concept record
@@ -2280,14 +2280,14 @@ public class TinkarServiceImpl implements TinkarService {
                 UUID fqnSemanticUuid = UUID.randomUUID();
                 SemanticRecord fqnSemantic = SemanticRecord.build(
                         fqnSemanticUuid,
-                        TinkarTerm.DESCRIPTION_PATTERN.nid(),
+                        KernelTerm.DESCRIPTION_PATTERN.nid(),
                         newConceptNid,
                         stamp.versions().get(0),
                         Lists.immutable.of(
-                                TinkarTerm.ENGLISH_LANGUAGE.publicId(),
+                                KernelTerm.ENGLISH_LANGUAGE.publicId(),
                                 conceptName,
-                                TinkarTerm.DESCRIPTION_CASE_SIGNIFICANCE.publicId(),
-                                TinkarTerm.FULLY_QUALIFIED_NAME_DESCRIPTION_TYPE.publicId()
+                                KernelTerm.DESCRIPTION_CASE_SIGNIFICANCE.publicId(),
+                                KernelTerm.FULLY_QUALIFIED_NAME_DESCRIPTION_TYPE.publicId()
                         )
                 );
 
@@ -2300,7 +2300,7 @@ public class TinkarServiceImpl implements TinkarService {
 
                 // Find existing navigation semantic for the parent
                 Optional<SemanticEntity<SemanticEntityVersion>> parentNavSemantic = EntityService.get()
-                        .semanticsForComponentOfPattern(parentNid, TinkarTerm.INFERRED_NAVIGATION_PATTERN.nid())
+                        .semanticsForComponentOfPattern(parentNid, KernelTerm.INFERRED_NAVIGATION_PATTERN.nid())
                         .findFirst();
 
                 IntIdSet destinationSet;
@@ -2326,7 +2326,7 @@ public class TinkarServiceImpl implements TinkarService {
                 } else {
                     // Parent doesn't have a navigation semantic yet - create a new one
                     navSemanticId = PublicIds.of(dev.ikm.tinkar.common.util.uuid.UuidT5Generator.singleSemanticUuid(
-                            EntityHandle.get(TinkarTerm.INFERRED_NAVIGATION_PATTERN.nid()).expectPattern(),
+                            EntityHandle.get(KernelTerm.INFERRED_NAVIGATION_PATTERN.nid()).expectPattern(),
                             EntityHandle.get(parentNid).expectEntity()));
                     destinationSet = IntIds.set.of(newConceptNid);
                     originSet = IntIds.set.empty();
@@ -2395,7 +2395,7 @@ public class TinkarServiceImpl implements TinkarService {
 
             // Find the navigation semantic attached to the PARENT using INFERRED pattern
             List<SemanticEntity<SemanticEntityVersion>> parentNavSemantics = EntityService.get()
-                    .semanticsForComponentOfPattern(parentNid, TinkarTerm.INFERRED_NAVIGATION_PATTERN.nid())
+                    .semanticsForComponentOfPattern(parentNid, KernelTerm.INFERRED_NAVIGATION_PATTERN.nid())
                     .toList();
 
             log.debug("removeDescendant: found {} INFERRED navigation semantics for parent", parentNavSemantics.size());
@@ -2467,9 +2467,9 @@ public class TinkarServiceImpl implements TinkarService {
                 StampEntity<?> stamp = transaction.getStamp(
                         dev.ikm.tinkar.terms.State.ACTIVE,
                         currentTime,
-                        TinkarTerm.USER.nid(),
-                        TinkarTerm.SOLOR_OVERLAY_MODULE.nid(),
-                        TinkarTerm.DEVELOPMENT_PATH.nid()
+                        KernelTerm.USER.nid(),
+                        KernelTerm.SOLOR_OVERLAY_MODULE.nid(),
+                        KernelTerm.DEVELOPMENT_PATH.nid()
                 );
 
                 SemanticRecord navSemantic = navigationSemantic(
@@ -2515,7 +2515,7 @@ public class TinkarServiceImpl implements TinkarService {
     }
 
     /**
-     * An {@link TinkarTerm#INFERRED_NAVIGATION_PATTERN} semantic with one version. When it
+     * An {@link KernelTerm#INFERRED_NAVIGATION_PATTERN} semantic with one version. When it
      * rewrites a navigation semantic the store already holds, it keeps that semantic's whole
      * public id: every UUID identifies it, so none may be dropped.
      *
@@ -2530,7 +2530,7 @@ public class TinkarServiceImpl implements TinkarService {
                                                      org.eclipse.collections.api.list.ImmutableList<Object> fields) {
         RecordListBuilder<SemanticVersionRecord> versionRecords = RecordListBuilder.make();
         SemanticRecord semanticRecord = SemanticRecord.makeNew(semanticId,
-                TinkarTerm.INFERRED_NAVIGATION_PATTERN.nid(), parentNid, versionRecords);
+                KernelTerm.INFERRED_NAVIGATION_PATTERN.nid(), parentNid, versionRecords);
         versionRecords.add(new SemanticVersionRecord(semanticRecord, stampVersion.stampNid(), fields)).build();
         return semanticRecord;
     }
@@ -2603,8 +2603,8 @@ public class TinkarServiceImpl implements TinkarService {
             log.info("Using reasoner: {}", rs.getName());
 
             rs.init(Calculators.View.Default(),
-                    TinkarTerm.EL_PLUS_PLUS_STATED_AXIOMS_PATTERN,
-                    TinkarTerm.EL_PLUS_PLUS_INFERRED_AXIOMS_PATTERN);
+                    KernelTerm.EL_PLUS_PLUS_STATED_AXIOMS_PATTERN,
+                    KernelTerm.EL_PLUS_PLUS_INFERRED_AXIOMS_PATTERN);
 
             // Phases and wording match Komet's local RunReasonerTaskBase so that a remote run
             // performs the same work, in the same order, and reports it the same way.
@@ -2856,9 +2856,9 @@ public class TinkarServiceImpl implements TinkarService {
             StampEntity<?> stamp = transaction.getStamp(
                     dev.ikm.tinkar.terms.State.ACTIVE,
                     System.currentTimeMillis(),
-                    TinkarTerm.USER.nid(),
-                    TinkarTerm.SOLOR_OVERLAY_MODULE.nid(),
-                    TinkarTerm.DEVELOPMENT_PATH.nid());
+                    KernelTerm.USER.nid(),
+                    KernelTerm.SOLOR_OVERLAY_MODULE.nid(),
+                    KernelTerm.DEVELOPMENT_PATH.nid());
 
             ConceptRecord conceptRecord = ConceptRecord.build(conceptUuid, stamp.versions().get(0));
             EntityService.get().putEntity(conceptRecord);
@@ -2868,7 +2868,7 @@ public class TinkarServiceImpl implements TinkarService {
             for (CreateConceptRequest.Description description : descriptions) {
                 SemanticRecord semantic = SemanticRecord.build(
                         UUID.randomUUID(),
-                        TinkarTerm.DESCRIPTION_PATTERN.nid(),
+                        KernelTerm.DESCRIPTION_PATTERN.nid(),
                         conceptNid,
                         stamp.versions().get(0),
                         Lists.immutable.of(
@@ -2882,7 +2882,7 @@ public class TinkarServiceImpl implements TinkarService {
 
             SemanticRecord statedAxioms = SemanticRecord.build(
                     UUID.randomUUID(),
-                    TinkarTerm.EL_PLUS_PLUS_STATED_AXIOMS_PATTERN.nid(),
+                    KernelTerm.EL_PLUS_PLUS_STATED_AXIOMS_PATTERN.nid(),
                     conceptNid,
                     stamp.versions().get(0),
                     Lists.immutable.of(buildStatedAxiom(resolved)));
@@ -2935,7 +2935,7 @@ public class TinkarServiceImpl implements TinkarService {
     /** Resolves referenced concepts, falling back to Komet's unfinished-definition placeholder. */
     private List<EntityProxy.Concept> resolveParents(List<String> parentConceptIds) {
         if (parentConceptIds == null || parentConceptIds.isEmpty()) {
-            return List.of(TinkarTerm.ANONYMOUS_CONCEPT);
+            return List.of(KernelTerm.ANONYMOUS_CONCEPT);
         }
         List<EntityProxy.Concept> parents = new ArrayList<>();
         for (String parentId : parentConceptIds) {
@@ -2968,7 +2968,7 @@ public class TinkarServiceImpl implements TinkarService {
             Map<CreateConceptRequest.Axiom, List<EntityProxy.Concept>> axioms) {
         DiTreeEntity.Builder treeBuilder = DiTreeEntity.builder();
 
-        EntityVertex root = EntityVertex.make(TinkarTerm.DEFINITION_ROOT);
+        EntityVertex root = EntityVertex.make(KernelTerm.DEFINITION_ROOT);
         treeBuilder.setRoot(root);
 
         axioms.forEach((axiom, parents) -> {
@@ -2976,13 +2976,13 @@ public class TinkarServiceImpl implements TinkarService {
             treeBuilder.addVertex(set);
             treeBuilder.addEdge(set, root);
 
-            EntityVertex and = EntityVertex.make(TinkarTerm.AND);
+            EntityVertex and = EntityVertex.make(KernelTerm.AND);
             treeBuilder.addVertex(and);
             treeBuilder.addEdge(and, set);
 
             for (EntityProxy.Concept parent : parents) {
-                EntityVertex conceptReference = EntityVertex.make(TinkarTerm.CONCEPT_REFERENCE);
-                conceptReference.putUncommittedProperty(TinkarTerm.CONCEPT_REFERENCE.nid(), parent);
+                EntityVertex conceptReference = EntityVertex.make(KernelTerm.CONCEPT_REFERENCE);
+                conceptReference.putUncommittedProperty(KernelTerm.CONCEPT_REFERENCE.nid(), parent);
                 // putUncommittedProperty only stages the value; properties() — what the reasoner
                 // and Komet read — stays empty until it is committed. Without this the vertex was
                 // stored as a concept reference to nothing, and ElkSnomedDataBuilder failed on it.
@@ -2997,45 +2997,45 @@ public class TinkarServiceImpl implements TinkarService {
 
     private static EntityProxy.Concept setTypeConcept(CreateConceptRequest.AxiomSetType setType) {
         return setType == CreateConceptRequest.AxiomSetType.SUFFICIENT
-                ? TinkarTerm.SUFFICIENT_SET
-                : TinkarTerm.NECESSARY_SET;
+                ? KernelTerm.SUFFICIENT_SET
+                : KernelTerm.NECESSARY_SET;
     }
 
     private static EntityProxy.Concept descriptionTypeConcept(CreateConceptRequest.DescriptionType type) {
         return switch (type) {
-            case FULLY_QUALIFIED_NAME -> TinkarTerm.FULLY_QUALIFIED_NAME_DESCRIPTION_TYPE;
-            case REGULAR_NAME -> TinkarTerm.REGULAR_NAME_DESCRIPTION_TYPE;
-            case DEFINITION -> TinkarTerm.DEFINITION_DESCRIPTION_TYPE;
+            case FULLY_QUALIFIED_NAME -> KernelTerm.FULLY_QUALIFIED_NAME_DESCRIPTION_TYPE;
+            case REGULAR_NAME -> KernelTerm.REGULAR_NAME_DESCRIPTION_TYPE;
+            case DEFINITION -> KernelTerm.DEFINITION_DESCRIPTION_TYPE;
         };
     }
 
     /** Defaults to not-case-sensitive, the usual choice and what an omitted value should mean. */
     private static EntityProxy.Concept caseSignificanceConcept(CreateConceptRequest.CaseSignificance significance) {
         if (significance == null) {
-            return TinkarTerm.DESCRIPTION_NOT_CASE_SENSITIVE;
+            return KernelTerm.DESCRIPTION_NOT_CASE_SENSITIVE;
         }
         return switch (significance) {
-            case CASE_SENSITIVE -> TinkarTerm.DESCRIPTION_CASE_SENSITIVE;
-            case NOT_CASE_SENSITIVE -> TinkarTerm.DESCRIPTION_NOT_CASE_SENSITIVE;
-            case INITIAL_CHARACTER_CASE_SENSITIVE -> TinkarTerm.DESCRIPTION_INITIAL_CHARACTER_CASE_SENSITIVE;
+            case CASE_SENSITIVE -> KernelTerm.DESCRIPTION_CASE_SENSITIVE;
+            case NOT_CASE_SENSITIVE -> KernelTerm.DESCRIPTION_NOT_CASE_SENSITIVE;
+            case INITIAL_CHARACTER_CASE_SENSITIVE -> KernelTerm.DESCRIPTION_INITIAL_CHARACTER_CASE_SENSITIVE;
         };
     }
 
     private static EntityProxy.Concept languageConcept(CreateConceptRequest.Language language) {
         if (language == null) {
-            return TinkarTerm.ENGLISH_LANGUAGE;
+            return KernelTerm.ENGLISH_LANGUAGE;
         }
         return switch (language) {
-            case ENGLISH -> TinkarTerm.ENGLISH_LANGUAGE;
-            case SPANISH -> TinkarTerm.SPANISH_LANGUAGE;
-            case FRENCH -> TinkarTerm.FRENCH_LANGUAGE;
-            case GERMAN -> TinkarTerm.GERMAN_LANGUAGE;
-            case DUTCH -> TinkarTerm.DUTCH_LANGUAGE;
-            case ITALIAN -> TinkarTerm.ITALIAN_LANGUAGE;
-            case DANISH -> TinkarTerm.DANISH_LANGUAGE;
-            case CZECH -> TinkarTerm.CZECH_LANGUAGE;
-            case IRISH -> TinkarTerm.IRISH_LANGUAGE;
-            case CHINESE -> TinkarTerm.CHINESE_LANGUAGE;
+            case ENGLISH -> KernelTerm.ENGLISH_LANGUAGE;
+            case SPANISH -> KernelTerm.SPANISH_LANGUAGE;
+            case FRENCH -> KernelTerm.FRENCH_LANGUAGE;
+            case GERMAN -> KernelTerm.GERMAN_LANGUAGE;
+            case DUTCH -> KernelTerm.DUTCH_LANGUAGE;
+            case ITALIAN -> KernelTerm.ITALIAN_LANGUAGE;
+            case DANISH -> KernelTerm.DANISH_LANGUAGE;
+            case CZECH -> KernelTerm.CZECH_LANGUAGE;
+            case IRISH -> KernelTerm.IRISH_LANGUAGE;
+            case CHINESE -> KernelTerm.CHINESE_LANGUAGE;
         };
     }
 }

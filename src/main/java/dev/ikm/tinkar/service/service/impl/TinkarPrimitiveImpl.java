@@ -26,7 +26,7 @@ import dev.ikm.tinkar.entity.EntityService;
 import dev.ikm.tinkar.entity.PatternEntityVersion;
 import dev.ikm.tinkar.provider.search.Searcher;
 import dev.ikm.tinkar.terms.EntityProxy;
-import dev.ikm.tinkar.terms.TinkarTerm;
+import dev.ikm.tinkar.terms.KernelTerm;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -336,17 +336,17 @@ public final class TinkarPrimitiveImpl implements TinkarPrimitive {
 
         ViewCalculator viewCalc = Calculators.View.Default();
         Latest<PatternEntityVersion> latestIdPattern = viewCalc
-                .latestPatternEntityVersion(TinkarTerm.IDENTIFIER_PATTERN);
+                .latestPatternEntityVersion(KernelTerm.IDENTIFIER_PATTERN);
         AtomicReference<PublicId> result = new AtomicReference<>();
 
         try {
             EntityService.get()
                     .forEachSemanticOfPattern(
-                            TinkarTerm.IDENTIFIER_PATTERN.nid(),
+                            KernelTerm.IDENTIFIER_PATTERN.nid(),
                             semanticEntity -> viewCalc.latest(semanticEntity).ifPresent(latestSemanticVersion -> {
                                 String idValue = latestIdPattern
                                         .get()
-                                        .getFieldWithMeaning(TinkarTerm.IDENTIFIER_VALUE, latestSemanticVersion);
+                                        .getFieldWithMeaning(KernelTerm.IDENTIFIER_VALUE, latestSemanticVersion);
                                 if (idValue.equals(device)) {
                                     result.set(latestSemanticVersion
                                             .referencedComponent()
