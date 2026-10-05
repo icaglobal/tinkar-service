@@ -1,5 +1,6 @@
 package dev.ikm.tinkar.service.service.impl;
 
+import network.ike.foundation.ike.bindings.IkeTerms;
 import dev.ikm.tinkar.terms.KernelTerm;
 import dev.ikm.tinkar.common.id.PublicId;
 import dev.ikm.tinkar.common.id.PublicIds;
@@ -25,7 +26,6 @@ import dev.ikm.tinkar.service.service.CoordinateFactory;
 import dev.ikm.tinkar.service.service.KnownComponents;
 import dev.ikm.tinkar.service.service.UnknownComponentException;
 import dev.ikm.tinkar.terms.EntityFacade;
-import dev.ikm.tinkar.terms.TinkarTerm;
 import org.assertj.core.api.SoftAssertions;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -63,7 +63,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class UnknownComponentRequestTest {
 
-    private static final File PB_STARTER_DATA = new File("target/data/tinkar-starter-data-reasoned-pb.zip");
+    private static final File PB_STARTER_DATA = new File("target/data/ike-starter-set-reasoned-pb.zip");
 
     /** What an endpoint answered: whether it succeeded, and its error message. */
     private record Outcome(boolean success, String message) {
@@ -244,14 +244,14 @@ class UnknownComponentRequestTest {
 
     @Test
     void aCoordinateWithAPathAndModulesTheKnowledgeBaseHoldsUsesThem() {
-        String module = uuidOf(TinkarTerm.DEVELOPMENT_MODULE);
+        String module = uuidOf(IkeTerms.DEVELOPMENT_MODULE);
 
         StampCoordinateRecord coordinate = CoordinateFactory.buildStampCoordinate(new StampCoordinateDto(
                 null, null, uuidOf(KernelTerm.DEVELOPMENT_PATH), List.of(module), List.of(), List.of(module)));
 
         assertThat(coordinate.stampPosition().getPathForPositionNid()).isEqualTo(KernelTerm.DEVELOPMENT_PATH.nid());
-        assertThat(coordinate.moduleNids().toArray()).containsExactly(TinkarTerm.DEVELOPMENT_MODULE.nid());
-        assertThat(coordinate.modulePriorityNidList().toArray()).containsExactly(TinkarTerm.DEVELOPMENT_MODULE.nid());
+        assertThat(coordinate.moduleNids().toArray()).containsExactly(IkeTerms.DEVELOPMENT_MODULE.nid());
+        assertThat(coordinate.modulePriorityNidList().toArray()).containsExactly(IkeTerms.DEVELOPMENT_MODULE.nid());
     }
 
     // ── The endpoints ────────────────────────────────────────────────────────

@@ -48,7 +48,8 @@
         <!-- Tinkar starter dataset for the store-backed tests, loaded into an ephemeral store.
              Pinned to the version komet/framework and komet-claude-plugin use; ike-parent does
              not manage it. -->
-        <tinkar-starter-data.version>1.1.2</tinkar-starter-data.version>
+        <!-- The IKE starter set the tests load, from starter-data-ws, which builds after this repository. -->
+        <ike-starter-set.version>1-64bit-SNAPSHOT</ike-starter-set.version>
     </properties>
 
     <repositories>
@@ -226,6 +227,13 @@
             <version>${tinkar-core.version}</version>
             <scope>test</scope>
         </dependency>
+        <!-- The IKE starter set's bindings (IkeTerms) for the components the tests name beyond the kernel. -->
+        <dependency>
+            <groupId>network.ike.foundation</groupId>
+            <artifactId>ike-bindings</artifactId>
+            <version>${ike-starter-set.version}</version>
+            <scope>test</scope>
+        </dependency>
 
         <!-- Static analysis -->
         <dependency>
@@ -390,13 +398,14 @@
                         <configuration>
                             <artifactItems>
                                 <artifactItem>
-                                    <groupId>dev.ikm.data.tinkar</groupId>
-                                    <artifactId>tinkar-starter-data</artifactId>
-                                    <version>${tinkar-starter-data.version}</version>
+                                    <groupId>network.ike.foundation</groupId>
+                                    <artifactId>ike-starter-set</artifactId>
+                                    <version>${ike-starter-set.version}</version>
                                     <classifier>reasoned-pb</classifier>
                                     <type>zip</type>
                                     <overWrite>false</overWrite>
                                     <outputDirectory>${project.build.directory}/data</outputDirectory>
+                                    <destFileName>ike-starter-set-reasoned-pb.zip</destFileName>
                                 </artifactItem>
                             </artifactItems>
                             <stripVersion>true</stripVersion>

@@ -1,5 +1,6 @@
 package dev.ikm.tinkar.service.service.impl;
 
+import network.ike.foundation.ike.bindings.IkeTerms;
 import dev.ikm.tinkar.terms.KernelTerm;
 import dev.ikm.tinkar.common.id.PublicId;
 import dev.ikm.tinkar.common.service.CachingService;
@@ -16,7 +17,6 @@ import dev.ikm.tinkar.entity.load.LoadEntitiesFromProtobufFile;
 import dev.ikm.tinkar.schema.StampVersion;
 import dev.ikm.tinkar.service.proto.TinkarSearchQueryResponse;
 import dev.ikm.tinkar.service.proto.TinkarSearchResult;
-import dev.ikm.tinkar.terms.TinkarTerm;
 import org.assertj.core.api.SoftAssertions;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -43,7 +43,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class ComponentResultTest {
 
-    private static final File PB_STARTER_DATA = new File("target/data/tinkar-starter-data-reasoned-pb.zip");
+    private static final File PB_STARTER_DATA = new File("target/data/ike-starter-set-reasoned-pb.zip");
 
     private TinkarServiceImpl service;
     private TinkarPrimitiveImpl primitive;
@@ -110,21 +110,21 @@ class ComponentResultTest {
 
     @Test
     void eachChildIsDescribedFromTheStore() {
-        List<PublicId> children = primitive.childrenOf(TinkarTerm.STATUS_VALUE.publicId());
+        List<PublicId> children = primitive.childrenOf(IkeTerms.STATUS_VALUE.publicId());
         assertThat(children).as("precondition: the status value concept has children").isNotEmpty();
 
-        TinkarSearchQueryResponse response = service.getChildConcepts(anyUuid(TinkarTerm.STATUS_VALUE.publicId()));
+        TinkarSearchQueryResponse response = service.getChildConcepts(anyUuid(IkeTerms.STATUS_VALUE.publicId()));
 
         assertDescribesEach(response, children);
     }
 
     @Test
     void eachDescendantIsDescribedFromTheStore() {
-        List<PublicId> descendants = primitive.descendantsOf(TinkarTerm.STATUS_VALUE.publicId());
+        List<PublicId> descendants = primitive.descendantsOf(IkeTerms.STATUS_VALUE.publicId());
         assertThat(descendants).as("precondition: the status value concept has descendants").isNotEmpty();
 
         TinkarSearchQueryResponse response =
-                service.getDescendantConcepts(anyUuid(TinkarTerm.STATUS_VALUE.publicId()));
+                service.getDescendantConcepts(anyUuid(IkeTerms.STATUS_VALUE.publicId()));
 
         assertDescribesEach(response, descendants);
     }

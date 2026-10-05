@@ -85,7 +85,7 @@ import static org.assertj.core.api.Assertions.fail;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class ResponseTextTest {
 
-    private static final File PB_STARTER_DATA = new File("target/data/tinkar-starter-data-reasoned-pb.zip");
+    private static final File PB_STARTER_DATA = new File("target/data/ike-starter-set-reasoned-pb.zip");
 
     /** A nid of the ephemeral store in decimal: {@code Integer.MIN_VALUE} plus a small count. */
     private static final Pattern EPHEMERAL_NID = Pattern.compile("-2147[34]\\d{5}(?!\\d)");
