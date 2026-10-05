@@ -1,5 +1,6 @@
 package dev.ikm.tinkar.service.service.impl;
 
+import dev.ikm.tinkar.terms.KernelTerm;
 import dev.ikm.tinkar.common.id.PublicId;
 import dev.ikm.tinkar.common.service.CachingService;
 import dev.ikm.tinkar.common.service.PrimitiveData;
@@ -78,13 +79,13 @@ class ComponentResultTest {
 
     @Test
     void anEntityIsDescribedByItsNamesAndTheStampOfItsVersion() {
-        ConceptEntity<?> active = EntityHandle.get(TinkarTerm.ACTIVE_STATE).expectConcept();
+        ConceptEntity<?> active = EntityHandle.get(KernelTerm.ACTIVE_STATE).expectConcept();
         assertThat(active.versions())
                 .as("precondition: one version, so the stamp the response reports is unambiguous")
                 .hasSize(1);
         StampEntity stamp = EntityHandle.getStampOrThrow(active.versions().getFirst().stampNid());
 
-        TinkarSearchQueryResponse response = service.getEntity(anyUuid(TinkarTerm.ACTIVE_STATE.publicId()));
+        TinkarSearchQueryResponse response = service.getEntity(anyUuid(KernelTerm.ACTIVE_STATE.publicId()));
 
         assertThat(response.getSuccess()).as(response.getErrorMessage()).isTrue();
         assertThat(response.getResultsList()).hasSize(1);

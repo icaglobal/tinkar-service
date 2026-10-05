@@ -1,5 +1,6 @@
 package dev.ikm.tinkar.service.service.impl;
 
+import dev.ikm.tinkar.terms.KernelTerm;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.ikm.tinkar.common.id.IntIdSet;
@@ -37,7 +38,6 @@ import dev.ikm.tinkar.service.util.ProtoConversionUtils;
 import dev.ikm.tinkar.terms.EntityFacade;
 import dev.ikm.tinkar.terms.EntityProxy;
 import dev.ikm.tinkar.terms.State;
-import dev.ikm.tinkar.terms.TinkarTerm;
 import org.eclipse.collections.api.factory.Lists;
 import org.eclipse.collections.api.factory.primitive.IntObjectMaps;
 import org.eclipse.collections.api.list.ImmutableList;
@@ -166,23 +166,23 @@ class ResponseTextTest {
 
     @Test
     void theSemanticsOfADescribedConceptHoldNoNid() {
-        TinkarConceptSemanticsResponse response = service.inspectConceptProto(uuidOf(TinkarTerm.ENGLISH_LANGUAGE));
+        TinkarConceptSemanticsResponse response = service.inspectConceptProto(uuidOf(KernelTerm.ENGLISH_LANGUAGE));
 
         assertThat(response.getSuccess()).isTrue();
-        assertThat(response.getConceptDescription()).isEqualTo(name(TinkarTerm.ENGLISH_LANGUAGE));
+        assertThat(response.getConceptDescription()).isEqualTo(name(KernelTerm.ENGLISH_LANGUAGE));
         assertThat(response.getSemanticsCount()).isPositive();
         assertNoNid("the semantics of a described concept", response.toString());
     }
 
     @Test
     void aDefinitionIsWrittenAsATreeOfNames() {
-        int nid = TinkarTerm.ENGLISH_LANGUAGE.nid();
+        int nid = KernelTerm.ENGLISH_LANGUAGE.nid();
         ViewCalculatorWithCache view = Calculators.View.Default();
         Latest<DiTreeEntity> stated = view.logicCalculator().getStatedLogicalExpressionForEntity(nid, view.stampCalculator());
         assertThat(stated.isPresent()).as("the starter data defines the concept").isTrue();
 
-        TinkarConceptSemanticsResponse response = service.inspectConceptProto(uuidOf(TinkarTerm.ENGLISH_LANGUAGE));
-        String definition = onlyFieldOf(semanticOfPattern(response, TinkarTerm.EL_PLUS_PLUS_STATED_AXIOMS_PATTERN));
+        TinkarConceptSemanticsResponse response = service.inspectConceptProto(uuidOf(KernelTerm.ENGLISH_LANGUAGE));
+        String definition = onlyFieldOf(semanticOfPattern(response, KernelTerm.EL_PLUS_PLUS_STATED_AXIOMS_PATTERN));
 
         assertThat(definition)
                 .as("the layout the assistant writes for a local store: a line break, then the tree")
@@ -210,7 +210,7 @@ class ResponseTextTest {
     @Test
     void aComponentFieldThatHoldsItIsItsUuid() {
         TinkarConceptSemanticInfo identifier =
-                semanticOfPattern(service.inspectConceptProto(HOLDER.toString()), TinkarTerm.IDENTIFIER_PATTERN);
+                semanticOfPattern(service.inspectConceptProto(HOLDER.toString()), KernelTerm.IDENTIFIER_PATTERN);
 
         assertThat(identifier.getNamedFieldsList().stream().map(TinkarSemanticField::getValue))
                 .containsExactlyInAnyOrder(UNDESCRIBED.toString(), "H-0001");
@@ -220,7 +220,7 @@ class ResponseTextTest {
     @Test
     void anIdSetIsNamesWithTypedIdentifiersAndNeverANid() {
         TinkarConceptSemanticInfo idSet =
-                semanticOfPattern(service.inspectConceptProto(HOLDER.toString()), TinkarTerm.STATED_NAVIGATION_PATTERN);
+                semanticOfPattern(service.inspectConceptProto(HOLDER.toString()), KernelTerm.STATED_NAVIGATION_PATTERN);
 
         // In the order the set holds its elements.
         List<String> elements = new ArrayList<>();
@@ -230,7 +230,7 @@ class ResponseTextTest {
             } else if (nid == UNASSIGNED_NID) {
                 elements.add("unidentified component [unidentified component]");
             } else {
-                elements.add(name(TinkarTerm.ENGLISH_LANGUAGE) + " [UUID " + uuidOf(TinkarTerm.ENGLISH_LANGUAGE) + "]");
+                elements.add(name(KernelTerm.ENGLISH_LANGUAGE) + " [UUID " + uuidOf(KernelTerm.ENGLISH_LANGUAGE) + "]");
             }
         }
         assertThat(idSet.getNamedFields(0).getValue()).isEqualTo("[" + String.join(", ", elements) + "]");
@@ -241,15 +241,15 @@ class ResponseTextTest {
     @Test
     void aDefinitionThatRefersToItNamesItByItsUuid() {
         TinkarConceptSemanticInfo definition =
-                semanticOfPattern(service.inspectConceptProto(HOLDER.toString()), TinkarTerm.EL_PLUS_PLUS_STATED_AXIOMS_PATTERN);
+                semanticOfPattern(service.inspectConceptProto(HOLDER.toString()), KernelTerm.EL_PLUS_PLUS_STATED_AXIOMS_PATTERN);
 
         String expected = "\n"
-                + "   [0]➞[1] " + name(TinkarTerm.DEFINITION_ROOT) + "\n"
-                + "     [1]➞[2] " + name(TinkarTerm.NECESSARY_SET) + "\n"
-                + "       [2]➞[3,4] " + name(TinkarTerm.AND) + "\n"
-                + "         [3] " + name(TinkarTerm.CONCEPT_REFERENCE) + ": " + UNDESCRIBED + "\n"
-                + "         [4] " + name(TinkarTerm.ROLE) + "\n"
-                + "            •" + name(TinkarTerm.ROLE_TYPE) + ": " + UNDESCRIBED + "\n";
+                + "   [0]➞[1] " + name(KernelTerm.DEFINITION_ROOT) + "\n"
+                + "     [1]➞[2] " + name(KernelTerm.NECESSARY_SET) + "\n"
+                + "       [2]➞[3,4] " + name(KernelTerm.AND) + "\n"
+                + "         [3] " + name(KernelTerm.CONCEPT_REFERENCE) + ": " + UNDESCRIBED + "\n"
+                + "         [4] " + name(KernelTerm.ROLE) + "\n"
+                + "            •" + name(KernelTerm.ROLE_TYPE) + ": " + UNDESCRIBED + "\n";
         assertThat(onlyFieldOf(definition)).isEqualTo(expected);
         assertNoNid("the definition semantic", definition.toString(), undescribedNid);
     }
@@ -260,7 +260,7 @@ class ResponseTextTest {
 
         assertThat(response.getSuccess()).isTrue();
         assertThat(response.getSemantic())
-                .isEqualTo(semanticOfPattern(service.inspectConceptProto(HOLDER.toString()), TinkarTerm.STATED_NAVIGATION_PATTERN));
+                .isEqualTo(semanticOfPattern(service.inspectConceptProto(HOLDER.toString()), KernelTerm.STATED_NAVIGATION_PATTERN));
         assertNoNid("the semantic", response.toString(), undescribedNid, UNASSIGNED_NID);
     }
 
@@ -283,7 +283,7 @@ class ResponseTextTest {
 
         assertThat(response.success()).as(response.errorMessage()).isTrue();
         assertThat(response.entityDescription())
-                .isEqualTo(name(TinkarTerm.INFERRED_NAVIGATION_PATTERN) + " semantic on " + UNDESCRIBED);
+                .isEqualTo(name(KernelTerm.INFERRED_NAVIGATION_PATTERN) + " semantic on " + UNDESCRIBED);
         assertNoNid("the change history of a semantic", response.toString(), undescribedNid);
     }
 
@@ -364,10 +364,10 @@ class ResponseTextTest {
 
         assertThat(response.success()).as(response.errorMessage()).isTrue();
         ConceptSearchResponse.GroupedSearchResult english = response.groupedResults().stream()
-                .filter(group -> group.publicId().contains(uuidOf(TinkarTerm.ENGLISH_LANGUAGE)))
+                .filter(group -> group.publicId().contains(uuidOf(KernelTerm.ENGLISH_LANGUAGE)))
                 .findFirst().orElseThrow();
         LanguageCalculator names = Calculators.View.Default().languageCalculator();
-        int nid = TinkarTerm.ENGLISH_LANGUAGE.nid();
+        int nid = KernelTerm.ENGLISH_LANGUAGE.nid();
         assertThat(english.fullyQualifiedName()).isEqualTo(names.getFullyQualifiedNameText(nid).orElseThrow());
         assertThat(english.preferredName()).isEqualTo(names.getDescriptionText(nid).orElseThrow());
     }
@@ -376,12 +376,12 @@ class ResponseTextTest {
 
     @Test
     void aVertexIsWrittenOnOneLineOfNames() {
-        EntityVertex role = EntityVertex.make(TinkarTerm.ROLE);
-        setProperty(role, TinkarTerm.ROLE_TYPE, EntityProxy.Concept.make(PublicIds.of(UNDESCRIBED)));
+        EntityVertex role = EntityVertex.make(KernelTerm.ROLE);
+        setProperty(role, KernelTerm.ROLE_TYPE, EntityProxy.Concept.make(PublicIds.of(UNDESCRIBED)));
 
         String text = service.formatFieldValue(role);
 
-        assertThat(text).isEqualTo(name(TinkarTerm.ROLE) + " {" + name(TinkarTerm.ROLE_TYPE) + "=" + UNDESCRIBED + "}");
+        assertThat(text).isEqualTo(name(KernelTerm.ROLE) + " {" + name(KernelTerm.ROLE_TYPE) + "=" + UNDESCRIBED + "}");
         assertThat(role.toString()).as("the vertex's own text ends its component in a nid").contains("<" + undescribedNid + ">");
         assertNoNid("the vertex", text, undescribedNid);
         // A vertex has a UUID of its own, which makes it a public id, but it is not a component.
@@ -392,7 +392,7 @@ class ResponseTextTest {
 
     @Test
     void aComponentIsItsNameOrItsUuid() {
-        assertThat(service.formatFieldValue(TinkarTerm.ENGLISH_LANGUAGE)).isEqualTo(name(TinkarTerm.ENGLISH_LANGUAGE));
+        assertThat(service.formatFieldValue(KernelTerm.ENGLISH_LANGUAGE)).isEqualTo(name(KernelTerm.ENGLISH_LANGUAGE));
         assertThat(service.formatFieldValue(EntityProxy.Concept.make(PublicIds.of(UNDESCRIBED)))).isEqualTo(UNDESCRIBED.toString());
         assertThat(service.formatFieldValue(PublicIds.of(UNDESCRIBED))).isEqualTo(UNDESCRIBED.toString());
     }
@@ -445,32 +445,32 @@ class ResponseTextTest {
         }
         Transaction transaction = Transaction.make("Components for the response text tests");
         StampEntity<?> stamp = transaction.getStamp(State.ACTIVE, System.currentTimeMillis(),
-                TinkarTerm.USER.nid(), TinkarTerm.SOLOR_OVERLAY_MODULE.nid(), TinkarTerm.DEVELOPMENT_PATH.nid());
+                KernelTerm.USER.nid(), KernelTerm.SOLOR_OVERLAY_MODULE.nid(), KernelTerm.DEVELOPMENT_PATH.nid());
         StampEntityVersion version = stamp.versions().get(0);
 
         undescribedNid = put(transaction, ConceptRecord.build(UNDESCRIBED, version));
         holderNid = put(transaction, ConceptRecord.build(HOLDER, version));
         EntityProxy.Concept undescribed = EntityProxy.Concept.make(PublicIds.of(UNDESCRIBED));
 
-        put(transaction, SemanticRecord.build(fixtureUuid("holder name"), TinkarTerm.DESCRIPTION_PATTERN.nid(),
+        put(transaction, SemanticRecord.build(fixtureUuid("holder name"), KernelTerm.DESCRIPTION_PATTERN.nid(),
                 holderNid, version, Lists.immutable.of(
-                        TinkarTerm.ENGLISH_LANGUAGE.publicId(),
+                        KernelTerm.ENGLISH_LANGUAGE.publicId(),
                         HOLDER_NAME,
-                        TinkarTerm.DESCRIPTION_NOT_CASE_SENSITIVE.publicId(),
-                        TinkarTerm.FULLY_QUALIFIED_NAME_DESCRIPTION_TYPE.publicId())));
+                        KernelTerm.DESCRIPTION_NOT_CASE_SENSITIVE.publicId(),
+                        KernelTerm.FULLY_QUALIFIED_NAME_DESCRIPTION_TYPE.publicId())));
 
-        put(transaction, SemanticRecord.build(IDENTIFIER, TinkarTerm.IDENTIFIER_PATTERN.nid(),
+        put(transaction, SemanticRecord.build(IDENTIFIER, KernelTerm.IDENTIFIER_PATTERN.nid(),
                 holderNid, version, Lists.immutable.of(undescribed, "H-0001")));
-        put(transaction, SemanticRecord.build(ID_SET, TinkarTerm.STATED_NAVIGATION_PATTERN.nid(),
+        put(transaction, SemanticRecord.build(ID_SET, KernelTerm.STATED_NAVIGATION_PATTERN.nid(),
                 holderNid, version, Lists.immutable.of(idSetUnderTest(), IntIds.set.empty())));
-        put(transaction, SemanticRecord.build(DEFINITION, TinkarTerm.EL_PLUS_PLUS_STATED_AXIOMS_PATTERN.nid(),
+        put(transaction, SemanticRecord.build(DEFINITION, KernelTerm.EL_PLUS_PLUS_STATED_AXIOMS_PATTERN.nid(),
                 holderNid, version, fields(aDefinitionThatRefersTo(undescribed))));
 
-        put(transaction, SemanticRecord.build(BARE, TinkarTerm.INFERRED_NAVIGATION_PATTERN.nid(),
+        put(transaction, SemanticRecord.build(BARE, KernelTerm.INFERRED_NAVIGATION_PATTERN.nid(),
                 undescribedNid, version, Lists.immutable.of(IntIds.set.empty(), IntIds.set.empty())));
-        int commentedNid = put(transaction, SemanticRecord.build(COMMENTED, TinkarTerm.STATED_NAVIGATION_PATTERN.nid(),
+        int commentedNid = put(transaction, SemanticRecord.build(COMMENTED, KernelTerm.STATED_NAVIGATION_PATTERN.nid(),
                 undescribedNid, version, Lists.immutable.of(IntIds.set.of(holderNid), IntIds.set.empty())));
-        commentNid = put(transaction, SemanticRecord.build(COMMENT, TinkarTerm.COMMENT_PATTERN.nid(),
+        commentNid = put(transaction, SemanticRecord.build(COMMENT, KernelTerm.COMMENT_PATTERN.nid(),
                 commentedNid, version, fields(SEARCH_WORD + " is a word no description holds")));
 
         transaction.commit();
@@ -478,7 +478,7 @@ class ResponseTextTest {
 
     /** A described concept, the undescribed concept, and a nid the store has no public id for. */
     private IntIdSet idSetUnderTest() {
-        return IntIds.set.of(TinkarTerm.ENGLISH_LANGUAGE.nid(), undescribedNid, UNASSIGNED_NID);
+        return IntIds.set.of(KernelTerm.ENGLISH_LANGUAGE.nid(), undescribedNid, UNASSIGNED_NID);
     }
 
     /**
@@ -486,13 +486,13 @@ class ResponseTextTest {
      * type is the given concept.
      */
     private static DiTreeEntity aDefinitionThatRefersTo(EntityProxy.Concept concept) {
-        EntityVertex root = EntityVertex.make(TinkarTerm.DEFINITION_ROOT);
-        EntityVertex necessarySet = EntityVertex.make(TinkarTerm.NECESSARY_SET);
-        EntityVertex and = EntityVertex.make(TinkarTerm.AND);
-        EntityVertex reference = EntityVertex.make(TinkarTerm.CONCEPT_REFERENCE);
-        setProperty(reference, TinkarTerm.CONCEPT_REFERENCE, concept);
-        EntityVertex role = EntityVertex.make(TinkarTerm.ROLE);
-        setProperty(role, TinkarTerm.ROLE_TYPE, concept);
+        EntityVertex root = EntityVertex.make(KernelTerm.DEFINITION_ROOT);
+        EntityVertex necessarySet = EntityVertex.make(KernelTerm.NECESSARY_SET);
+        EntityVertex and = EntityVertex.make(KernelTerm.AND);
+        EntityVertex reference = EntityVertex.make(KernelTerm.CONCEPT_REFERENCE);
+        setProperty(reference, KernelTerm.CONCEPT_REFERENCE, concept);
+        EntityVertex role = EntityVertex.make(KernelTerm.ROLE);
+        setProperty(role, KernelTerm.ROLE_TYPE, concept);
 
         DiTreeEntity.Builder builder = DiTreeEntity.builder();
         builder.setRoot(root);

@@ -1,5 +1,6 @@
 package dev.ikm.tinkar.service.service.impl;
 
+import dev.ikm.tinkar.terms.KernelTerm;
 import dev.ikm.tinkar.common.id.PublicId;
 import dev.ikm.tinkar.common.id.PublicIds;
 import dev.ikm.tinkar.common.service.CachingService;
@@ -152,7 +153,7 @@ class UnknownComponentRequestTest {
 
     @Test
     void theWriteEndpointsWriteNothingForAnIdTheKnowledgeBaseDoesNotHold() {
-        String known = uuidOf(TinkarTerm.ENGLISH_LANGUAGE);
+        String known = uuidOf(KernelTerm.ENGLISH_LANGUAGE);
         int conceptsBefore = conceptCount();
         int semanticsBefore = semanticCount();
 
@@ -170,7 +171,7 @@ class UnknownComponentRequestTest {
 
     @Test
     void aComponentTheKnowledgeBaseHoldsIsAnsweredAsBefore() {
-        String known = uuidOf(TinkarTerm.ENGLISH_LANGUAGE);
+        String known = uuidOf(KernelTerm.ENGLISH_LANGUAGE);
         SoftAssertions each = new SoftAssertions();
         // The endpoints that read. A write would change the store under the other tests.
         for (String name : List.of("entity", "children", "descendants", "children under a view",
@@ -188,8 +189,8 @@ class UnknownComponentRequestTest {
     void theIdOfARequestIsConvertedOnlyWhenTheKnowledgeBaseHoldsTheComponent() {
         UUID unknown = UUID.randomUUID();
 
-        PublicId known = primitive.getPublicId(uuidOf(TinkarTerm.ENGLISH_LANGUAGE));
-        assertThat(PublicId.equals(known, TinkarTerm.ENGLISH_LANGUAGE.publicId())).isTrue();
+        PublicId known = primitive.getPublicId(uuidOf(KernelTerm.ENGLISH_LANGUAGE));
+        assertThat(PublicId.equals(known, KernelTerm.ENGLISH_LANGUAGE.publicId())).isTrue();
 
         assertThatThrownBy(() -> primitive.getPublicId(unknown.toString()))
                 .isInstanceOf(UnknownComponentException.class)
@@ -205,8 +206,8 @@ class UnknownComponentRequestTest {
         UUID referredToOnly = UUID.randomUUID();
         int assigned = PrimitiveData.nid(PublicIds.of(referredToOnly));
 
-        assertThat(KnownComponents.nid(TinkarTerm.ENGLISH_LANGUAGE.publicId()))
-                .isEqualTo(OptionalInt.of(TinkarTerm.ENGLISH_LANGUAGE.nid()));
+        assertThat(KnownComponents.nid(KernelTerm.ENGLISH_LANGUAGE.publicId()))
+                .isEqualTo(OptionalInt.of(KernelTerm.ENGLISH_LANGUAGE.nid()));
         assertThat(KnownComponents.nid(PublicIds.of(unknown))).isEmpty();
         assertThat(PrimitiveData.get().hasUuid(unknown)).isFalse();
         assertThat(KnownComponents.nid(PublicIds.of(referredToOnly)))
@@ -246,9 +247,9 @@ class UnknownComponentRequestTest {
         String module = uuidOf(TinkarTerm.DEVELOPMENT_MODULE);
 
         StampCoordinateRecord coordinate = CoordinateFactory.buildStampCoordinate(new StampCoordinateDto(
-                null, null, uuidOf(TinkarTerm.DEVELOPMENT_PATH), List.of(module), List.of(), List.of(module)));
+                null, null, uuidOf(KernelTerm.DEVELOPMENT_PATH), List.of(module), List.of(), List.of(module)));
 
-        assertThat(coordinate.stampPosition().getPathForPositionNid()).isEqualTo(TinkarTerm.DEVELOPMENT_PATH.nid());
+        assertThat(coordinate.stampPosition().getPathForPositionNid()).isEqualTo(KernelTerm.DEVELOPMENT_PATH.nid());
         assertThat(coordinate.moduleNids().toArray()).containsExactly(TinkarTerm.DEVELOPMENT_MODULE.nid());
         assertThat(coordinate.modulePriorityNidList().toArray()).containsExactly(TinkarTerm.DEVELOPMENT_MODULE.nid());
     }
@@ -260,7 +261,7 @@ class UnknownComponentRequestTest {
      * message. Endpoints that take two ids are listed once for each.
      */
     private Map<String, Function<String, Outcome>> endpoints() {
-        String known = uuidOf(TinkarTerm.ENGLISH_LANGUAGE);
+        String known = uuidOf(KernelTerm.ENGLISH_LANGUAGE);
         Map<String, Function<String, Outcome>> endpoints = new LinkedHashMap<>();
         endpoints.put("entity", id -> outcome(service.getEntity(id)));
         endpoints.put("children", id -> outcome(service.getChildConcepts(id)));
