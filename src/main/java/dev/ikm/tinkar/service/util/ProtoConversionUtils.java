@@ -1,5 +1,7 @@
 package dev.ikm.tinkar.service.util;
 
+import java.util.Arrays;
+import dev.ikm.tinkar.entity.changeset.SchemaIds;
 import dev.ikm.tinkar.schema.StampVersion;
 import dev.ikm.tinkar.service.dto.ConceptSearchResponse;
 import dev.ikm.tinkar.service.dto.SearchSortOption;
@@ -37,7 +39,9 @@ public final class ProtoConversionUtils {
     }
 
     private static SearchResult toSearchResultDto(TinkarSearchResult proto) {
-        List<String> publicIds = proto.getPublicId().getUuidsList();
+        List<String> publicIds = proto.hasPublicId() && SchemaIds.hasUuids(proto.getPublicId())
+                ? Arrays.stream(SchemaIds.uuids(proto.getPublicId())).map(UUID::toString).toList()
+                : List.of();
         Descriptions descriptions = new Descriptions(
                 proto.getDescriptions().getFullyQualifiedName(),
                 proto.getDescriptions().getRegularName(),
@@ -71,9 +75,42 @@ public final class ProtoConversionUtils {
         if (publicId == null) {
             return null;
         }
+        if (publicId.getUuidBitsCount() > 0) {
+            return Arrays.stream(SchemaIds.uuids(publicId)).min(Comparator.naturalOrder()).map(UUID::toString).orElse(null);
+        }
         return publicId.getUuidsList().stream()
                 .min(BY_UUID)
                 .orElse(null);
+    }
+
+    /**
+     * A wire public id from UUIDs as text, as the service's DTOs carry them: each UUID as two
+     * longs (changeset format version 2). Text that is not a UUID is left out.
+     */
+    public static dev.ikm.tinkar.schema.PublicId toWire(List<String> uuids) {
+        UUID[] parsed = uuids == null ? new UUID[0]
+                : uuids.stream().map(ProtoConversionUtils::parse).filter(java.util.Objects::nonNull).toArray(UUID[]::new);
+        return parsed.length == 0 ? dev.ikm.tinkar.schema.PublicId.getDefaultInstance() : SchemaIds.toSchema(parsed);
+    }
+
+    /** A wire public id from one UUID as text; the empty public id when the text is null or not a UUID. */
+    public static dev.ikm.tinkar.schema.PublicId toWire(String uuid) {
+        return uuid == null ? dev.ikm.tinkar.schema.PublicId.getDefaultInstance() : toWire(List.of(uuid));
+    }
+
+    /** Wire public ids from UUIDs as text, one each; text that is not a UUID is left out. */
+    public static List<dev.ikm.tinkar.schema.PublicId> toWireList(List<String> uuids) {
+        return uuids == null ? List.of() : uuids.stream().map(ProtoConversionUtils::toWire)
+                .filter(publicId -> SchemaIds.hasUuids(publicId)).toList();
+    }
+
+    /** The least UUID of each wire public id, as text: one per public id that carries a UUID. */
+    public static List<String> leastUuids(List<dev.ikm.tinkar.schema.PublicId> publicIds) {
+        return publicIds.stream().map(ProtoConversionUtils::leastUuid).filter(java.util.Objects::nonNull).toList();
+    }
+
+    private static boolean hasUuid(List<String> uuids) {
+        return uuids != null && uuids.stream().anyMatch(uuid -> parse(uuid) != null);
     }
 
     /** UUID text by {@link UUID#compareTo}; text that is not a UUID after every UUID, by text. */
@@ -136,7 +173,7 @@ public final class ProtoConversionUtils {
                         .setFullyQualifiedName(result.fullyQualifiedName() != null ? result.fullyQualifiedName() : "")
                         .setScore(result.score() != null ? result.score() : 0f)
                         .setActive(result.active() != null && result.active());
-                if (result.publicId() != null) resultBuilder.addAllPublicId(result.publicId());
+                if (hasUuid(result.publicId())) resultBuilder.setPublicId(toWire(result.publicId()));
                 if (result.regularName() != null) resultBuilder.setRegularName(result.regularName());
                 if (result.highlightedText() != null) resultBuilder.setHighlightedText(result.highlightedText());
                 builder.addResults(resultBuilder.build());
@@ -149,7 +186,7 @@ public final class ProtoConversionUtils {
                         .setFullyQualifiedName(group.fullyQualifiedName() != null ? group.fullyQualifiedName() : "")
                         .setTopScore(group.topScore() != null ? group.topScore() : 0f)
                         .setActive(group.active() != null && group.active());
-                if (group.publicId() != null) groupBuilder.addAllPublicId(group.publicId());
+                if (hasUuid(group.publicId())) groupBuilder.setPublicId(toWire(group.publicId()));
                 if (group.preferredName() != null) groupBuilder.setPreferredName(group.preferredName());
                 if (group.highlightedName() != null) groupBuilder.setHighlightedName(group.highlightedName());
 
@@ -160,7 +197,7 @@ public final class ProtoConversionUtils {
                         if (semantic.highlightedText() != null) semanticBuilder.setHighlightedText(semantic.highlightedText());
                         if (semantic.plainText() != null) semanticBuilder.setPlainText(semantic.plainText());
                         if (semantic.fieldIndex() != null) semanticBuilder.setFieldIndex(semantic.fieldIndex());
-                        if (semantic.publicId() != null) semanticBuilder.addAllPublicId(semantic.publicId());
+                        if (hasUuid(semantic.publicId())) semanticBuilder.setPublicId(toWire(semantic.publicId()));
                         groupBuilder.addMatchingSemantics(semanticBuilder.build());
                     }
                 }

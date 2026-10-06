@@ -67,7 +67,10 @@ class NoNidFieldInResponsesTest {
         // Deleting a field must not renumber its neighbors: a number is what goes on the wire.
         Descriptor matchingSemantic = TinkarMatchingSemantic.getDescriptor();
         assertThat(matchingSemantic.findFieldByName("field_index").getNumber()).isEqualTo(4);
-        assertThat(matchingSemantic.findFieldByName("public_id").getNumber()).isEqualTo(6);
+        // public_id moved from 6 to 7 when it became a public id rather than UUID text; 6 stays
+        // reserved so a client built before the change cannot misread it (IKE-Network/ike-issues#1235).
+        assertThat(matchingSemantic.findFieldByName("public_id").getNumber()).isEqualTo(7);
+        assertThat(matchingSemantic.isReservedNumber(6)).as("field 6 of TinkarMatchingSemantic is reserved").isTrue();
 
         Descriptor groupedResult = TinkarGroupedSearchResult.getDescriptor();
         assertThat(groupedResult.findFieldByName("matching_semantics").getNumber()).isEqualTo(5);

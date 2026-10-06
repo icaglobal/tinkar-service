@@ -91,19 +91,19 @@ class ComponentResultTest {
         assertThat(response.getResultsList()).hasSize(1);
         TinkarSearchResult result = response.getResults(0);
         SoftAssertions each = new SoftAssertions();
-        each.assertThat(result.getPublicId().getUuidsList()).as("public id")
+        each.assertThat(wireUuidStrings(result.getPublicId())).as("public id")
                 .containsExactlyInAnyOrderElementsOf(uuidStrings(active.publicId()));
         assertNamedAsTheDefaultViewNamesIt(each, result, active.nid());
         StampVersion reported = result.getStamp();
         each.assertThat(reported.getTime()).as("stamp time").isEqualTo(stamp.time());
         // Each part of the stamp carries every UUID of its public id.
-        each.assertThat(reported.getStatusPublicId().getUuidsList()).as("status")
+        each.assertThat(wireUuidStrings(reported.getStatusPublicId())).as("status")
                 .containsExactlyInAnyOrderElementsOf(uuidStrings(EntityHandle.get(stamp.stateNid()).expectEntity().publicId()));
-        each.assertThat(reported.getAuthorPublicId().getUuidsList()).as("author")
+        each.assertThat(wireUuidStrings(reported.getAuthorPublicId())).as("author")
                 .containsExactlyInAnyOrderElementsOf(uuidStrings(EntityHandle.get(stamp.authorNid()).expectEntity().publicId()));
-        each.assertThat(reported.getModulePublicId().getUuidsList()).as("module")
+        each.assertThat(wireUuidStrings(reported.getModulePublicId())).as("module")
                 .containsExactlyInAnyOrderElementsOf(uuidStrings(EntityHandle.get(stamp.moduleNid()).expectEntity().publicId()));
-        each.assertThat(reported.getPathPublicId().getUuidsList()).as("path")
+        each.assertThat(wireUuidStrings(reported.getPathPublicId())).as("path")
                 .containsExactlyInAnyOrderElementsOf(uuidStrings(EntityHandle.get(stamp.pathNid()).expectEntity().publicId()));
         each.assertAll();
     }
@@ -136,14 +136,14 @@ class ComponentResultTest {
         for (int i = 0; i < expected.size(); i++) {
             PublicId publicId = expected.get(i);
             TinkarSearchResult result = response.getResults(i);
-            each.assertThat(result.getPublicId().getUuidsList()).as("public id of result " + i)
+            each.assertThat(wireUuidStrings(result.getPublicId())).as("public id of result " + i)
                     .containsExactlyInAnyOrderElementsOf(uuidStrings(publicId));
             Entity<?> entity = EntityHandle.get(publicId).expectEntity();
             assertNamedAsTheDefaultViewNamesIt(each, result, entity.nid());
             // The service reports the stamp of the entity's first version.
             StampEntity stamp = EntityHandle.getStampOrThrow(entity.versions().getFirst().stampNid());
             each.assertThat(result.getStamp().getTime()).as("stamp time of " + publicId).isEqualTo(stamp.time());
-            each.assertThat(result.getStamp().getStatusPublicId().getUuidsList()).as("status of " + publicId)
+            each.assertThat(wireUuidStrings(result.getStamp().getStatusPublicId())).as("status of " + publicId)
                     .containsExactlyInAnyOrderElementsOf(uuidStrings(EntityHandle.get(stamp.stateNid()).expectEntity().publicId()));
         }
         each.assertAll();
@@ -165,5 +165,16 @@ class ComponentResultTest {
 
     private static List<String> uuidStrings(PublicId publicId) {
         return publicId.asUuidList().stream().map(Object::toString).toList();
+    }
+
+    /**
+     * A wire public id's UUIDs as text: the service writes each as two longs and none as text
+     * (changeset format version 2), so a text UUID fails the comparison.
+     */
+    private static List<String> wireUuidStrings(dev.ikm.tinkar.schema.PublicId wire) {
+        if (wire.getUuidsCount() > 0) {
+            return List.of("UUIDs written as text: " + wire.getUuidsList());
+        }
+        return java.util.Arrays.stream(dev.ikm.tinkar.entity.changeset.SchemaIds.uuids(wire)).map(java.util.UUID::toString).toList();
     }
 }

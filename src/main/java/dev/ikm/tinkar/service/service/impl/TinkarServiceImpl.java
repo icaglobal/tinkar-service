@@ -1,5 +1,6 @@
 package dev.ikm.tinkar.service.service.impl;
 
+import dev.ikm.tinkar.entity.changeset.SchemaIds;
 import dev.ikm.tinkar.common.id.*;
 import dev.ikm.tinkar.common.service.EntityCountSummary;
 import dev.ikm.tinkar.common.service.DataServiceController;
@@ -954,11 +955,7 @@ public class TinkarServiceImpl implements TinkarService {
      * @return the wire public id, listing every UUID
      */
     private static dev.ikm.tinkar.schema.PublicId protoPublicId(PublicId publicId) {
-        return dev.ikm.tinkar.schema.PublicId.newBuilder()
-                .addAllUuids(publicId.asUuidList().stream()
-                        .map(UUID::toString)
-                        .toList())
-                .build();
+        return SchemaIds.toSchema(publicId);
     }
 
     /**
@@ -1530,7 +1527,7 @@ public class TinkarServiceImpl implements TinkarService {
                     EntityService.get().semanticsForComponent(conceptNid).toList();
 
             TinkarConceptSemanticsResponse.Builder responseBuilder = TinkarConceptSemanticsResponse.newBuilder()
-                    .setConceptPublicId(dev.ikm.tinkar.schema.PublicId.newBuilder().addUuids(conceptId).build())
+                    .setConceptPublicId(protoPublicId(publicId))
                     .setConceptDescription(conceptDescription)
                     .setSuccess(true);
 
@@ -1549,7 +1546,7 @@ public class TinkarServiceImpl implements TinkarService {
         } catch (Exception e) {
             log.error("Failed to get semantics proto for concept {}: {}", conceptId, e.getMessage(), e);
             return TinkarConceptSemanticsResponse.newBuilder()
-                    .setConceptPublicId(dev.ikm.tinkar.schema.PublicId.newBuilder().addUuids(conceptId).build())
+                    .setConceptPublicId(protoPublicIdOrEmpty(conceptId))
                     .setSuccess(false)
                     .setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName())
                     .setTotalCount(0)
@@ -2770,11 +2767,21 @@ public class TinkarServiceImpl implements TinkarService {
         }
     }
 
+    /**
+     * The wire public id of a UUID given as text, for a response that reports a request it
+     * could not serve: empty when the text is not a UUID, since no UUID is written as text.
+     */
+    private static dev.ikm.tinkar.schema.PublicId protoPublicIdOrEmpty(String uuid) {
+        try {
+            return SchemaIds.toSchema(UUID.fromString(uuid));
+        } catch (IllegalArgumentException | NullPointerException notAUuid) {
+            return dev.ikm.tinkar.schema.PublicId.getDefaultInstance();
+        }
+    }
+
     /** Converts a wire PublicId to the entity-layer one. */
     private static PublicId toPublicId(dev.ikm.tinkar.schema.PublicId protoPublicId) {
-        return PublicIds.of(protoPublicId.getUuidsList().stream()
-                .map(UUID::fromString)
-                .toArray(UUID[]::new));
+        return SchemaIds.toPublicId(protoPublicId);
     }
 
     /**
