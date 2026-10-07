@@ -5,29 +5,31 @@ import dev.ikm.tinkar.coordinate.Calculators;
 import dev.ikm.tinkar.coordinate.stamp.StateSet;
 import dev.ikm.tinkar.coordinate.stamp.StampCoordinateRecord;
 import dev.ikm.tinkar.coordinate.view.calculator.ViewCalculatorWithCache;
-import dev.ikm.tinkar.entity.EntityService;
 import dev.ikm.tinkar.service.dto.CoordinateOverride;
 import dev.ikm.tinkar.service.dto.StampCoordinateDto;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
+import java.util.OptionalInt;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for {@link CoordinateFactory}.
  *
  * <p>Navigation and language coordinate tests are omitted here because
  * {@code NavigationCoordinateRecord.makeInferred/Stated()} and all
- * {@code Coordinates.Language.*} methods call {@code TinkarTerm.*.nid()},
+ * {@code Coordinates.Language.*} methods call {@code KernelTerm.*.nid()},
  * which requires PrimitiveData to be running.  Those paths are exercised
  * by integration tests.
  *
  * <p>Stamp coordinate tests supply a non-null {@code positionPathId} so
- * {@code resolvePathNid} uses {@code EntityService.get()} (mocked) instead
+ * {@code resolvePathNid} uses {@link KnownComponents} (mocked) instead
  * of {@code Coordinates.Stamp.DevelopmentLatest()} (infrastructure-bound).
+ * The lookup itself is tested against a real store in
+ * {@code UnknownComponentRequestTest}.
  */
 class CoordinateFactoryTest {
 
@@ -49,13 +51,13 @@ class CoordinateFactoryTest {
     }
 
     // ── buildStampCoordinate – resolveAllowedStates branches ─────────────────
-    // Providing a non-null positionPathId so resolvePathNid uses EntityService
+    // Providing a non-null positionPathId so resolvePathNid uses KnownComponents
     // rather than Coordinates.Stamp.DevelopmentLatest(), which needs PrimitiveData.
 
     @Test
     void buildStampCoordinate_activeAllowedStates_returnsActiveStateSet() {
-        try (MockedStatic<EntityService> entityMock = Mockito.mockStatic(EntityService.class)) {
-            mockEntityServiceNid(entityMock, 42);
+        try (MockedStatic<KnownComponents> knownMock = Mockito.mockStatic(KnownComponents.class)) {
+            mockKnownComponentNid(knownMock, 42);
 
             StampCoordinateRecord result = CoordinateFactory.buildStampCoordinate(
                     new StampCoordinateDto("ACTIVE", 1000L, DUMMY_PATH_UUID, null, null, null));
@@ -67,8 +69,8 @@ class CoordinateFactoryTest {
 
     @Test
     void buildStampCoordinate_inactiveAllowedStates_returnsInactiveStateSet() {
-        try (MockedStatic<EntityService> entityMock = Mockito.mockStatic(EntityService.class)) {
-            mockEntityServiceNid(entityMock, 42);
+        try (MockedStatic<KnownComponents> knownMock = Mockito.mockStatic(KnownComponents.class)) {
+            mockKnownComponentNid(knownMock, 42);
 
             StampCoordinateRecord result = CoordinateFactory.buildStampCoordinate(
                     new StampCoordinateDto("INACTIVE", 1000L, DUMMY_PATH_UUID, null, null, null));
@@ -80,8 +82,8 @@ class CoordinateFactoryTest {
 
     @Test
     void buildStampCoordinate_activeAndInactiveAllowedStates_returnsFullStateSet() {
-        try (MockedStatic<EntityService> entityMock = Mockito.mockStatic(EntityService.class)) {
-            mockEntityServiceNid(entityMock, 42);
+        try (MockedStatic<KnownComponents> knownMock = Mockito.mockStatic(KnownComponents.class)) {
+            mockKnownComponentNid(knownMock, 42);
 
             StampCoordinateRecord result = CoordinateFactory.buildStampCoordinate(
                     new StampCoordinateDto("ACTIVE_AND_INACTIVE", 1000L, DUMMY_PATH_UUID, null, null, null));
@@ -93,8 +95,8 @@ class CoordinateFactoryTest {
 
     @Test
     void buildStampCoordinate_unknownAllowedStates_defaultsToActiveAndInactive() {
-        try (MockedStatic<EntityService> entityMock = Mockito.mockStatic(EntityService.class)) {
-            mockEntityServiceNid(entityMock, 42);
+        try (MockedStatic<KnownComponents> knownMock = Mockito.mockStatic(KnownComponents.class)) {
+            mockKnownComponentNid(knownMock, 42);
 
             StampCoordinateRecord result = CoordinateFactory.buildStampCoordinate(
                     new StampCoordinateDto("BOGUS_STATE", 1000L, DUMMY_PATH_UUID, null, null, null));
@@ -106,8 +108,8 @@ class CoordinateFactoryTest {
 
     @Test
     void buildStampCoordinate_blankAllowedStates_defaultsToActiveAndInactive() {
-        try (MockedStatic<EntityService> entityMock = Mockito.mockStatic(EntityService.class)) {
-            mockEntityServiceNid(entityMock, 42);
+        try (MockedStatic<KnownComponents> knownMock = Mockito.mockStatic(KnownComponents.class)) {
+            mockKnownComponentNid(knownMock, 42);
 
             StampCoordinateRecord result = CoordinateFactory.buildStampCoordinate(
                     new StampCoordinateDto("", 1000L, DUMMY_PATH_UUID, null, null, null));
@@ -119,8 +121,8 @@ class CoordinateFactoryTest {
 
     @Test
     void buildStampCoordinate_nullAllowedStates_defaultsToActiveAndInactive() {
-        try (MockedStatic<EntityService> entityMock = Mockito.mockStatic(EntityService.class)) {
-            mockEntityServiceNid(entityMock, 42);
+        try (MockedStatic<KnownComponents> knownMock = Mockito.mockStatic(KnownComponents.class)) {
+            mockKnownComponentNid(knownMock, 42);
 
             StampCoordinateRecord result = CoordinateFactory.buildStampCoordinate(
                     new StampCoordinateDto(null, 1000L, DUMMY_PATH_UUID, null, null, null));
@@ -132,8 +134,8 @@ class CoordinateFactoryTest {
 
     @Test
     void buildStampCoordinate_activeVsInactive_produceDifferentStateSets() {
-        try (MockedStatic<EntityService> entityMock = Mockito.mockStatic(EntityService.class)) {
-            mockEntityServiceNid(entityMock, 42);
+        try (MockedStatic<KnownComponents> knownMock = Mockito.mockStatic(KnownComponents.class)) {
+            mockKnownComponentNid(knownMock, 42);
 
             StampCoordinateRecord active = CoordinateFactory.buildStampCoordinate(
                     new StampCoordinateDto("ACTIVE", 1000L, DUMMY_PATH_UUID, null, null, null));
@@ -146,8 +148,8 @@ class CoordinateFactoryTest {
 
     @Test
     void buildStampCoordinate_nullPositionTime_usesMaxValue() {
-        try (MockedStatic<EntityService> entityMock = Mockito.mockStatic(EntityService.class)) {
-            mockEntityServiceNid(entityMock, 42);
+        try (MockedStatic<KnownComponents> knownMock = Mockito.mockStatic(KnownComponents.class)) {
+            mockKnownComponentNid(knownMock, 42);
 
             StampCoordinateRecord result = CoordinateFactory.buildStampCoordinate(
                     new StampCoordinateDto("ACTIVE", null, DUMMY_PATH_UUID, null, null, null));
@@ -159,8 +161,8 @@ class CoordinateFactoryTest {
 
     @Test
     void buildStampCoordinate_providedPositionTime_usesGivenTime() {
-        try (MockedStatic<EntityService> entityMock = Mockito.mockStatic(EntityService.class)) {
-            mockEntityServiceNid(entityMock, 42);
+        try (MockedStatic<KnownComponents> knownMock = Mockito.mockStatic(KnownComponents.class)) {
+            mockKnownComponentNid(knownMock, 42);
 
             StampCoordinateRecord result = CoordinateFactory.buildStampCoordinate(
                     new StampCoordinateDto("ACTIVE", 99999L, DUMMY_PATH_UUID, null, null, null));
@@ -172,8 +174,8 @@ class CoordinateFactoryTest {
 
     @Test
     void buildStampCoordinate_emptyModuleIds_producesEmptyModuleNids() {
-        try (MockedStatic<EntityService> entityMock = Mockito.mockStatic(EntityService.class)) {
-            mockEntityServiceNid(entityMock, 42);
+        try (MockedStatic<KnownComponents> knownMock = Mockito.mockStatic(KnownComponents.class)) {
+            mockKnownComponentNid(knownMock, 42);
 
             StampCoordinateRecord result = CoordinateFactory.buildStampCoordinate(
                     new StampCoordinateDto("ACTIVE", 1000L, DUMMY_PATH_UUID,
@@ -188,9 +190,7 @@ class CoordinateFactoryTest {
 
     // ── helper ───────────────────────────────────────────────────────────────
 
-    private static void mockEntityServiceNid(MockedStatic<EntityService> entityMock, int nid) {
-        EntityService mockEs = Mockito.mock(EntityService.class);
-        entityMock.when(EntityService::get).thenReturn(mockEs);
-        when(mockEs.nidForPublicId(any(PublicId.class))).thenReturn(nid);
+    private static void mockKnownComponentNid(MockedStatic<KnownComponents> knownMock, int nid) {
+        knownMock.when(() -> KnownComponents.nid(any(PublicId.class))).thenReturn(OptionalInt.of(nid));
     }
 }

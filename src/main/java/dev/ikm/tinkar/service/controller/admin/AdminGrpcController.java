@@ -1,5 +1,6 @@
 package dev.ikm.tinkar.service.controller.admin;
 
+import dev.ikm.tinkar.entity.changeset.SchemaIds;
 import dev.ikm.tinkar.service.dto.EntityCountSummaryResponse;
 import dev.ikm.tinkar.service.dto.ReasonerResultsResponse;
 import dev.ikm.tinkar.service.proto.EntityCountSummaryProto;
@@ -277,10 +278,6 @@ public class AdminGrpcController extends IkeAdminGrpc.IkeAdminImplBase {
      * crosses the wire as its PublicId, which the caller resolves against its own store.
      */
     private static dev.ikm.tinkar.schema.PublicId publicIdOf(int nid) {
-        return dev.ikm.tinkar.schema.PublicId.newBuilder()
-                .addAllUuids(PrimitiveData.publicId(nid).asUuidList().stream()
-                        .map(java.util.UUID::toString)
-                        .toList())
-                .build();
+        return SchemaIds.toSchema(PrimitiveData.publicId(nid));
     }
 }

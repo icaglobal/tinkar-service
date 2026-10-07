@@ -1,5 +1,6 @@
 package dev.ikm.tinkar.service.controller.knowledgegraph;
 
+import dev.ikm.tinkar.service.util.ProtoConversionUtils;
 import dev.ikm.tinkar.coordinate.view.calculator.ViewCalculatorWithCache;
 import dev.ikm.tinkar.service.dto.SavedLanguageCoordinateResponse;
 import dev.ikm.tinkar.service.dto.SavedNavigationCoordinateResponse;
@@ -199,7 +200,7 @@ class KnowledgeGraphGrpcControllerTest {
     @Test
     void saveStampCoordinate_noSettings_savesNullDtoAndCallsOnNext() {
         SavedStampCoordinateResponse mockSaved = Mockito.mock(SavedStampCoordinateResponse.class);
-        when(mockSaved.id()).thenReturn("stamp-id");
+        when(mockSaved.id()).thenReturn("5a0c1e00-0000-4000-8000-000000000001");
         when(mockSaved.settings()).thenReturn(null);
         when(mockSaved.createdAt()).thenReturn("2024-01-01");
         when(coordinateStoreService.saveStamp(null)).thenReturn(mockSaved);
@@ -211,7 +212,7 @@ class KnowledgeGraphGrpcControllerTest {
                 ArgumentCaptor.forClass(dev.ikm.tinkar.service.proto.SavedStampCoordinateResponse.class);
         verify(observer).onNext(captor.capture());
         verify(observer).onCompleted();
-        assertThat(captor.getValue().getId()).isEqualTo("stamp-id");
+        assertThat(captor.getValue().getId()).isEqualTo(ProtoConversionUtils.toWire("5a0c1e00-0000-4000-8000-000000000001"));
     }
 
     @Test
@@ -227,7 +228,7 @@ class KnowledgeGraphGrpcControllerTest {
                 .build();
 
         SavedStampCoordinateResponse mockSaved = Mockito.mock(SavedStampCoordinateResponse.class);
-        when(mockSaved.id()).thenReturn("derived-stamp-id");
+        when(mockSaved.id()).thenReturn("5a0c1e00-0000-4000-8000-000000000002");
         when(mockSaved.settings()).thenReturn(null);
         when(mockSaved.createdAt()).thenReturn("2024-01-01");
         // The controller converts proto → StampCoordinateDto before saving; capture via any()
@@ -259,7 +260,7 @@ class KnowledgeGraphGrpcControllerTest {
     @Test
     void listStampCoordinates_withEntries_sendsResponseWithCoordinates() {
         SavedStampCoordinateResponse entry = Mockito.mock(SavedStampCoordinateResponse.class);
-        when(entry.id()).thenReturn("stamp-id-1");
+        when(entry.id()).thenReturn("5a0c1e00-0000-4000-8000-000000000003");
         when(entry.settings()).thenReturn(null);
         when(entry.createdAt()).thenReturn("2024-01-01");
         when(coordinateStoreService.findAllStamp()).thenReturn(List.of(entry));
@@ -272,7 +273,7 @@ class KnowledgeGraphGrpcControllerTest {
         verify(observer).onNext(captor.capture());
         verify(observer).onCompleted();
         assertThat(captor.getValue().getCoordinatesList()).hasSize(1);
-        assertThat(captor.getValue().getCoordinates(0).getId()).isEqualTo("stamp-id-1");
+        assertThat(captor.getValue().getCoordinates(0).getId()).isEqualTo(ProtoConversionUtils.toWire("5a0c1e00-0000-4000-8000-000000000003"));
     }
 
     // ── saveNavigationCoordinate ───────────────────────────────────────────────
@@ -280,7 +281,7 @@ class KnowledgeGraphGrpcControllerTest {
     @Test
     void saveNavigationCoordinate_noSettings_savesNullDtoAndCallsOnNext() {
         SavedNavigationCoordinateResponse mockSaved = Mockito.mock(SavedNavigationCoordinateResponse.class);
-        when(mockSaved.id()).thenReturn("nav-id");
+        when(mockSaved.id()).thenReturn("5a0c1e00-0000-4000-8000-000000000004");
         when(mockSaved.settings()).thenReturn(null);
         when(mockSaved.createdAt()).thenReturn("2024-01-01");
         when(coordinateStoreService.saveNavigation(null)).thenReturn(mockSaved);
@@ -293,7 +294,7 @@ class KnowledgeGraphGrpcControllerTest {
                 ArgumentCaptor.forClass(dev.ikm.tinkar.service.proto.SavedNavigationCoordinateResponse.class);
         verify(observer).onNext(captor.capture());
         verify(observer).onCompleted();
-        assertThat(captor.getValue().getId()).isEqualTo("nav-id");
+        assertThat(captor.getValue().getId()).isEqualTo(ProtoConversionUtils.toWire("5a0c1e00-0000-4000-8000-000000000004"));
     }
 
     // ── listNavigationCoordinates ──────────────────────────────────────────────
@@ -316,7 +317,7 @@ class KnowledgeGraphGrpcControllerTest {
     @Test
     void listNavigationCoordinates_withEntries_sendsResponseWithCoordinates() {
         SavedNavigationCoordinateResponse entry = Mockito.mock(SavedNavigationCoordinateResponse.class);
-        when(entry.id()).thenReturn("nav-id-1");
+        when(entry.id()).thenReturn("5a0c1e00-0000-4000-8000-000000000005");
         when(entry.settings()).thenReturn(null);
         when(entry.createdAt()).thenReturn("2024-01-01");
         when(coordinateStoreService.findAllNavigation()).thenReturn(List.of(entry));
@@ -330,7 +331,7 @@ class KnowledgeGraphGrpcControllerTest {
         verify(observer).onNext(captor.capture());
         verify(observer).onCompleted();
         assertThat(captor.getValue().getCoordinatesList()).hasSize(1);
-        assertThat(captor.getValue().getCoordinates(0).getId()).isEqualTo("nav-id-1");
+        assertThat(captor.getValue().getCoordinates(0).getId()).isEqualTo(ProtoConversionUtils.toWire("5a0c1e00-0000-4000-8000-000000000005"));
     }
 
     // ── saveLanguageCoordinate ─────────────────────────────────────────────────
@@ -338,7 +339,7 @@ class KnowledgeGraphGrpcControllerTest {
     @Test
     void saveLanguageCoordinate_noSettings_savesNullDtoAndCallsOnNext() {
         SavedLanguageCoordinateResponse mockSaved = Mockito.mock(SavedLanguageCoordinateResponse.class);
-        when(mockSaved.id()).thenReturn("lang-id");
+        when(mockSaved.id()).thenReturn("5a0c1e00-0000-4000-8000-000000000006");
         when(mockSaved.settings()).thenReturn(null);
         when(mockSaved.createdAt()).thenReturn("2024-01-01");
         when(coordinateStoreService.saveLanguage(null)).thenReturn(mockSaved);
@@ -351,7 +352,7 @@ class KnowledgeGraphGrpcControllerTest {
                 ArgumentCaptor.forClass(dev.ikm.tinkar.service.proto.SavedLanguageCoordinateResponse.class);
         verify(observer).onNext(captor.capture());
         verify(observer).onCompleted();
-        assertThat(captor.getValue().getId()).isEqualTo("lang-id");
+        assertThat(captor.getValue().getId()).isEqualTo(ProtoConversionUtils.toWire("5a0c1e00-0000-4000-8000-000000000006"));
     }
 
     // ── listLanguageCoordinates ────────────────────────────────────────────────
@@ -374,7 +375,7 @@ class KnowledgeGraphGrpcControllerTest {
     @Test
     void listLanguageCoordinates_withEntries_sendsResponseWithCoordinates() {
         SavedLanguageCoordinateResponse entry = Mockito.mock(SavedLanguageCoordinateResponse.class);
-        when(entry.id()).thenReturn("lang-id-1");
+        when(entry.id()).thenReturn("5a0c1e00-0000-4000-8000-000000000007");
         when(entry.settings()).thenReturn(null);
         when(entry.createdAt()).thenReturn("2024-01-01");
         when(coordinateStoreService.findAllLanguage()).thenReturn(List.of(entry));
@@ -388,7 +389,7 @@ class KnowledgeGraphGrpcControllerTest {
         verify(observer).onNext(captor.capture());
         verify(observer).onCompleted();
         assertThat(captor.getValue().getCoordinatesList()).hasSize(1);
-        assertThat(captor.getValue().getCoordinates(0).getId()).isEqualTo("lang-id-1");
+        assertThat(captor.getValue().getCoordinates(0).getId()).isEqualTo(ProtoConversionUtils.toWire("5a0c1e00-0000-4000-8000-000000000007"));
     }
 
     // ── getSemanticsWithCoordinate ─────────────────────────────────────────────

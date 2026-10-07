@@ -7,7 +7,7 @@
     <parent>
         <groupId>network.ike.platform</groupId>
         <artifactId>ike-parent</artifactId>
-        <version>191</version>
+        <version>196</version>
         <relativePath/>
     </parent>
 
@@ -45,6 +45,14 @@
         <tinkar-core.version>1.127.7-SNAPSHOT</tinkar-core.version>
         <!-- tinkar-schema must include Tinkar.proto in the jar (added in 1.43.0). -->
         <tinkar-schema.version>1.43.5-SNAPSHOT</tinkar-schema.version>
+        <!-- The IKE starter set the tests load, from starter-data-ws, which builds after this repository. -->
+        <ike-starter-set.version>1-SNAPSHOT</ike-starter-set.version>
+        <!-- The nid build check (tinkar-core nid-check, IKE-Network/ike-issues#1244): how it
+             reports (error, or warning for a census), which classes may narrow a nid, and
+             javac's cap on warnings, raised for a census. -->
+        <nid-check.report>error</nid-check.report>
+        <nid-check.allow></nid-check.allow>
+        <javac.maxwarns>100</javac.maxwarns>
     </properties>
 
     <repositories>
@@ -213,6 +221,22 @@
             <version>${spring-boot.version}</version>
             <scope>test</scope>
         </dependency>
+        <!-- The in-memory store the store-backed tests load the starter data into. The service
+             itself ships no ephemeral store. Its controller is registered for the test
+             classpath in src/test/resources/META-INF/services. -->
+        <dependency>
+            <groupId>dev.ikm.tinkar</groupId>
+            <artifactId>data-ephemeral-provider</artifactId>
+            <version>${tinkar-core.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- The IKE starter set's bindings (IkeTerms) for the components the tests name beyond the kernel. -->
+        <dependency>
+            <groupId>network.ike.foundation</groupId>
+            <artifactId>ike-bindings</artifactId>
+            <version>${ike-starter-set.version}</version>
+            <scope>test</scope>
+        </dependency>
 
         <!-- Static analysis -->
         <dependency>
@@ -220,6 +244,18 @@
             <artifactId>spotbugs-annotations</artifactId>
             <version>4.9.8</version>
             <scope>provided</scope>
+        </dependency>
+        <!-- The shared test logging configuration (log4j2-test.xml); a library ships none of its own. -->
+        <dependency>
+            <groupId>dev.ikm.tinkar</groupId>
+            <artifactId>test-logging</artifactId>
+            <version>${tinkar-core.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-jul</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 
@@ -352,6 +388,38 @@
                             </artifactItems>
                         </configuration>
                     </execution>
+                    <!-- Copy the IKE starter set into target/data so the store-backed tests
+                         can load it into an ephemeral store (the same artifact and file name
+                         komet/framework and komet-claude-plugin use:
+                         target/data/ike-starter-set-reasoned-pb.zip). -->
+                    <execution>
+                        <id>copy-starter-data</id>
+                        <phase>process-test-resources</phase>
+                        <goals>
+                            <goal>copy</goal>
+                        </goals>
+                        <configuration>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>network.ike.foundation</groupId>
+                                    <artifactId>ike-starter-set</artifactId>
+                                    <version>${ike-starter-set.version}</version>
+                                    <classifier>reasoned-pb</classifier>
+                                    <type>zip</type>
+                                    <overWrite>false</overWrite>
+                                    <outputDirectory>${project.build.directory}/data</outputDirectory>
+                                    <destFileName>ike-starter-set-reasoned-pb.zip</destFileName>
+                                </artifactItem>
+                            </artifactItems>
+                            <stripVersion>true</stripVersion>
+                            <outputDirectory>${project.build.directory}/data</outputDirectory>
+                            <overWriteReleases>false</overWriteReleases>
+                            <!-- Copy only when the installed starter set is newer than the copy here, rather than
+                                 overwriting it on every build. -->
+                            <overWriteSnapshots>false</overWriteSnapshots>
+                            <overWriteIfNewer>true</overWriteIfNewer>
+                        </configuration>
+                    </execution>
                 </executions>
             </plugin>
             <plugin>
@@ -391,7 +459,18 @@
                     <parameters>true</parameters>
                     <compilerArgs>
                         <arg>--enable-preview</arg>
+                        <!-- The nid build check (tinkar-core nid-check, IKE-Network/ike-issues#1244). -->
+                        <arg>-Xplugin:NidCheck report=${nid-check.report} allow=${nid-check.allow}</arg>
+                        <arg>-Xmaxwarns</arg>
+                        <arg>${javac.maxwarns}</arg>
                     </compilerArgs>
+                    <annotationProcessorPaths combine.children="append">
+                        <path>
+                            <groupId>dev.ikm.tinkar</groupId>
+                            <artifactId>nid-check</artifactId>
+                            <version>${tinkar-core.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
                 </configuration>
             </plugin>
             <plugin>
@@ -417,7 +496,11 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.3</version>
                 <configuration>
-                    <argLine>--enable-preview -Dnet.bytebuddy.experimental=true</argLine>
+                    <!-- Lucene 10.5.1 turns its Vector API code on only up to Java 26 and warns on 27.
+                         The property raises that limit; the full suite passes with it. Drop it when
+                         a Lucene release supports Java 27. -->
+                    <argLine>@{argLine} --enable-preview --enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow -Djava.util.logging.manager=org.apache.logging.log4j.jul.LogManager -Dnet.bytebuddy.experimental=true
+                        --add-modules jdk.incubator.vector -Dorg.apache.lucene.vectorization.upperJavaFeatureVersion=27</argLine>
                 </configuration>
             </plugin>
             <plugin>

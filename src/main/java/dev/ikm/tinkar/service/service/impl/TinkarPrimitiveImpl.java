@@ -4,17 +4,17 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.LongConsumer;
 
 import dev.ikm.tinkar.common.service.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
+import dev.ikm.tinkar.service.service.KnownComponents;
 import dev.ikm.tinkar.service.service.TinkarPrimitive;
 import dev.ikm.tinkar.common.id.PublicId;
+import dev.ikm.tinkar.common.id.PublicIds;
 import dev.ikm.tinkar.coordinate.Calculators;
 import dev.ikm.tinkar.coordinate.navigation.calculator.NavigationCalculator;
 import dev.ikm.tinkar.coordinate.stamp.calculator.Latest;
@@ -26,7 +26,7 @@ import dev.ikm.tinkar.entity.EntityService;
 import dev.ikm.tinkar.entity.PatternEntityVersion;
 import dev.ikm.tinkar.provider.search.Searcher;
 import dev.ikm.tinkar.terms.EntityProxy;
-import dev.ikm.tinkar.terms.TinkarTerm;
+import dev.ikm.tinkar.terms.KernelTerm;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -141,12 +141,12 @@ public final class TinkarPrimitiveImpl implements TinkarPrimitive {
         if (log.isInfoEnabled()) {
             log.debug(
                     "Descendants of ID: {}, Description: {}",
-                    parentConceptId.asUuidList().getFirst(),
+                    parentConceptId.idString(),
                     this.descriptionsOf(Collections.singletonList(parentConceptId))
                             .getFirst());
             descendants.forEach(descendant -> {
                 List<String> strings = this.descriptionsOf(Collections.singletonList(descendant));
-                log.debug("Descendant ID: {}, Description: {}", descendant.asUuidList().getFirst(), strings.getFirst());
+                log.debug("Descendant ID: {}, Description: {}", descendant.idString(), strings.getFirst());
             });
         }
 
@@ -165,11 +165,11 @@ public final class TinkarPrimitiveImpl implements TinkarPrimitive {
         if (log.isDebugEnabled()) {
             log.debug(
                     "Parents of ID: {}, Description: {}",
-                    conceptId.asUuidList().getFirst(),
+                    conceptId.idString(),
                     this.descriptionsOf(Collections.singletonList(conceptId)).getFirst());
             parents.forEach(parent -> {
                 List<String> strings = this.descriptionsOf(Collections.singletonList(parent));
-                log.debug("Parent ID: {}, Description: {}", parent.asUuidList().getFirst(), strings.getFirst());
+                log.debug("Parent ID: {}, Description: {}", parent.idString(), strings.getFirst());
             });
         }
 
@@ -188,11 +188,11 @@ public final class TinkarPrimitiveImpl implements TinkarPrimitive {
         if (log.isDebugEnabled()) {
             log.debug(
                     "Parents of ID: {}, Description: {}",
-                    conceptId.asUuidList().getFirst(),
+                    conceptId.idString(),
                     this.descriptionsOf(Collections.singletonList(conceptId)).getFirst());
             ancestors.forEach(ancestor -> {
                 List<String> strings = this.descriptionsOf(Collections.singletonList(ancestor));
-                log.debug("Parent ID: {}, Description: {}", ancestor.asUuidList().getFirst(), strings.getFirst());
+                log.debug("Parent ID: {}, Description: {}", ancestor.idString(), strings.getFirst());
             });
         }
 
@@ -216,12 +216,12 @@ public final class TinkarPrimitiveImpl implements TinkarPrimitive {
         if (log.isInfoEnabled()) {
             log.debug(
                     "Children of ID: {}, Description: {}",
-                    parentConceptId.asUuidList().getFirst(),
+                    parentConceptId.idString(),
                     this.descriptionsOf(Collections.singletonList(parentConceptId))
                             .getFirst());
             children.forEach(child -> {
                 List<String> strings = this.descriptionsOf(Collections.singletonList(child));
-                log.debug("Child ID: {}, Description: {}", child.asUuidList().getFirst(), strings.getFirst());
+                log.debug("Child ID: {}, Description: {}", child.idString(), strings.getFirst());
             });
         }
 
@@ -255,11 +255,11 @@ public final class TinkarPrimitiveImpl implements TinkarPrimitive {
         if (log.isDebugEnabled()) {
             log.debug(
                     "Members for Member ID: {}, Description: {}",
-                    member.asUuidList().getFirst(),
+                    member.idString(),
                     this.descriptionsOf(Collections.singletonList(member)).getFirst());
             memberOfList.forEach(memberOf -> {
                 List<String> strings = this.descriptionsOf(Collections.singletonList(memberOf));
-                log.debug("Member ID: {}, Description: {}", memberOf.asUuidList().getFirst(), strings.getFirst());
+                log.debug("Member ID: {}, Description: {}", memberOf.idString(), strings.getFirst());
             });
         }
 
@@ -313,31 +313,16 @@ public final class TinkarPrimitiveImpl implements TinkarPrimitive {
     }
 
     /**
-     * Retrieves the PublicId for a given concept.
+     * {@inheritDoc}
      *
-     * @param concept The concept for which to retrieve the PublicId.
-     * @return The PublicId of the given concept.
+     * <p>The text is read as a UUID at once, so text that is not one is refused here and not
+     * where the id is first used.
      */
     @Override
     public PublicId getPublicId(String concept) {
-        return new PublicId() {
-            @Override
-            public int uuidCount() {
-                return 1;
-            }
-
-            @Override
-            public void forEach(LongConsumer longConsumer) {
-                UUID uuid = UUID.fromString(concept);
-                longConsumer.accept(uuid.getMostSignificantBits());
-                longConsumer.accept(uuid.getLeastSignificantBits());
-            }
-
-            @Override
-            public org.eclipse.collections.api.list.ImmutableList<UUID> asUuidList() {
-                return org.eclipse.collections.impl.factory.Lists.immutable.with(UUID.fromString(concept));
-            }
-        };
+        PublicId publicId = PublicIds.of(concept);
+        KnownComponents.nidOrRefuse(publicId);
+        return publicId;
     }
 
     /**
@@ -351,17 +336,17 @@ public final class TinkarPrimitiveImpl implements TinkarPrimitive {
 
         ViewCalculator viewCalc = Calculators.View.Default();
         Latest<PatternEntityVersion> latestIdPattern = viewCalc
-                .latestPatternEntityVersion(TinkarTerm.IDENTIFIER_PATTERN);
+                .latestPatternEntityVersion(KernelTerm.IDENTIFIER_PATTERN);
         AtomicReference<PublicId> result = new AtomicReference<>();
 
         try {
             EntityService.get()
                     .forEachSemanticOfPattern(
-                            TinkarTerm.IDENTIFIER_PATTERN.nid(),
+                            KernelTerm.IDENTIFIER_PATTERN.nid(),
                             semanticEntity -> viewCalc.latest(semanticEntity).ifPresent(latestSemanticVersion -> {
                                 String idValue = latestIdPattern
                                         .get()
-                                        .getFieldWithMeaning(TinkarTerm.IDENTIFIER_VALUE, latestSemanticVersion);
+                                        .getFieldWithMeaning(KernelTerm.IDENTIFIER_VALUE, latestSemanticVersion);
                                 if (idValue.equals(device)) {
                                     result.set(latestSemanticVersion
                                             .referencedComponent()

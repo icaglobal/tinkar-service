@@ -95,10 +95,7 @@ public record ConceptSearchResponse(
             Float topScore,
 
             @Schema(description = "List of matching semantics for this concept")
-            List<MatchingSemantic> matchingSemantics,
-
-            @Schema(description = "The NID of the top-level concept entity")
-            Integer conceptNid) {
+            List<MatchingSemantic> matchingSemantics) {
 
         public GroupedSearchResult {
             publicId = publicId == null ? null : List.copyOf(publicId);
@@ -125,10 +122,7 @@ public record ConceptSearchResponse(
             Float score,
 
             @Schema(description = "The index of the matched field within the semantic")
-            Integer fieldIndex,
-
-            @Schema(description = "The NID of the matching semantic entity")
-            Integer semanticNid) {
+            Integer fieldIndex) {
     }
 
     /**
