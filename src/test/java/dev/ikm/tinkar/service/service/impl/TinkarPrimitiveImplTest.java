@@ -1,7 +1,7 @@
 package dev.ikm.tinkar.service.service.impl;
 
-import dev.ikm.tinkar.common.id.IntIdList;
-import dev.ikm.tinkar.common.id.IntIdSet;
+import dev.ikm.tinkar.common.id.LongIdList;
+import dev.ikm.tinkar.common.id.LongIdSet;
 import dev.ikm.tinkar.common.id.PublicId;
 import dev.ikm.tinkar.common.service.PrimitiveData;
 import dev.ikm.tinkar.coordinate.Calculators;
@@ -53,7 +53,7 @@ class TinkarPrimitiveImplTest {
              MockedStatic<KnownComponents> knownMock = Mockito.mockStatic(KnownComponents.class)) {
             TinkarPrimitiveImpl impl = createImpl(pdMock);
             String uuidStr = "550e8400-e29b-41d4-a716-446655440000";
-            knownMock.when(() -> KnownComponents.nidOrRefuse(any(PublicId.class))).thenReturn(42);
+            knownMock.when(() -> KnownComponents.nidOrRefuse(any(PublicId.class))).thenReturn(42L);
 
             PublicId result = impl.getPublicId(uuidStr);
             ImmutableList<UUID> uuids = result.asUuidList();
@@ -225,7 +225,7 @@ class TinkarPrimitiveImplTest {
             NavigationCalculator mockNavCalc = Mockito.mock(NavigationCalculator.class);
             when(mockCalc.navigationCalculator()).thenReturn(mockNavCalc);
 
-            IntIdSet mockIntIdSet = Mockito.mock(IntIdSet.class);
+            LongIdSet mockIntIdSet = Mockito.mock(LongIdSet.class);
             when(mockNavCalc.descendentsOf(any())).thenReturn(mockIntIdSet);
 
             searcherMock.when(() -> Searcher.descriptionsOf(any())).thenReturn(List.of("desc"));
@@ -252,7 +252,7 @@ class TinkarPrimitiveImplTest {
             NavigationCalculator mockNavCalc = Mockito.mock(NavigationCalculator.class);
             when(mockCalc.navigationCalculator()).thenReturn(mockNavCalc);
 
-            IntIdList mockIntIdList = Mockito.mock(IntIdList.class);
+            LongIdList mockIntIdList = Mockito.mock(LongIdList.class);
             when(mockNavCalc.parentsOf(any())).thenReturn(mockIntIdList);
 
             searcherMock.when(() -> Searcher.descriptionsOf(any())).thenReturn(List.of("desc"));
@@ -279,7 +279,7 @@ class TinkarPrimitiveImplTest {
             NavigationCalculator mockNavCalc = Mockito.mock(NavigationCalculator.class);
             when(mockCalc.navigationCalculator()).thenReturn(mockNavCalc);
 
-            IntIdSet mockIntIdSet = Mockito.mock(IntIdSet.class);
+            LongIdSet mockIntIdSet = Mockito.mock(LongIdSet.class);
             when(mockNavCalc.ancestorsOf(any())).thenReturn(mockIntIdSet);
 
             searcherMock.when(() -> Searcher.descriptionsOf(any())).thenReturn(List.of("desc"));
@@ -306,7 +306,7 @@ class TinkarPrimitiveImplTest {
             NavigationCalculator mockNavCalc = Mockito.mock(NavigationCalculator.class);
             when(mockCalc.navigationCalculator()).thenReturn(mockNavCalc);
 
-            IntIdList mockIntIdList = Mockito.mock(IntIdList.class);
+            LongIdList mockIntIdList = Mockito.mock(LongIdList.class);
             when(mockNavCalc.childrenOf(any())).thenReturn(mockIntIdList);
 
             searcherMock.when(() -> Searcher.descriptionsOf(any())).thenReturn(List.of("desc"));

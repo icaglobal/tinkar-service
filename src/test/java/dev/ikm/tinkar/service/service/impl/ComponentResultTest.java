@@ -149,7 +149,7 @@ class ComponentResultTest {
         each.assertAll();
     }
 
-    private static void assertNamedAsTheDefaultViewNamesIt(SoftAssertions each, TinkarSearchResult result, int nid) {
+    private static void assertNamedAsTheDefaultViewNamesIt(SoftAssertions each, TinkarSearchResult result, long nid) {
         LanguageCalculator names = Calculators.View.Default().languageCalculator();
         String fullyQualifiedName = names.getFullyQualifiedNameText(nid).orElseThrow();
         each.assertThat(result.getDescriptions().getFullyQualifiedName()).as("fully qualified name")

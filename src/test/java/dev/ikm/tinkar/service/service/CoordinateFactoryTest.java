@@ -1,5 +1,6 @@
 package dev.ikm.tinkar.service.service;
 
+import java.util.OptionalLong;
 import dev.ikm.tinkar.common.id.PublicId;
 import dev.ikm.tinkar.coordinate.Calculators;
 import dev.ikm.tinkar.coordinate.stamp.StateSet;
@@ -190,7 +191,7 @@ class CoordinateFactoryTest {
 
     // ── helper ───────────────────────────────────────────────────────────────
 
-    private static void mockKnownComponentNid(MockedStatic<KnownComponents> knownMock, int nid) {
-        knownMock.when(() -> KnownComponents.nid(any(PublicId.class))).thenReturn(OptionalInt.of(nid));
+    private static void mockKnownComponentNid(MockedStatic<KnownComponents> knownMock, long nid) {
+        knownMock.when(() -> KnownComponents.nid(any(PublicId.class))).thenReturn(OptionalLong.of(nid));
     }
 }

@@ -5,7 +5,7 @@ import dev.ikm.tinkar.common.service.PrimitiveData;
 import dev.ikm.tinkar.common.service.PrimitiveDataService;
 import dev.ikm.tinkar.entity.EntityHandle;
 
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 /**
  * Finds the component a public id names, when the public id comes from outside the knowledge
@@ -34,13 +34,13 @@ public final class KnownComponents {
      * @return the nid, or empty when the knowledge base does not hold the component; no nid is
      *         assigned
      */
-    public static OptionalInt nid(PublicId publicId) {
+    public static OptionalLong nid(PublicId publicId) {
         PrimitiveDataService store = PrimitiveData.get();
         if (!store.hasPublicId(publicId)) {
-            return OptionalInt.empty();
+            return OptionalLong.empty();
         }
-        int nid = store.nidForPublicId(publicId);
-        return EntityHandle.get(nid).isAbsent() ? OptionalInt.empty() : OptionalInt.of(nid);
+        long nid = store.nidForPublicId(publicId);
+        return EntityHandle.get(nid).isAbsent() ? OptionalLong.empty() : OptionalLong.of(nid);
     }
 
     /**
@@ -51,7 +51,7 @@ public final class KnownComponents {
      * @throws UnknownComponentException if the knowledge base does not hold the component; no
      *                                   nid is assigned
      */
-    public static int nidOrRefuse(PublicId publicId) {
+    public static long nidOrRefuse(PublicId publicId) {
         return nid(publicId).orElseThrow(() -> new UnknownComponentException(publicId));
     }
 }

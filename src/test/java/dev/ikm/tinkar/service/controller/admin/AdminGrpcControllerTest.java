@@ -1,5 +1,6 @@
 package dev.ikm.tinkar.service.controller.admin;
 
+import org.eclipse.collections.impl.factory.primitive.LongLists;
 import com.google.protobuf.ByteString;
 import dev.ikm.tinkar.service.dto.EntityCountSummaryResponse;
 import dev.ikm.tinkar.service.dto.ReasonerResultsResponse;
@@ -175,9 +176,9 @@ class AdminGrpcControllerTest {
     @Test
     void runReasoner_streamsEachPhaseThenTheResult() throws Exception {
         ClassifierResults results = Mockito.mock(ClassifierResults.class);
-        when(results.getClassificationConceptSet()).thenReturn(IntLists.immutable.empty());
-        when(results.getConceptsWithInferredChanges()).thenReturn(IntLists.immutable.empty());
-        when(results.getConceptsWithNavigationChanges()).thenReturn(IntLists.immutable.empty());
+        when(results.getClassificationConceptSet()).thenReturn(LongLists.immutable.empty());
+        when(results.getConceptsWithInferredChanges()).thenReturn(LongLists.immutable.empty());
+        when(results.getConceptsWithNavigationChanges()).thenReturn(LongLists.immutable.empty());
         when(results.getEquivalentSets()).thenReturn(Sets.immutable.empty());
         when(results.getCycles()).thenReturn(null);
         when(results.getOrphans()).thenReturn(null);
@@ -229,9 +230,9 @@ class AdminGrpcControllerTest {
         // The panel only reads its size, so the concepts are deliberately omitted; sending them
         // put the response over gRPC's default message limit.
         ClassifierResults results = Mockito.mock(ClassifierResults.class);
-        when(results.getClassificationConceptSet()).thenReturn(IntLists.immutable.of(1, 2, 3));
-        when(results.getConceptsWithInferredChanges()).thenReturn(IntLists.immutable.empty());
-        when(results.getConceptsWithNavigationChanges()).thenReturn(IntLists.immutable.empty());
+        when(results.getClassificationConceptSet()).thenReturn(LongLists.immutable.of(1, 2, 3));
+        when(results.getConceptsWithInferredChanges()).thenReturn(LongLists.immutable.empty());
+        when(results.getConceptsWithNavigationChanges()).thenReturn(LongLists.immutable.empty());
         when(results.getEquivalentSets()).thenReturn(Sets.immutable.empty());
         when(results.getCycles()).thenReturn(null);
         when(results.getOrphans()).thenReturn(null);

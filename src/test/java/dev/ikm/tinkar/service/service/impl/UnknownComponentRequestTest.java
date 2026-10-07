@@ -1,5 +1,6 @@
 package dev.ikm.tinkar.service.service.impl;
 
+import java.util.OptionalLong;
 import network.ike.foundation.ike.bindings.IkeTerms;
 import dev.ikm.tinkar.terms.KernelTerm;
 import dev.ikm.tinkar.common.id.PublicId;
@@ -204,10 +205,10 @@ class UnknownComponentRequestTest {
     void aLookupAssignsNothingAndWantsAnEntity() {
         UUID unknown = UUID.randomUUID();
         UUID referredToOnly = UUID.randomUUID();
-        int assigned = PrimitiveData.nid(PublicIds.of(referredToOnly));
+        long assigned = PrimitiveData.nid(PublicIds.of(referredToOnly));
 
         assertThat(KnownComponents.nid(KernelTerm.ENGLISH_LANGUAGE.publicId()))
-                .isEqualTo(OptionalInt.of(KernelTerm.ENGLISH_LANGUAGE.nid()));
+                .isEqualTo(OptionalLong.of(KernelTerm.ENGLISH_LANGUAGE.nid()));
         assertThat(KnownComponents.nid(PublicIds.of(unknown))).isEmpty();
         assertThat(PrimitiveData.get().hasUuid(unknown)).isFalse();
         assertThat(KnownComponents.nid(PublicIds.of(referredToOnly)))

@@ -75,9 +75,9 @@ public class CoordinateStoreService {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    private volatile int stampRegistryNid = -1;
-    private volatile int navigationRegistryNid = -1;
-    private volatile int languageRegistryNid = -1;
+    private volatile long stampRegistryNid = -1;
+    private volatile long navigationRegistryNid = -1;
+    private volatile long languageRegistryNid = -1;
 
     // ────────────────────────────────────────────────────────────────────────
     // Stamp coordinate
@@ -89,7 +89,7 @@ public class CoordinateStoreService {
     public SavedStampCoordinateResponse saveStamp(StampCoordinateDto dto) {
         StampCoordinateRecord record = CoordinateFactory.buildStampCoordinate(dto);
         UUID coordinateUuid = record.getStampFilterUuid();
-        int registryNid = stampRegistryNid();
+        long registryNid = stampRegistryNid();
 
         Optional<SavedStampCoordinateResponse> existing = findStampById(coordinateUuid.toString());
         if (existing.isPresent()) {
@@ -161,7 +161,7 @@ public class CoordinateStoreService {
     public SavedNavigationCoordinateResponse saveNavigation(NavigationCoordinateDto dto) {
         NavigationCoordinateRecord record = CoordinateFactory.buildNavigationCoordinate(dto);
         UUID coordinateUuid = record.getNavigationCoordinateUuid();
-        int registryNid = navigationRegistryNid();
+        long registryNid = navigationRegistryNid();
 
         Optional<SavedNavigationCoordinateResponse> existing = findNavigationById(coordinateUuid.toString());
         if (existing.isPresent()) {
@@ -233,7 +233,7 @@ public class CoordinateStoreService {
     public SavedLanguageCoordinateResponse saveLanguage(LanguageCoordinateDto dto) {
         LanguageCoordinateRecord record = CoordinateFactory.buildLanguageCoordinate(dto);
         UUID coordinateUuid = record.getLanguageCoordinateUuid();
-        int registryNid = languageRegistryNid();
+        long registryNid = languageRegistryNid();
 
         Optional<SavedLanguageCoordinateResponse> existing = findLanguageById(coordinateUuid.toString());
         if (existing.isPresent()) {
@@ -298,7 +298,7 @@ public class CoordinateStoreService {
     // ────────────────────────────────────────────────────────────────────────
     // Registry NID helpers (lazy, double-checked locking)
 
-    private int stampRegistryNid() {
+    private long stampRegistryNid() {
         if (stampRegistryNid != -1) return stampRegistryNid;
         synchronized (this) {
             if (stampRegistryNid != -1) return stampRegistryNid;
@@ -307,7 +307,7 @@ public class CoordinateStoreService {
         return stampRegistryNid;
     }
 
-    private int navigationRegistryNid() {
+    private long navigationRegistryNid() {
         if (navigationRegistryNid != -1) return navigationRegistryNid;
         synchronized (this) {
             if (navigationRegistryNid != -1) return navigationRegistryNid;
@@ -316,7 +316,7 @@ public class CoordinateStoreService {
         return navigationRegistryNid;
     }
 
-    private int languageRegistryNid() {
+    private long languageRegistryNid() {
         if (languageRegistryNid != -1) return languageRegistryNid;
         synchronized (this) {
             if (languageRegistryNid != -1) return languageRegistryNid;
@@ -331,7 +331,7 @@ public class CoordinateStoreService {
      * coordinate semantics; lookup is via {@code semanticsForComponent} (exact 64-bit key),
      * not {@code semanticsOfPattern} (which suffers from nid element-sequence collisions).
      */
-    private int resolveOrCreateRegistryConcept(UUID registryUuid, String label) {
+    private long resolveOrCreateRegistryConcept(UUID registryUuid, String label) {
         PublicId pid = PublicIds.of(registryUuid);
         try {
             return EntityService.get().nidForPublicId(pid);
@@ -353,7 +353,7 @@ public class CoordinateStoreService {
             tx.cancel();
             throw new RuntimeException("Failed to initialize " + label, e);
         }
-        int nid = EntityService.get().nidForPublicId(PublicIds.of(registryUuid));
+        long nid = EntityService.get().nidForPublicId(PublicIds.of(registryUuid));
         log.debug("Created {} registry concept (nid={})", label, nid);
         return nid;
     }

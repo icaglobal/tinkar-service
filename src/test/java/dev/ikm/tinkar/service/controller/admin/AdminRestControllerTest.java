@@ -1,5 +1,6 @@
 package dev.ikm.tinkar.service.controller.admin;
 
+import org.eclipse.collections.impl.factory.primitive.LongLists;
 import dev.ikm.tinkar.service.dto.EntityCountSummaryResponse;
 import dev.ikm.tinkar.reasoner.service.ClassifierResults;
 import dev.ikm.tinkar.service.dto.ReasonerResultsResponse;
@@ -118,9 +119,9 @@ class AdminRestControllerTest {
     @Test
     void runReasoner_waitsForTheRunAndReturnsItsCounts() throws Exception {
         ClassifierResults results = Mockito.mock(ClassifierResults.class);
-        when(results.getClassificationConceptSet()).thenReturn(IntLists.immutable.of(1, 2, 3));
-        when(results.getConceptsWithInferredChanges()).thenReturn(IntLists.immutable.of(1));
-        when(results.getConceptsWithNavigationChanges()).thenReturn(IntLists.immutable.empty());
+        when(results.getClassificationConceptSet()).thenReturn(LongLists.immutable.of(1, 2, 3));
+        when(results.getConceptsWithInferredChanges()).thenReturn(LongLists.immutable.of(1));
+        when(results.getConceptsWithNavigationChanges()).thenReturn(LongLists.immutable.empty());
         when(results.getEquivalentSets()).thenReturn(Sets.immutable.empty());
         when(tinkarService.runReasoner(any(ReasonerPhaseListener.class), any())).thenReturn(results);
 

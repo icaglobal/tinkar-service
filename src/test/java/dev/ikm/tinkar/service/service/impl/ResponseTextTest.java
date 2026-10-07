@@ -1,10 +1,12 @@
 package dev.ikm.tinkar.service.service.impl;
 
+import org.eclipse.collections.impl.factory.primitive.LongObjectMaps;
+import org.eclipse.collections.api.map.primitive.MutableLongObjectMap;
 import dev.ikm.tinkar.terms.KernelTerm;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import dev.ikm.tinkar.common.id.IntIdSet;
-import dev.ikm.tinkar.common.id.IntIds;
+import dev.ikm.tinkar.common.id.LongIdSet;
+import dev.ikm.tinkar.common.id.LongIds;
 import dev.ikm.tinkar.common.id.PublicIds;
 import dev.ikm.tinkar.common.service.CachingService;
 import dev.ikm.tinkar.common.service.PrimitiveData;
@@ -100,7 +102,7 @@ class ResponseTextTest {
      * A nid the store has assigned to no component, so it has no public id for it: the store
      * numbers components upward from the bottom of the int range and never reaches the top.
      */
-    private static final int UNASSIGNED_NID = Integer.MAX_VALUE - 1;
+    private static final long UNASSIGNED_NID = Integer.MAX_VALUE - 1;
 
     /** A word no description of the starter data holds; a comment written here does. */
     private static final String SEARCH_WORD = "quaggamarker";
@@ -126,9 +128,9 @@ class ResponseTextTest {
 
     private TinkarServiceImpl service;
     private File dataRoot;
-    private int undescribedNid;
-    private int holderNid;
-    private int commentNid;
+    private long undescribedNid;
+    private long holderNid;
+    private long commentNid;
 
     @BeforeAll
     void startStoreAndWriteTheComponentsUnderTest() throws IOException {
@@ -176,7 +178,7 @@ class ResponseTextTest {
 
     @Test
     void aDefinitionIsWrittenAsATreeOfNames() {
-        int nid = KernelTerm.ENGLISH_LANGUAGE.nid();
+        long nid = KernelTerm.ENGLISH_LANGUAGE.nid();
         ViewCalculatorWithCache view = Calculators.View.Default();
         Latest<DiTreeEntity> stated = view.logicCalculator().getStatedLogicalExpressionForEntity(nid, view.stampCalculator());
         assertThat(stated.isPresent()).as("the starter data defines the concept").isTrue();
@@ -224,7 +226,7 @@ class ResponseTextTest {
 
         // In the order the set holds its elements.
         List<String> elements = new ArrayList<>();
-        for (int nid : idSetUnderTest().toArray()) {
+        for (long nid : idSetUnderTest().toArray()) {
             if (nid == undescribedNid) {
                 elements.add(UNDESCRIBED + " [UUID " + UNDESCRIBED + "]");
             } else if (nid == UNASSIGNED_NID) {
@@ -367,7 +369,7 @@ class ResponseTextTest {
                 .filter(group -> group.publicId().contains(uuidOf(KernelTerm.ENGLISH_LANGUAGE)))
                 .findFirst().orElseThrow();
         LanguageCalculator names = Calculators.View.Default().languageCalculator();
-        int nid = KernelTerm.ENGLISH_LANGUAGE.nid();
+        long nid = KernelTerm.ENGLISH_LANGUAGE.nid();
         assertThat(english.fullyQualifiedName()).isEqualTo(names.getFullyQualifiedNameText(nid).orElseThrow());
         assertThat(english.preferredName()).isEqualTo(names.getDescriptionText(nid).orElseThrow());
     }
@@ -402,7 +404,7 @@ class ResponseTextTest {
         UUID first = fixtureUuid("first uuid of two");
         UUID second = fixtureUuid("second uuid of two");
         EntityProxy.Concept proxy = EntityProxy.Concept.make(PublicIds.of(UNDESCRIBED));
-        int nid = proxy.nid();
+        long nid = proxy.nid();
 
         assertThat(proxy.toString()).as("a proxy's own text ends in its nid").contains("<" + nid + ">");
         assertThat(TinkarServiceImpl.uuidsOf(proxy)).isEqualTo(UNDESCRIBED.toString());
@@ -413,7 +415,7 @@ class ResponseTextTest {
     @Test
     void aComponentTheStoreHasNoPublicIdForIsStatedAsUnidentified() {
         assertThat(TinkarServiceImpl.identifierFor(UNASSIGNED_NID)).isEqualTo("unidentified component");
-        assertThat(service.formatFieldValue(IntIds.list.of(UNASSIGNED_NID)))
+        assertThat(service.formatFieldValue(LongIds.list.of(UNASSIGNED_NID)))
                 .isEqualTo("[unidentified component [unidentified component]]");
     }
 
@@ -462,14 +464,14 @@ class ResponseTextTest {
         put(transaction, SemanticRecord.build(IDENTIFIER, KernelTerm.IDENTIFIER_PATTERN.nid(),
                 holderNid, version, Lists.immutable.of(undescribed, "H-0001")));
         put(transaction, SemanticRecord.build(ID_SET, KernelTerm.STATED_NAVIGATION_PATTERN.nid(),
-                holderNid, version, Lists.immutable.of(idSetUnderTest(), IntIds.set.empty())));
+                holderNid, version, Lists.immutable.of(idSetUnderTest(), LongIds.set.empty())));
         put(transaction, SemanticRecord.build(DEFINITION, KernelTerm.EL_PLUS_PLUS_STATED_AXIOMS_PATTERN.nid(),
                 holderNid, version, fields(aDefinitionThatRefersTo(undescribed))));
 
         put(transaction, SemanticRecord.build(BARE, KernelTerm.INFERRED_NAVIGATION_PATTERN.nid(),
-                undescribedNid, version, Lists.immutable.of(IntIds.set.empty(), IntIds.set.empty())));
-        int commentedNid = put(transaction, SemanticRecord.build(COMMENTED, KernelTerm.STATED_NAVIGATION_PATTERN.nid(),
-                undescribedNid, version, Lists.immutable.of(IntIds.set.of(holderNid), IntIds.set.empty())));
+                undescribedNid, version, Lists.immutable.of(LongIds.set.empty(), LongIds.set.empty())));
+        long commentedNid = put(transaction, SemanticRecord.build(COMMENTED, KernelTerm.STATED_NAVIGATION_PATTERN.nid(),
+                undescribedNid, version, Lists.immutable.of(LongIds.set.of(holderNid), LongIds.set.empty())));
         commentNid = put(transaction, SemanticRecord.build(COMMENT, KernelTerm.COMMENT_PATTERN.nid(),
                 commentedNid, version, fields(SEARCH_WORD + " is a word no description holds")));
 
@@ -477,8 +479,8 @@ class ResponseTextTest {
     }
 
     /** A described concept, the undescribed concept, and a nid the store has no public id for. */
-    private IntIdSet idSetUnderTest() {
-        return IntIds.set.of(KernelTerm.ENGLISH_LANGUAGE.nid(), undescribedNid, UNASSIGNED_NID);
+    private LongIdSet idSetUnderTest() {
+        return LongIds.set.of(KernelTerm.ENGLISH_LANGUAGE.nid(), undescribedNid, UNASSIGNED_NID);
     }
 
     /**
@@ -505,7 +507,7 @@ class ResponseTextTest {
 
     /** Gives a vertex one property. */
     private static void setProperty(EntityVertex vertex, EntityFacade key, Object value) {
-        MutableIntObjectMap<Object> properties = IntObjectMaps.mutable.empty();
+        MutableLongObjectMap<Object> properties = LongObjectMaps.mutable.empty();
         properties.put(key.nid(), value);
         vertex.setProperties(properties);
     }
@@ -516,7 +518,7 @@ class ResponseTextTest {
     }
 
     /** Writes an entity into the store and the transaction. */
-    private static int put(Transaction transaction, Entity<?> entity) {
+    private static long put(Transaction transaction, Entity<?> entity) {
         EntityService.get().putEntity(entity);
         transaction.addComponent(entity);
         return entity.nid();
@@ -534,7 +536,7 @@ class ResponseTextTest {
         return name(component.nid());
     }
 
-    private static String name(int nid) {
+    private static String name(long nid) {
         LanguageCalculator names = Calculators.View.Default().languageCalculator();
         return names.getRegularDescriptionText(nid)
                 .or(() -> names.getFullyQualifiedNameText(nid))
@@ -577,15 +579,15 @@ class ResponseTextTest {
      * Fails when the text holds a nid: a number of the shape the store assigns, a nid in one of
      * the forms it has been written in, or one of the given nids in decimal.
      */
-    private static void assertNoNid(String what, String text, int... nids) {
+    private static void assertNoNid(String what, String text, long... nids) {
         for (Pattern form : new Pattern[]{EPHEMERAL_NID, ANGLE_BRACKET_NID, LABELLED_NID}) {
             Matcher matcher = form.matcher(text);
             if (matcher.find()) {
                 fail(what + " holds a nid: \"" + matcher.group() + "\" in:\n" + text);
             }
         }
-        for (int nid : nids) {
-            if (text.contains(Integer.toString(nid))) {
+        for (long nid : nids) {
+            if (text.contains(Long.toString(nid))) {
                 fail(what + " holds the nid " + nid + " in:\n" + text);
             }
         }

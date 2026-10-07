@@ -277,7 +277,7 @@ public class AdminGrpcController extends IkeAdminGrpc.IkeAdminImplBase {
      * Nids are assigned per data store, so they are meaningless to a caller. Every concept
      * crosses the wire as its PublicId, which the caller resolves against its own store.
      */
-    private static dev.ikm.tinkar.schema.PublicId publicIdOf(int nid) {
+    private static dev.ikm.tinkar.schema.PublicId publicIdOf(long nid) {
         return SchemaIds.toSchema(PrimitiveData.publicId(nid));
     }
 }
