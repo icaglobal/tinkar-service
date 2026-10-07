@@ -48,7 +48,7 @@ import java.util.UUID;
  * <p>Coordinates are stored in RocksDB and survive server restarts.
  * Listing uses {@code EntityService.get().forEachSemanticForComponent(registryNid, ...)}
  * (and lookup by id {@code semanticsForComponent(registryNid)}), keyed by the registry
- * concept's full 64-bit {@code longKeyForNid} — immune to the nid element-sequence
+ * concept's full 64-bit {@code rocksKeyForNid} — immune to the nid element-sequence
  * collision that breaks {@code semanticsOfPattern}.
  */
 @Component
@@ -61,7 +61,7 @@ public class CoordinateStoreService {
      * <p>All saved coordinate semantics use the registry concept as their
      * {@code referencedComponentNid}.  Listing uses
      * {@code EntityService.get().semanticsForComponent(registryNid)}, which is indexed
-     * by the full 64-bit {@code longKeyForNid(componentNid)} and therefore immune to
+     * by the full 64-bit {@code rocksKeyForNid(componentNid)} and therefore immune to
      * the nid element-sequence collision that breaks {@code semanticsOfPattern}.
      */
     static final UUID STAMP_COORDINATE_REGISTRY_UUID =
