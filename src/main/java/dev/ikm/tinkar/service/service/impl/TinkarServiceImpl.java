@@ -822,7 +822,11 @@ public class TinkarServiceImpl implements TinkarService {
                 );
 
             } catch (Exception e) {
-                transaction.cancel();
+                // The commit is inside the try, so this can run after it; a committed
+                // transaction is not canceled (IKE-Network/ike-issues#1243).
+                if (transaction.isOpen()) {
+                    transaction.cancel();
+                }
                 throw e;
             }
 
@@ -2226,7 +2230,11 @@ public class TinkarServiceImpl implements TinkarService {
                 );
 
             } catch (Exception e) {
-                transaction.cancel();
+                // The commit is inside the try, so this can run after it; a committed
+                // transaction is not canceled (IKE-Network/ike-issues#1243).
+                if (transaction.isOpen()) {
+                    transaction.cancel();
+                }
                 throw e;
             }
 
@@ -2362,7 +2370,11 @@ public class TinkarServiceImpl implements TinkarService {
                 );
 
             } catch (Exception e) {
-                transaction.cancel();
+                // The commit is inside the try, so this can run after it; a committed
+                // transaction is not canceled (IKE-Network/ike-issues#1243).
+                if (transaction.isOpen()) {
+                    transaction.cancel();
+                }
                 throw e;
             }
 
@@ -2500,7 +2512,11 @@ public class TinkarServiceImpl implements TinkarService {
                 );
 
             } catch (Exception e) {
-                transaction.cancel();
+                // The commit is inside the try, so this can run after it; a committed
+                // transaction is not canceled (IKE-Network/ike-issues#1243).
+                if (transaction.isOpen()) {
+                    transaction.cancel();
+                }
                 throw e;
             }
 
