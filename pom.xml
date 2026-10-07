@@ -13,7 +13,7 @@
 
     <groupId>dev.ikm.tinkar</groupId>
     <artifactId>tinkar-service</artifactId>
-    <version>1.0.5-64bit-SNAPSHOT</version>
+    <version>1.0.5-SNAPSHOT</version>
     <packaging>jar</packaging>
     <name>Tinkar Service</name>
     <description>Standalone Spring Boot / gRPC service exposing Tinkar knowledge-graph APIs</description>
@@ -42,11 +42,11 @@
         <lucene.version>10.5.1</lucene.version>
 
         <!-- Tinkar Core dependency version -->
-        <tinkar-core.version>1.127.7-64bit-SNAPSHOT</tinkar-core.version>
+        <tinkar-core.version>1.127.7-SNAPSHOT</tinkar-core.version>
         <!-- tinkar-schema must include Tinkar.proto in the jar (added in 1.43.0). -->
-        <tinkar-schema.version>1.43.5-64bit-SNAPSHOT</tinkar-schema.version>
+        <tinkar-schema.version>1.43.5-SNAPSHOT</tinkar-schema.version>
         <!-- The IKE starter set the tests load, from starter-data-ws, which builds after this repository. -->
-        <ike-starter-set.version>1-64bit-SNAPSHOT</ike-starter-set.version>
+        <ike-starter-set.version>1-SNAPSHOT</ike-starter-set.version>
         <!-- The nid build check (tinkar-core nid-check, IKE-Network/ike-issues#1244): how it
              reports (error, or warning for a census), which classes may narrow a nid, and
              javac's cap on warnings, raised for a census. -->
