@@ -154,8 +154,10 @@ export function ChangesetPanel({ onBack }: ChangesetPanelProps) {
   const exportRequest = (): ExportRequest | string => {
     if (exportType === 'FULL') return { type: 'FULL' };
     if (exportType === 'TEMPORAL') {
+      // The inputs only go down to the minute, so the range covers the whole of its last minute:
+      // "to 11:05" must include a commit at 11:05:00.4, which a reasoner run just finished can make.
       const fromMs = new Date(from).getTime();
-      const toMs = new Date(to).getTime();
+      const toMs = new Date(to).getTime() + 59_999;
       if (Number.isNaN(fromMs) || Number.isNaN(toMs)) return 'Choose both a start and an end time.';
       if (fromMs > toMs) return 'The start time is after the end time.';
       return { type: 'TEMPORAL', fromEpochMillis: fromMs, toEpochMillis: toMs };
