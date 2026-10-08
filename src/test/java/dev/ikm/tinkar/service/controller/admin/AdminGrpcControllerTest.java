@@ -3,10 +3,17 @@ package dev.ikm.tinkar.service.controller.admin;
 import com.google.protobuf.ByteString;
 import dev.ikm.tinkar.service.dto.EntityCountSummaryResponse;
 import dev.ikm.tinkar.service.dto.ReasonerResultsResponse;
-import dev.ikm.tinkar.service.proto.ImportChangesetRequest;
-import dev.ikm.tinkar.service.proto.ImportChangesetResponse;
 import dev.ikm.tinkar.reasoner.service.ClassifierResults;
 import dev.ikm.tinkar.service.proto.RunReasonerEvent;
+import dev.ikm.tinkar.service.proto.ImportChangesetChunk;
+import dev.ikm.tinkar.service.proto.ImportChangesetStart;
+import dev.ikm.tinkar.service.proto.JobEvent;
+import dev.ikm.tinkar.service.proto.JobResult;
+import dev.ikm.tinkar.service.proto.ExportEntitiesRequest;
+import dev.ikm.tinkar.service.proto.ExportType;
+import dev.ikm.tinkar.service.proto.CancelJobRequest;
+import dev.ikm.tinkar.service.proto.CancelJobResponse;
+import dev.ikm.tinkar.service.proto.WatchJobRequest;
 import dev.ikm.tinkar.service.proto.RunReasonerResult;
 import dev.ikm.tinkar.service.service.ReasonerPhaseListener;
 import org.eclipse.collections.api.factory.primitive.IntLists;
@@ -56,10 +63,17 @@ class AdminGrpcControllerTest {
 
     private AdminGrpcController controller;
 
+    private AdminJobQueue jobs;
+
+    @org.junit.jupiter.api.io.TempDir
+    java.nio.file.Path exportDir;
+
     @BeforeEach
-    void createController() {
-        reasonerRuns = new ReasonerRunManager(tinkarService, new AdminJobQueue(3_600_000L));
-        controller = new AdminGrpcController(tinkarService, reasonerRuns);
+    void createController() throws Exception {
+        jobs = new AdminJobQueue(3_600_000L);
+        reasonerRuns = new ReasonerRunManager(tinkarService, jobs);
+        controller = new AdminGrpcController(tinkarService, reasonerRuns, jobs,
+                new dev.ikm.tinkar.service.service.ChangesetJobService(tinkarService, jobs, exportDir.toString(), 3_600_000L));
     }
 
     /** Runs are asynchronous: events arrive on the run's thread, after the call has returned. */
@@ -70,107 +84,147 @@ class AdminGrpcControllerTest {
     // -------------------------------------------------------------------------
 
     @Test
-    void importChangeset_successPath_callsOnNextAndOnCompleted() throws Exception {
-        // Arrange
-        ImportChangesetRequest request = ImportChangesetRequest.newBuilder()
-                .setChangesetData(ByteString.EMPTY)
-                .setUseMultiPass(true)
-                .build();
-
-        EntityCountSummaryResponse mockResult = Mockito.mock(EntityCountSummaryResponse.class);
-        when(mockResult.success()).thenReturn(true);
-        when(mockResult.errorMessage()).thenReturn(null);
-        when(mockResult.conceptsCount()).thenReturn(10L);
-        when(mockResult.semanticsCount()).thenReturn(20L);
-        when(mockResult.patternsCount()).thenReturn(5L);
-        when(mockResult.stampsCount()).thenReturn(3L);
-        when(mockResult.totalCount()).thenReturn(38L);
-
-        when(tinkarService.importChangeset(any(File.class), anyBoolean())).thenReturn(mockResult);
-
+    void importChangeset_uploadInChunks_streamsTheJobToItsResult() throws Exception {
+        byte[] zip = "fake-zip-bytes-in-two-chunks".getBytes();
+        java.util.concurrent.atomic.AtomicReference<byte[]> received = new java.util.concurrent.atomic.AtomicReference<>();
+        when(tinkarService.importChangeset(any(File.class), anyBoolean(), any())).thenAnswer(invocation -> {
+            received.set(java.nio.file.Files.readAllBytes(((File) invocation.getArgument(0)).toPath()));
+            return new dev.ikm.tinkar.common.service.EntityCountSummary(1, 5, 0, 4);
+        });
         @SuppressWarnings("unchecked")
-        StreamObserver<ImportChangesetResponse> responseObserver = Mockito.mock(StreamObserver.class);
+        StreamObserver<JobEvent> events = Mockito.mock(StreamObserver.class);
 
-        // Act
-        controller.importChangeset(request, responseObserver);
+        StreamObserver<ImportChangesetChunk> upload = controller.importChangeset(events);
+        upload.onNext(ImportChangesetChunk.newBuilder()
+                .setStart(ImportChangesetStart.newBuilder().setFileName("changes.zip")).build());
+        upload.onNext(ImportChangesetChunk.newBuilder().setData(ByteString.copyFrom(zip, 0, 10)).build());
+        upload.onNext(ImportChangesetChunk.newBuilder().setData(ByteString.copyFrom(zip, 10, zip.length - 10)).build());
+        upload.onCompleted();
 
-        // Assert — response sent and stream completed
-        ArgumentCaptor<ImportChangesetResponse> captor =
-                ArgumentCaptor.forClass(ImportChangesetResponse.class);
-        verify(responseObserver).onNext(captor.capture());
-        verify(responseObserver).onCompleted();
-
-        ImportChangesetResponse sent = captor.getValue();
-        assertThat(sent.getSuccess()).isTrue();
-        assertThat(sent.getEntityCounts().getConceptsCount()).isEqualTo(10);
-        assertThat(sent.getEntityCounts().getSemanticsCount()).isEqualTo(20);
-        assertThat(sent.getEntityCounts().getPatternsCount()).isEqualTo(5);
-        assertThat(sent.getEntityCounts().getStampsCount()).isEqualTo(3);
-        assertThat(sent.getEntityCounts().getTotalCount()).isEqualTo(38);
+        verify(events, timeout(WAIT_MS)).onCompleted();
+        assertThat(received.get()).isEqualTo(zip);
+        verify(tinkarService).importChangeset(any(File.class), Mockito.eq(true), any());
+        ArgumentCaptor<JobEvent> captor = ArgumentCaptor.forClass(JobEvent.class);
+        verify(events, Mockito.atLeast(2)).onNext(captor.capture());
+        List<JobEvent> sent = captor.getAllValues();
+        assertThat(sent.getFirst().getJob().getLabel()).isEqualTo("Import changes.zip");
+        JobResult result = sent.getLast().getResult();
+        assertThat(result.getSuccess()).isTrue();
+        assertThat(result.getEntityCounts().getSemanticsCount()).isEqualTo(5);
+        assertThat(result.getEntityCounts().getStampsCount()).isEqualTo(4);
     }
 
     @Test
-    void importChangeset_failurePath_setsSuccessFalseAndNoEntityCounts() throws Exception {
-        // Arrange
-        ImportChangesetRequest request = ImportChangesetRequest.newBuilder()
-                .setChangesetData(ByteString.EMPTY)
-                .setUseMultiPass(false)
-                .build();
-
-        EntityCountSummaryResponse mockResult = Mockito.mock(EntityCountSummaryResponse.class);
-        when(mockResult.success()).thenReturn(false);
-        when(mockResult.errorMessage()).thenReturn("import failed");
-
-        when(tinkarService.importChangeset(any(File.class), anyBoolean())).thenReturn(mockResult);
-
+    void importChangeset_dataBeforeStart_isRejected() {
         @SuppressWarnings("unchecked")
-        StreamObserver<ImportChangesetResponse> responseObserver = Mockito.mock(StreamObserver.class);
+        StreamObserver<JobEvent> events = Mockito.mock(StreamObserver.class);
 
-        // Act
-        controller.importChangeset(request, responseObserver);
+        controller.importChangeset(events)
+                .onNext(ImportChangesetChunk.newBuilder().setData(ByteString.copyFromUtf8("x")).build());
 
-        // Assert
-        ArgumentCaptor<ImportChangesetResponse> captor =
-                ArgumentCaptor.forClass(ImportChangesetResponse.class);
-        verify(responseObserver).onNext(captor.capture());
-        verify(responseObserver).onCompleted();
-
-        ImportChangesetResponse sent = captor.getValue();
-        assertThat(sent.getSuccess()).isFalse();
-        assertThat(sent.getErrorMessage()).isEqualTo("import failed");
-        assertThat(sent.hasEntityCounts()).isFalse();
+        ArgumentCaptor<Throwable> error = ArgumentCaptor.forClass(Throwable.class);
+        verify(events).onError(error.capture());
+        assertThat(Status.fromThrowable(error.getValue()).getCode()).isEqualTo(Status.Code.INVALID_ARGUMENT);
+        assertThat(jobs.list()).isEmpty();
     }
 
     @Test
-    void importChangeset_whenServiceThrows_respondsWithErrorAndCompletes() throws Exception {
-        // Arrange
-        ImportChangesetRequest request = ImportChangesetRequest.newBuilder()
-                .setChangesetData(ByteString.EMPTY)
-                .setUseMultiPass(true)
-                .build();
-
-        when(tinkarService.importChangeset(any(File.class), anyBoolean()))
-                .thenThrow(new RuntimeException("unexpected failure"));
-
+    void exportEntities_sendsTheFileInChunks_thenTheResult() throws Exception {
+        byte[] content = new byte[3 * 1024 * 1024 + 17]; // over three chunks
+        new java.util.Random(1).nextBytes(content);
+        when(tinkarService.exportEntities(any(File.class), any(), any(), any())).thenAnswer(invocation -> {
+            java.nio.file.Files.write(((File) invocation.getArgument(0)).toPath(), content);
+            return new dev.ikm.tinkar.common.service.EntityCountSummary(1, 2, 0, 1);
+        });
         @SuppressWarnings("unchecked")
-        StreamObserver<ImportChangesetResponse> responseObserver = Mockito.mock(StreamObserver.class);
+        StreamObserver<JobEvent> events = Mockito.mock(StreamObserver.class);
 
-        // Act
-        controller.importChangeset(request, responseObserver);
+        controller.exportEntities(ExportEntitiesRequest.newBuilder().setExportType(ExportType.FULL).build(), events);
 
-        // Assert — controller catches exception, sends error response, and completes stream
-        ArgumentCaptor<ImportChangesetResponse> captor =
-                ArgumentCaptor.forClass(ImportChangesetResponse.class);
-        verify(responseObserver).onNext(captor.capture());
-        verify(responseObserver).onCompleted();
-
-        ImportChangesetResponse sent = captor.getValue();
-        assertThat(sent.getSuccess()).isFalse();
-        assertThat(sent.getErrorMessage()).contains("unexpected failure");
+        verify(events, timeout(WAIT_MS)).onCompleted();
+        ArgumentCaptor<JobEvent> captor = ArgumentCaptor.forClass(JobEvent.class);
+        verify(events, Mockito.atLeast(5)).onNext(captor.capture());
+        java.io.ByteArrayOutputStream file = new java.io.ByteArrayOutputStream();
+        List<JobEvent> sent = captor.getAllValues();
+        for (JobEvent event : sent) {
+            if (event.hasFileChunk()) {
+                event.getFileChunk().writeTo(file);
+            }
+        }
+        assertThat(file.toByteArray()).isEqualTo(content);
+        assertThat(sent.stream().filter(JobEvent::hasFileChunk).count()).isEqualTo(4);
+        JobResult result = sent.getLast().getResult();
+        assertThat(result.getSuccess()).isTrue();
+        assertThat(result.getFileSizeBytes()).isEqualTo(content.length);
+        assertThat(result.getFileName()).startsWith("tinkar-export-FULL-");
     }
 
-    // -------------------------------------------------------------------------
-    // runReasoner
+    @Test
+    void exportEntities_temporalWithoutARange_isRejected() {
+        @SuppressWarnings("unchecked")
+        StreamObserver<JobEvent> events = Mockito.mock(StreamObserver.class);
+
+        controller.exportEntities(ExportEntitiesRequest.newBuilder()
+                .setExportType(ExportType.TEMPORAL).setFromEpochMillis(10).setToEpochMillis(5).build(), events);
+
+        ArgumentCaptor<Throwable> error = ArgumentCaptor.forClass(Throwable.class);
+        verify(events).onError(error.capture());
+        assertThat(Status.fromThrowable(error.getValue()).getCode()).isEqualTo(Status.Code.INVALID_ARGUMENT);
+    }
+
+    @Test
+    void cancelJob_refusesAnImport_andUnknownJobs() throws Exception {
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        when(tinkarService.importChangeset(any(File.class), anyBoolean(), any())).thenAnswer(invocation -> {
+            release.await(WAIT_MS, TimeUnit.MILLISECONDS);
+            return new dev.ikm.tinkar.common.service.EntityCountSummary(0, 0, 0, 0);
+        });
+        @SuppressWarnings("unchecked")
+        StreamObserver<JobEvent> events = Mockito.mock(StreamObserver.class);
+        StreamObserver<ImportChangesetChunk> upload = controller.importChangeset(events);
+        upload.onNext(ImportChangesetChunk.newBuilder().setStart(ImportChangesetStart.newBuilder()).build());
+        upload.onCompleted();
+        String importId = jobs.list().getFirst().id();
+        try {
+            @SuppressWarnings("unchecked")
+            StreamObserver<CancelJobResponse> refused = Mockito.mock(StreamObserver.class);
+            controller.cancelJob(CancelJobRequest.newBuilder().setJobId(importId).build(), refused);
+            ArgumentCaptor<Throwable> error = ArgumentCaptor.forClass(Throwable.class);
+            verify(refused).onError(error.capture());
+            assertThat(Status.fromThrowable(error.getValue()).getCode()).isEqualTo(Status.Code.FAILED_PRECONDITION);
+        } finally {
+            release.countDown();
+        }
+
+        @SuppressWarnings("unchecked")
+        StreamObserver<CancelJobResponse> unknown = Mockito.mock(StreamObserver.class);
+        controller.cancelJob(CancelJobRequest.newBuilder().setJobId("no-such-job").build(), unknown);
+        ArgumentCaptor<Throwable> error = ArgumentCaptor.forClass(Throwable.class);
+        verify(unknown).onError(error.capture());
+        assertThat(Status.fromThrowable(error.getValue()).getCode()).isEqualTo(Status.Code.NOT_FOUND);
+    }
+
+    @Test
+    void watchJob_replaysAFinishedImport() throws Exception {
+        when(tinkarService.importChangeset(any(File.class), anyBoolean(), any()))
+                .thenReturn(new dev.ikm.tinkar.common.service.EntityCountSummary(3, 0, 0, 0));
+        @SuppressWarnings("unchecked")
+        StreamObserver<JobEvent> first = Mockito.mock(StreamObserver.class);
+        StreamObserver<ImportChangesetChunk> upload = controller.importChangeset(first);
+        upload.onNext(ImportChangesetChunk.newBuilder().setStart(ImportChangesetStart.newBuilder()).build());
+        upload.onCompleted();
+        verify(first, timeout(WAIT_MS)).onCompleted();
+
+        @SuppressWarnings("unchecked")
+        StreamObserver<JobEvent> later = Mockito.mock(StreamObserver.class);
+        controller.watchJob(WatchJobRequest.newBuilder().setJobId(jobs.list().getFirst().id()).build(), later);
+
+        verify(later, timeout(WAIT_MS)).onCompleted();
+        ArgumentCaptor<JobEvent> captor = ArgumentCaptor.forClass(JobEvent.class);
+        verify(later, Mockito.atLeast(2)).onNext(captor.capture());
+        assertThat(captor.getValue().getResult().getEntityCounts().getConceptsCount()).isEqualTo(3);
+    }
+
     // -------------------------------------------------------------------------
 
     @Test

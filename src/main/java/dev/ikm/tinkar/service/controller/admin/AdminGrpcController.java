@@ -1,13 +1,16 @@
 package dev.ikm.tinkar.service.controller.admin;
 
-import dev.ikm.tinkar.service.dto.EntityCountSummaryResponse;
 import dev.ikm.tinkar.service.dto.ReasonerResultsResponse;
-import dev.ikm.tinkar.service.proto.EntityCountSummaryProto;
 import dev.ikm.tinkar.service.proto.ExportEntitiesRequest;
-import dev.ikm.tinkar.service.proto.ExportEntitiesResponse;
 import dev.ikm.tinkar.service.proto.IkeAdminGrpc;
-import dev.ikm.tinkar.service.proto.ImportChangesetRequest;
-import dev.ikm.tinkar.service.proto.ImportChangesetResponse;
+import dev.ikm.tinkar.service.proto.ImportChangesetChunk;
+import dev.ikm.tinkar.service.proto.JobEvent;
+import dev.ikm.tinkar.service.proto.WatchJobRequest;
+import dev.ikm.tinkar.service.proto.CancelJobRequest;
+import dev.ikm.tinkar.service.proto.CancelJobResponse;
+import dev.ikm.tinkar.service.dto.ExportRequest;
+import dev.ikm.tinkar.service.service.AdminJobQueue;
+import dev.ikm.tinkar.service.service.ChangesetJobService;
 import dev.ikm.tinkar.service.proto.RunReasonerEvent;
 import dev.ikm.tinkar.service.proto.RunReasonerResult;
 import dev.ikm.tinkar.service.proto.ReasonerPhase;
@@ -31,8 +34,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import net.devh.boot.grpc.server.service.GrpcService;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
@@ -54,60 +63,275 @@ public class AdminGrpcController extends IkeAdminGrpc.IkeAdminImplBase {
 
     private final ReasonerRunManager reasonerRuns;
 
-    public AdminGrpcController(TinkarService tinkarService, ReasonerRunManager reasonerRuns) {
+    private final AdminJobQueue jobs;
+
+    private final ChangesetJobService changesets;
+
+    public AdminGrpcController(TinkarService tinkarService, ReasonerRunManager reasonerRuns,
+                               AdminJobQueue jobs, ChangesetJobService changesets) {
         this.tinkarService = tinkarService;
         this.reasonerRuns = reasonerRuns;
+        this.jobs = jobs;
+        this.changesets = changesets;
     }
 
     @Override
-    public void importChangeset(ImportChangesetRequest request,
-            StreamObserver<ImportChangesetResponse> responseObserver) {
-        log.info("IkeAdmin importChangeset request ({} bytes, multiPass={})",
-                request.getChangesetData().size(), request.getUseMultiPass());
+    public StreamObserver<ImportChangesetChunk> importChangeset(StreamObserver<JobEvent> responseObserver) {
+        // A call with a streaming request may only set its cancel handler now, before this method
+        // returns — not later when the upload completes and the job exists. So register it here, and
+        // have followJob fill in what it should do.
+        AtomicReference<Runnable> onClientGone = new AtomicReference<>(() -> { });
+        if (responseObserver instanceof ServerCallStreamObserver<JobEvent> call) {
+            call.setOnCancelHandler(() -> onClientGone.get().run());
+        }
+        return new StreamObserver<>() {
+            private File upload;
+            private OutputStream out;
+            private String name = "upload.zip";
+            private boolean singlePass;
 
-        File tempFile = null;
-        try {
-            // Write uploaded bytes to temp file
-            tempFile = Files.createTempFile("tinkar-import-", ".zip").toFile();
-            try (FileOutputStream fos = new FileOutputStream(tempFile)) {
-                request.getChangesetData().writeTo(fos);
-            }
-
-            // Proto3 bools default to false; callers should set use_multi_pass=true explicitly
-            EntityCountSummaryResponse result = tinkarService.importChangeset(tempFile, request.getUseMultiPass());
-
-            ImportChangesetResponse.Builder builder = ImportChangesetResponse.newBuilder()
-                    .setSuccess(result.success())
-                    .setErrorMessage(result.errorMessage() != null ? result.errorMessage() : "");
-
-            if (result.success()) {
-                builder.setEntityCounts(EntityCountSummaryProto.newBuilder()
-                        .setConceptsCount(result.conceptsCount())
-                        .setSemanticsCount(result.semanticsCount())
-                        .setPatternsCount(result.patternsCount())
-                        .setStampsCount(result.stampsCount())
-                        .setTotalCount(result.totalCount())
-                        .build());
-            }
-
-            builder.setCreatedAt(System.currentTimeMillis());
-            responseObserver.onNext(builder.build());
-            responseObserver.onCompleted();
-        } catch (Exception e) {
-            log.error("Failed to process import request: {}", e.getMessage(), e);
-            responseObserver.onNext(ImportChangesetResponse.newBuilder()
-                    .setSuccess(false)
-                    .setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName())
-                    .setCreatedAt(System.currentTimeMillis())
-                    .build());
-            responseObserver.onCompleted();
-        } finally {
-            if (tempFile != null && tempFile.exists()) {
-                if (!tempFile.delete()) {
-                    log.warn("Failed to delete temp file: {}", tempFile.getAbsolutePath());
+            @Override
+            public void onNext(ImportChangesetChunk chunk) {
+                try {
+                    switch (chunk.getPartCase()) {
+                        case START -> {
+                            name = chunk.getStart().getFileName().isBlank() ? name : chunk.getStart().getFileName();
+                            singlePass = chunk.getStart().getSinglePass();
+                            upload = Files.createTempFile("tinkar-import-", ".zip").toFile();
+                            out = new BufferedOutputStream(new FileOutputStream(upload));
+                        }
+                        case DATA -> {
+                            if (out == null) {
+                                throw new IllegalStateException("Send an ImportChangesetStart before any data");
+                            }
+                            chunk.getData().writeTo(out);
+                        }
+                        case PART_NOT_SET -> throw new IllegalStateException("Empty ImportChangesetChunk");
+                    }
+                } catch (IOException | IllegalStateException e) {
+                    discard();
+                    responseObserver.onError(Status.INVALID_ARGUMENT.withDescription(e.getMessage()).asRuntimeException());
                 }
             }
+
+            @Override
+            public void onError(Throwable t) {
+                // The client went away mid-upload: nothing was queued, so nothing to keep.
+                log.info("Changeset upload abandoned: {}", t.toString());
+                discard();
+            }
+
+            @Override
+            public void onCompleted() {
+                if (out == null) {
+                    responseObserver.onError(Status.INVALID_ARGUMENT
+                            .withDescription("No changeset was sent").asRuntimeException());
+                    return;
+                }
+                try {
+                    out.close();
+                } catch (IOException e) {
+                    discard();
+                    responseObserver.onError(Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                    return;
+                }
+                log.info("IkeAdmin importChangeset: {} ({} bytes)", name, upload.length());
+                File queued = upload;
+                upload = null;
+                out = null;
+                followJob(responseObserver,
+                        watcher -> changesets.importChangeset(queued, name, !singlePass, watcher),
+                        JobEvents::importResult, false, onClientGone);
+            }
+
+            private void discard() {
+                try {
+                    if (out != null) {
+                        out.close();
+                    }
+                } catch (IOException ignored) {
+                    // being discarded anyway
+                }
+                if (upload != null && !upload.delete()) {
+                    log.warn("Could not delete {}", upload);
+                }
+                out = null;
+                upload = null;
+            }
+        };
+    }
+
+    @Override
+    public void exportEntities(ExportEntitiesRequest request, StreamObserver<JobEvent> responseObserver) {
+        ExportRequest export;
+        try {
+            export = toExportRequest(request);
+            export.validate();
+        } catch (IllegalArgumentException e) {
+            responseObserver.onError(Status.INVALID_ARGUMENT.withDescription(e.getMessage()).asRuntimeException());
+            return;
         }
+        log.info("IkeAdmin exportEntities: {}", export.describe());
+        followJob(responseObserver, watcher -> changesets.export(export, watcher), JobEvents::exportResult, true, null);
+    }
+
+    @Override
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public void watchJob(WatchJobRequest request, StreamObserver<JobEvent> responseObserver) {
+        Optional<AdminJobQueue.Job<?>> found = jobs.find(request.getJobId());
+        if (found.isEmpty() || found.get().kind() == AdminJobQueue.Kind.REASONER) {
+            // Reasoner runs have their own stream, WatchReasoner, with the results Komet's panel reads.
+            responseObserver.onError(Status.NOT_FOUND
+                    .withDescription("No import or export job " + request.getJobId() + " — it may have expired")
+                    .asRuntimeException());
+            return;
+        }
+        AdminJobQueue.Job job = found.get();
+        java.util.function.BiFunction<String, AdminJobQueue.Outcome, JobEvent> result =
+                job.kind() == AdminJobQueue.Kind.IMPORT
+                        ? (id, outcome) -> JobEvents.importResult(id, outcome)
+                        : (id, outcome) -> JobEvents.exportResult(id, outcome);
+        followJob(responseObserver, watcher -> {
+            jobs.watch(job, watcher);
+            return job;
+        }, (java.util.function.BiFunction) result, false, null);
+    }
+
+    @Override
+    public void cancelJob(CancelJobRequest request, StreamObserver<CancelJobResponse> responseObserver) {
+        Optional<AdminJobQueue.Job<?>> found = jobs.find(request.getJobId());
+        if (found.isEmpty()) {
+            responseObserver.onError(Status.NOT_FOUND
+                    .withDescription("No job " + request.getJobId() + " — it may have expired").asRuntimeException());
+            return;
+        }
+        try {
+            if (!jobs.cancel(found.get())) {
+                responseObserver.onError(Status.FAILED_PRECONDITION
+                        .withDescription("Job " + request.getJobId() + " has already finished").asRuntimeException());
+                return;
+            }
+        } catch (UnsupportedOperationException e) {
+            responseObserver.onError(Status.FAILED_PRECONDITION.withDescription(e.getMessage()).asRuntimeException());
+            return;
+        }
+        responseObserver.onNext(CancelJobResponse.getDefaultInstance());
+        responseObserver.onCompleted();
+    }
+
+    /** Size of each file_chunk: well under gRPC's default 4 MiB message limit. */
+    private static final int FILE_CHUNK_BYTES = 1024 * 1024;
+
+    /**
+     * Streams a job to {@code responseObserver}: job, queued, started, progress, then the result.
+     *
+     * <p>Events are sent from the job's thread, so this returns as soon as the watcher is attached.
+     * A call that ends early is detached and nothing more — the job carries on.
+     *
+     * <p>With {@code sendFile}, a successful export's ZIP is sent as file_chunk events before the
+     * result. That happens on a separate thread: the job queue runs one job at a time, and sending
+     * a large file from its thread would hold up every job behind this one.
+     */
+    private <R> void followJob(StreamObserver<JobEvent> responseObserver,
+                               Function<AdminJobQueue.Watcher<R>, AdminJobQueue.Job<R>> attach,
+                               java.util.function.BiFunction<String, AdminJobQueue.Outcome<R>, JobEvent> result,
+                               boolean sendFile, AtomicReference<Runnable> preRegisteredCancelHook) {
+        AtomicReference<AdminJobQueue.Job<R>> attached = new AtomicReference<>();
+        AdminJobQueue.Watcher<R> watcher = new AdminJobQueue.Watcher<>() {
+            private String jobId;
+
+            @Override
+            public void onAttached(AdminJobQueue.Summary job, boolean submitted) {
+                jobId = job.id();
+                responseObserver.onNext(JobEvents.job(job));
+            }
+
+            @Override
+            public void onQueued(List<AdminJobQueue.Summary> ahead) {
+                responseObserver.onNext(JobEvents.queued(ahead));
+            }
+
+            @Override
+            public void onStarted(long startedAt) {
+                responseObserver.onNext(JobEvents.started(startedAt));
+            }
+
+            @Override
+            public void onProgress(AdminJobQueue.Progress progress) {
+                responseObserver.onNext(JobEvents.progress(progress));
+            }
+
+            @Override
+            public void onFinished(AdminJobQueue.Outcome<R> outcome) {
+                if (sendFile && outcome.result() instanceof ChangesetJobService.ExportResult export) {
+                    fileSender.execute(() -> sendFileThenResult(responseObserver, export.file(),
+                            result.apply(jobId, outcome)));
+                    return;
+                }
+                responseObserver.onNext(result.apply(jobId, outcome));
+                responseObserver.onCompleted();
+            }
+        };
+        Runnable detach = () -> {
+            AdminJobQueue.Job<R> job = attached.get();
+            if (job != null && !job.finished()) {
+                log.info("Job call ended by the client — detaching; the job carries on");
+                jobs.detach(job, watcher);
+            }
+        };
+        if (preRegisteredCancelHook != null) {
+            preRegisteredCancelHook.set(detach);
+        } else if (responseObserver instanceof ServerCallStreamObserver<JobEvent> call) {
+            call.setOnCancelHandler(detach);
+        }
+        attached.set(attach.apply(watcher));
+    }
+
+    private void sendFileThenResult(StreamObserver<JobEvent> responseObserver, File file, JobEvent result) {
+        ServerCallStreamObserver<JobEvent> call = responseObserver instanceof ServerCallStreamObserver<JobEvent> c ? c : null;
+        try (InputStream in = new BufferedInputStream(new FileInputStream(file))) {
+            byte[] buffer = new byte[FILE_CHUNK_BYTES];
+            int read;
+            while ((read = in.readNBytes(buffer, 0, buffer.length)) > 0) {
+                if (call != null) {
+                    if (call.isCancelled()) {
+                        return; // the client left; the file stays downloadable over REST for an hour
+                    }
+                    // Simple flow control: do not queue the whole file in memory for a slow client.
+                    while (!call.isReady() && !call.isCancelled()) {
+                        Thread.sleep(5);
+                    }
+                }
+                responseObserver.onNext(JobEvent.newBuilder().setFileChunk(ByteString.copyFrom(buffer, 0, read)).build());
+            }
+            responseObserver.onNext(result);
+            responseObserver.onCompleted();
+        } catch (IOException e) {
+            responseObserver.onError(Status.INTERNAL.withDescription("Could not send the export: " + e.getMessage())
+                    .asRuntimeException());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (RuntimeException e) {
+            log.info("Export file not sent — client gone ({})", e.toString());
+        }
+    }
+
+    /** Sends finished exports' files, off the job queue's thread. */
+    private final java.util.concurrent.ExecutorService fileSender =
+            java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
+
+    private static ExportRequest toExportRequest(ExportEntitiesRequest request) {
+        return switch (request.getExportType()) {
+            case FULL -> new ExportRequest(ExportRequest.ExportType.FULL, null, null, null);
+            case TEMPORAL -> new ExportRequest(ExportRequest.ExportType.TEMPORAL,
+                    request.getFromEpochMillis(), request.getToEpochMillis(), null);
+            case MEMBERSHIP -> new ExportRequest(ExportRequest.ExportType.MEMBERSHIP, null, null,
+                    request.getMembershipTagsList().stream()
+                            .map(tag -> tag.getUuidsCount() == 0 ? "" : tag.getUuids(0))
+                            .filter(uuid -> !uuid.isBlank())
+                            .toList());
+            case UNRECOGNIZED -> throw new IllegalArgumentException("Unknown export type");
+        };
     }
 
     @Override

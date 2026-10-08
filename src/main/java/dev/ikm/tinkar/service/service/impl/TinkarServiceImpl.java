@@ -62,6 +62,8 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 
@@ -194,9 +196,11 @@ public class TinkarServiceImpl implements TinkarService {
 
         // Convert to response format
         List<SemanticSearchResult> semanticResults = sortedResults.stream()
-                .filter(r -> r.latestVersion().isPresent())
+                .filter(r -> topComponentNid(r).isPresent())
                 .map(this::toSemanticSearchResult)
                 .toList();
+        logLeftOut(query, (int) sortedResults.stream().filter(r -> r.latestVersion().isPresent()).count()
+                - semanticResults.size());
 
         return ConceptSearchResponse.successFlat(query, sortBy, semanticResults);
     }
@@ -227,12 +231,16 @@ public class TinkarServiceImpl implements TinkarService {
         sortedForGrouping.sort((r1, r2) -> Float.compare(r2.score(), r1.score()));
 
         // Group by top component nid
+        int leftOut = 0;
         for (LatestVersionSearchResult result : sortedForGrouping) {
-            if (result.latestVersion().isPresent()) {
-                int topNid = result.latestVersion().get().chronology().topEnclosingComponentNid();
-                groupedByTopNid.computeIfAbsent(topNid, k -> new ArrayList<>()).add(result);
+            OptionalInt topNid = topComponentNid(result);
+            if (topNid.isPresent()) {
+                groupedByTopNid.computeIfAbsent(topNid.getAsInt(), k -> new ArrayList<>()).add(result);
+            } else if (result.latestVersion().isPresent()) {
+                leftOut++;
             }
         }
+        logLeftOut(query, leftOut);
 
         // Convert to response format
         List<GroupedSearchResult> groupedResults = new ArrayList<>();
@@ -288,12 +296,42 @@ public class TinkarServiceImpl implements TinkarService {
         return ConceptSearchResponse.successGrouped(query, sortBy, groupedResults, totalSemanticCount);
     }
 
+    /** One line per search, not per hit: the hits themselves are logged at DEBUG. */
+    private static void logLeftOut(String query, int leftOut) {
+        if (leftOut > 0) {
+            log.info("Search '{}': left out {} hit(s) referring to components this store does not hold"
+                    + " (DEBUG lists them)", query, leftOut);
+        }
+    }
+
+    /**
+     * The concept a search hit belongs to: the top of the chain of components its semantic
+     * refers to — or empty if that chain cannot be followed, and the hit is left out.
+     *
+     * <p>The chain breaks when a semantic refers to a component this store does not hold — a
+     * comment Komet committed about components it deliberately never sends here (its bootstrap
+     * seeding), or a reference a time-range import brought in without its target. One such hit
+     * used to fail the whole search with "Expected entity to be present but entity was absent".
+     */
+    private OptionalInt topComponentNid(LatestVersionSearchResult result) {
+        if (!result.latestVersion().isPresent()) {
+            return OptionalInt.empty();
+        }
+        var chronology = result.latestVersion().get().chronology();
+        try {
+            return OptionalInt.of(chronology.topEnclosingComponentNid());
+        } catch (IllegalStateException e) {
+            log.debug("Search hit {} left out: it refers to a component this store does not hold ({})",
+                    chronology.publicId().idString(), e.getMessage());
+            return OptionalInt.empty();
+        }
+    }
+
     /**
      * Converts a LatestVersionSearchResult to a SemanticSearchResult.
      */
     private SemanticSearchResult toSemanticSearchResult(LatestVersionSearchResult result) {
-        var latestVersion = result.latestVersion().get();
-        int topNid = latestVersion.chronology().topEnclosingComponentNid();
+        int topNid = topComponentNid(result).orElseThrow();
 
         PublicId conceptPublicId = PrimitiveData.publicId(topNid);
         String fqn = getConceptName(topNid);
@@ -1694,8 +1732,14 @@ public class TinkarServiceImpl implements TinkarService {
             // to the raw nid — a machine-local integer shown where a concept name belongs.
             // This is the on-demand counterpart to loadConceptEntityGraph, which already ships
             // descriptions; callers of this cheaper single-entity path need a name just as much.
-            int[] descriptionNids = EntityService.get()
-                    .semanticNidsForComponentOfPattern(nid, TinkarTerm.DESCRIPTION_PATTERN.nid());
+            // The navigation semantics come too: they hold the entity's parents and children, so a
+            // client navigator can place it in the tree and expand it one level at a time.
+            int[] descriptionNids = Stream.of(
+                            EntityService.get().semanticNidsForComponentOfPattern(nid, TinkarTerm.DESCRIPTION_PATTERN.nid()),
+                            EntityService.get().semanticNidsForComponentOfPattern(nid, TinkarTerm.INFERRED_NAVIGATION_PATTERN.nid()),
+                            EntityService.get().semanticNidsForComponentOfPattern(nid, TinkarTerm.STATED_NAVIGATION_PATTERN.nid()))
+                    .flatMapToInt(IntStream::of)
+                    .toArray();
             for (int descriptionNid : descriptionNids) {
                 if (includedNids.contains(descriptionNid)) {
                     continue;
@@ -1731,7 +1775,56 @@ public class TinkarServiceImpl implements TinkarService {
                                Set<Integer> includedNids,
                                Entity<?> entity) {
         if (entity != null && includedNids.add(entity.nid())) {
-            builder.addEntities(transformer.transform(entity));
+            try {
+                builder.addEntities(transformer.transform(entity));
+            } catch (IllegalStateException | UnsupportedOperationException e) {
+                // The entity refers to a component whose identity this store has lost — a nid
+                // with no entity and no recorded UUID. A semantic is sent without the lost ids, so
+                // a navigation semantic still carries the parents and children that do resolve;
+                // anything else is left out rather than failing the whole concept.
+                if (entity instanceof SemanticRecord semantic) {
+                    try {
+                        builder.addEntities(transformer.transform(withoutLostIds(semantic)));
+                        log.warn("Sent {} without the ids whose identity this store has lost: {}",
+                                entity.publicId().idString(), e.getMessage());
+                        return;
+                    } catch (IllegalStateException | UnsupportedOperationException stillFailing) {
+                        // Fall through and leave it out.
+                    }
+                }
+                log.warn("Left {} out of the concept response: {}", entity.publicId().idString(), e.getMessage());
+            }
+        }
+    }
+
+    /** A copy of {@code semantic} whose id-set and id-list fields keep only ids that resolve to a UUID. */
+    private static SemanticRecord withoutLostIds(SemanticRecord semantic) {
+        RecordListBuilder<SemanticVersionRecord> versions = RecordListBuilder.make();
+        SemanticRecord copy = new SemanticRecord(semantic.mostSignificantBits(), semantic.leastSignificantBits(),
+                semantic.additionalUuidLongs(), semantic.nid(), semantic.patternNid(),
+                semantic.referencedComponentNid(), versions);
+        for (SemanticVersionRecord version : semantic.versions()) {
+            versions.add(new SemanticVersionRecord(copy, version.stampNid(),
+                    version.fieldValues().collect(TinkarServiceImpl::withoutLostIds)));
+        }
+        versions.build();
+        return copy;
+    }
+
+    private static Object withoutLostIds(Object fieldValue) {
+        return switch (fieldValue) {
+            case IntIdSet set -> IntIds.set.of(set.intStream().filter(TinkarServiceImpl::hasIdentity).toArray());
+            case IntIdList list -> IntIds.list.of(list.intStream().filter(TinkarServiceImpl::hasIdentity).toArray());
+            default -> fieldValue;
+        };
+    }
+
+    private static boolean hasIdentity(int nid) {
+        try {
+            PrimitiveData.publicId(nid);
+            return true;
+        } catch (IllegalStateException | UnsupportedOperationException e) {
+            return false;
         }
     }
 
