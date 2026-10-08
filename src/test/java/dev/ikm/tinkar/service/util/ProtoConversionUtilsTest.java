@@ -209,7 +209,7 @@ class ProtoConversionUtilsTest {
     @Test
     void toConceptSearchWithSortProto_flatResults_mapsAllFields() {
         var semantic = new SemanticSearchResult(
-                List.of("uuid-1", "uuid-2"),
+                List.of("0a1b2c3d-0000-4000-8000-000000000001", "0a1b2c3d-0000-4000-8000-000000000002"),
                 "Diabetes mellitus (disorder)",
                 "Diabetes",
                 "<b>Diabetes</b>",
@@ -227,7 +227,7 @@ class ProtoConversionUtilsTest {
         assertThat(proto.getResultsList()).hasSize(1);
 
         var r = proto.getResults(0);
-        assertThat(r.getPublicIdList()).containsExactly("uuid-1", "uuid-2");
+        assertThat(uuidTexts(r.getPublicId())).containsExactly("0a1b2c3d-0000-4000-8000-000000000001", "0a1b2c3d-0000-4000-8000-000000000002");
         assertThat(r.getFullyQualifiedName()).isEqualTo("Diabetes mellitus (disorder)");
         assertThat(r.getRegularName()).isEqualTo("Diabetes");
         assertThat(r.getHighlightedText()).isEqualTo("<b>Diabetes</b>");
@@ -237,16 +237,15 @@ class ProtoConversionUtilsTest {
 
     @Test
     void toConceptSearchWithSortProto_groupedResults_mapsGroupAndSemantics() {
-        var matchingSemantic = new MatchingSemantic(List.of("semantic-uuid"), "<b>diab</b>", "diab", 0.8f, 2, 999);
+        var matchingSemantic = new MatchingSemantic(List.of("0a1b2c3d-0000-4000-8000-000000000004"), "<b>diab</b>", "diab", 0.8f, 2);
         var group = new GroupedSearchResult(
-                List.of("group-uuid"),
+                List.of("0a1b2c3d-0000-4000-8000-000000000003"),
                 "Diabetes mellitus (disorder)",
                 "Diabetes mellitus",
                 "<B>Diab</B>etes mellitus",
                 true,
                 0.9f,
-                List.of(matchingSemantic),
-                42);
+                List.of(matchingSemantic));
 
         ConceptSearchResponse dto = ConceptSearchResponse.successGrouped(
                 "diab", SearchSortOption.TOP_COMPONENT, List.of(group), 1L);
@@ -255,22 +254,20 @@ class ProtoConversionUtilsTest {
 
         assertThat(proto.getGroupedResultsList()).hasSize(1);
         var g = proto.getGroupedResults(0);
-        assertThat(g.getPublicIdList()).containsExactly("group-uuid");
+        assertThat(uuidTexts(g.getPublicId())).containsExactly("0a1b2c3d-0000-4000-8000-000000000003");
         assertThat(g.getFullyQualifiedName()).isEqualTo("Diabetes mellitus (disorder)");
         assertThat(g.getPreferredName()).isEqualTo("Diabetes mellitus");
         assertThat(g.getHighlightedName()).isEqualTo("<B>Diab</B>etes mellitus");
         assertThat(g.getActive()).isTrue();
         assertThat(g.getTopScore()).isEqualTo(0.9f);
-        assertThat(g.getConceptNid()).isEqualTo(42);
 
         assertThat(g.getMatchingSemanticsList()).hasSize(1);
         var m = g.getMatchingSemantics(0);
         assertThat(m.getHighlightedText()).isEqualTo("<b>diab</b>");
         assertThat(m.getPlainText()).isEqualTo("diab");
-        assertThat(m.getPublicIdList()).containsExactly("semantic-uuid");
+        assertThat(uuidTexts(m.getPublicId())).containsExactly("0a1b2c3d-0000-4000-8000-000000000004");
         assertThat(m.getScore()).isEqualTo(0.8f);
         assertThat(m.getFieldIndex()).isEqualTo(2);
-        assertThat(m.getSemanticNid()).isEqualTo(999);
     }
 
     @Test
@@ -294,5 +291,12 @@ class ProtoConversionUtilsTest {
         assertThat(proto.getResultsList()).isEmpty();
         assertThat(proto.getGroupedResultsList()).isEmpty();
         assertThat(proto.getSuccess()).isTrue();
+    }
+
+    /** A wire public id's UUIDs as text, read from its longs: none may be written as text. */
+    private static List<String> uuidTexts(dev.ikm.tinkar.schema.PublicId publicId) {
+        assertThat(publicId.getUuidsCount()).as("UUIDs written as text").isZero();
+        return java.util.Arrays.stream(dev.ikm.tinkar.entity.changeset.SchemaIds.uuids(publicId))
+                .map(java.util.UUID::toString).toList();
     }
 }

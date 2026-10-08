@@ -1,5 +1,7 @@
 package dev.ikm.tinkar.service.controller.admin;
 
+import dev.ikm.tinkar.entity.changeset.SchemaIds;
+import dev.ikm.tinkar.service.dto.EntityCountSummaryResponse;
 import dev.ikm.tinkar.service.dto.ReasonerResultsResponse;
 import dev.ikm.tinkar.service.proto.ExportEntitiesRequest;
 import dev.ikm.tinkar.service.proto.IkeAdminGrpc;
@@ -500,11 +502,7 @@ public class AdminGrpcController extends IkeAdminGrpc.IkeAdminImplBase {
      * Nids are assigned per data store, so they are meaningless to a caller. Every concept
      * crosses the wire as its PublicId, which the caller resolves against its own store.
      */
-    private static dev.ikm.tinkar.schema.PublicId publicIdOf(int nid) {
-        return dev.ikm.tinkar.schema.PublicId.newBuilder()
-                .addAllUuids(PrimitiveData.publicId(nid).asUuidList().stream()
-                        .map(java.util.UUID::toString)
-                        .toList())
-                .build();
+    private static dev.ikm.tinkar.schema.PublicId publicIdOf(long nid) {
+        return SchemaIds.toSchema(PrimitiveData.publicId(nid));
     }
 }

@@ -15,6 +15,7 @@ import dev.ikm.tinkar.coordinate.navigation.NavigationCoordinateRecord;
 import dev.ikm.tinkar.coordinate.stamp.StampCoordinateRecord;
 import dev.ikm.tinkar.coordinate.view.calculator.ViewCalculatorWithCache;
 import dev.ikm.tinkar.schema.PublicId;
+import dev.ikm.tinkar.service.util.ProtoConversionUtils;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import org.slf4j.Logger;
@@ -150,9 +151,9 @@ public class KnowledgeGraphGrpcController extends IkeKnowledgeGraphGrpc.IkeKnowl
         String conceptId = extractConceptId(request.getConceptPublicId());
         log.info("IkeKnowledgeGraph getSemanticsWithCoordinate conceptId={}", conceptId);
 
-        String stampId = request.getStampCoordinateId().isEmpty() ? null : request.getStampCoordinateId();
-        String navId = request.getNavigationCoordinateId().isEmpty() ? null : request.getNavigationCoordinateId();
-        String langId = request.getLanguageCoordinateId().isEmpty() ? null : request.getLanguageCoordinateId();
+        String stampId = ProtoConversionUtils.leastUuid(request.getStampCoordinateId());
+        String navId = ProtoConversionUtils.leastUuid(request.getNavigationCoordinateId());
+        String langId = ProtoConversionUtils.leastUuid(request.getLanguageCoordinateId());
 
         StampCoordinateRecord stampCoord = resolveStampCoordinate(stampId);
         LanguageCoordinateRecord langCoord = resolveLanguageCoordinate(langId);
@@ -169,10 +170,10 @@ public class KnowledgeGraphGrpcController extends IkeKnowledgeGraphGrpc.IkeKnowl
         String allowedStates = proto.getAllowedStates() == AllowedStates.ACTIVE_AND_INACTIVE
                 ? null : proto.getAllowedStates().name();
         Long positionTime = proto.getPositionTime() != 0 ? proto.getPositionTime() : null;
-        String positionPathId = proto.getPositionPathId().isEmpty() ? null : proto.getPositionPathId();
-        List<String> moduleIds = proto.getModuleIdsList().isEmpty() ? null : proto.getModuleIdsList();
-        List<String> excludedModuleIds = proto.getExcludedModuleIdsList().isEmpty() ? null : proto.getExcludedModuleIdsList();
-        List<String> modulePriorityIds = proto.getModulePriorityIdsList().isEmpty() ? null : proto.getModulePriorityIdsList();
+        String positionPathId = ProtoConversionUtils.leastUuid(proto.getPositionPathId());
+        List<String> moduleIds = proto.getModuleIdsList().isEmpty() ? null : ProtoConversionUtils.leastUuids(proto.getModuleIdsList());
+        List<String> excludedModuleIds = proto.getExcludedModuleIdsList().isEmpty() ? null : ProtoConversionUtils.leastUuids(proto.getExcludedModuleIdsList());
+        List<String> modulePriorityIds = proto.getModulePriorityIdsList().isEmpty() ? null : ProtoConversionUtils.leastUuids(proto.getModulePriorityIdsList());
         return new StampCoordinateDto(allowedStates, positionTime, positionPathId, moduleIds, excludedModuleIds, modulePriorityIds);
     }
 
@@ -193,16 +194,16 @@ public class KnowledgeGraphGrpcController extends IkeKnowledgeGraphGrpc.IkeKnowl
             });
         }
         if (dto.positionTime() != null) builder.setPositionTime(dto.positionTime());
-        if (dto.positionPathId() != null) builder.setPositionPathId(dto.positionPathId());
-        if (dto.moduleIds() != null) builder.addAllModuleIds(dto.moduleIds());
-        if (dto.excludedModuleIds() != null) builder.addAllExcludedModuleIds(dto.excludedModuleIds());
-        if (dto.modulePriorityIds() != null) builder.addAllModulePriorityIds(dto.modulePriorityIds());
+        if (dto.positionPathId() != null) builder.setPositionPathId(ProtoConversionUtils.toWire(dto.positionPathId()));
+        if (dto.moduleIds() != null) builder.addAllModuleIds(ProtoConversionUtils.toWireList(dto.moduleIds()));
+        if (dto.excludedModuleIds() != null) builder.addAllExcludedModuleIds(ProtoConversionUtils.toWireList(dto.excludedModuleIds()));
+        if (dto.modulePriorityIds() != null) builder.addAllModulePriorityIds(ProtoConversionUtils.toWireList(dto.modulePriorityIds()));
         return builder.build();
     }
 
     private dev.ikm.tinkar.service.proto.SavedStampCoordinateResponse toProtoStampResponse(SavedStampCoordinateResponse dto) {
         return dev.ikm.tinkar.service.proto.SavedStampCoordinateResponse.newBuilder()
-                .setId(dto.id() != null ? dto.id() : "")
+                .setId(ProtoConversionUtils.toWire(dto.id()))
                 .setSettings(dtoStampToProto(dto.settings()))
                 .setCreatedAt(dto.createdAt() != null ? dto.createdAt() : "")
                 .build();
@@ -219,7 +220,7 @@ public class KnowledgeGraphGrpcController extends IkeKnowledgeGraphGrpc.IkeKnowl
 
     private dev.ikm.tinkar.service.proto.SavedNavigationCoordinateResponse toProtoNavResponse(SavedNavigationCoordinateResponse dto) {
         return dev.ikm.tinkar.service.proto.SavedNavigationCoordinateResponse.newBuilder()
-                .setId(dto.id() != null ? dto.id() : "")
+                .setId(ProtoConversionUtils.toWire(dto.id()))
                 .setSettings(dtoNavToProto(dto.settings()))
                 .setCreatedAt(dto.createdAt() != null ? dto.createdAt() : "")
                 .build();
@@ -262,7 +263,7 @@ public class KnowledgeGraphGrpcController extends IkeKnowledgeGraphGrpc.IkeKnowl
 
     private dev.ikm.tinkar.service.proto.SavedLanguageCoordinateResponse toProtoLangResponse(SavedLanguageCoordinateResponse dto) {
         return dev.ikm.tinkar.service.proto.SavedLanguageCoordinateResponse.newBuilder()
-                .setId(dto.id() != null ? dto.id() : "")
+                .setId(ProtoConversionUtils.toWire(dto.id()))
                 .setSettings(dtoLangToProto(dto.settings()))
                 .setCreatedAt(dto.createdAt() != null ? dto.createdAt() : "")
                 .build();
@@ -350,10 +351,10 @@ public class KnowledgeGraphGrpcController extends IkeKnowledgeGraphGrpc.IkeKnowl
         String allowedStates = protoOverride.getAllowedStates() == AllowedStates.ACTIVE_AND_INACTIVE
                 ? null : protoOverride.getAllowedStates().name();
         Long positionTime = protoOverride.getPositionTime() != 0 ? protoOverride.getPositionTime() : null;
-        String positionPathId = protoOverride.getPositionPathId().isEmpty() ? null : protoOverride.getPositionPathId();
-        List<String> moduleIds = protoOverride.getModuleIdsList().isEmpty() ? null : protoOverride.getModuleIdsList();
-        List<String> excludedModuleIds = protoOverride.getExcludedModuleIdsList().isEmpty() ? null : protoOverride.getExcludedModuleIdsList();
-        List<String> modulePriorityIds = protoOverride.getModulePriorityIdsList().isEmpty() ? null : protoOverride.getModulePriorityIdsList();
+        String positionPathId = ProtoConversionUtils.leastUuid(protoOverride.getPositionPathId());
+        List<String> moduleIds = protoOverride.getModuleIdsList().isEmpty() ? null : ProtoConversionUtils.leastUuids(protoOverride.getModuleIdsList());
+        List<String> excludedModuleIds = protoOverride.getExcludedModuleIdsList().isEmpty() ? null : ProtoConversionUtils.leastUuids(protoOverride.getExcludedModuleIdsList());
+        List<String> modulePriorityIds = protoOverride.getModulePriorityIdsList().isEmpty() ? null : ProtoConversionUtils.leastUuids(protoOverride.getModulePriorityIdsList());
         PremiseType premiseType = protoOverride.getPremiseType() == ProtoPremiseType.STATED ? PremiseType.STATED : null;
         // US_ENGLISH_REGULAR_NAME is proto3 default (0) — treat as "use server default" (null)
         LanguagePreset languagePreset = protoOverride.getLanguagePreset() == ProtoLanguagePreset.US_ENGLISH_REGULAR_NAME
@@ -364,9 +365,7 @@ public class KnowledgeGraphGrpcController extends IkeKnowledgeGraphGrpc.IkeKnowl
     }
 
     private String extractConceptId(PublicId publicId) {
-        if (publicId == null || publicId.getUuidsList().isEmpty()) {
-            return "";
-        }
-        return publicId.getUuids(0);
+        String conceptId = ProtoConversionUtils.leastUuid(publicId);
+        return conceptId == null ? "" : conceptId;
     }
 }

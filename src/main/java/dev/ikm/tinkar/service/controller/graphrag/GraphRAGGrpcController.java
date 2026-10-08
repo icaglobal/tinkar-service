@@ -125,9 +125,7 @@ public class GraphRAGGrpcController extends IkeGraphRAGGrpc.IkeGraphRAGImplBase 
     }
 
     private String extractConceptId(PublicId publicId) {
-        if (publicId == null || publicId.getUuidsList().isEmpty()) {
-            return "";
-        }
-        return publicId.getUuids(0);
+        String conceptId = ProtoConversionUtils.leastUuid(publicId);
+        return conceptId == null ? "" : conceptId;
     }
 }

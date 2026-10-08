@@ -81,10 +81,18 @@ public interface TinkarPrimitive {
     List<String> descriptionsOf(List<PublicId> conceptIds);
 
     /**
-     * Retrieves the PublicId for a given concept.
+     * The public id of the component that an id in a request names.
      *
-     * @param concept The concept for which to retrieve the PublicId.
-     * @return The PublicId of the given concept.
+     * <p>Every id a request names is converted here, and only when the knowledge base holds
+     * the component. An id it does not hold is refused, and is assigned no nid: asking the
+     * store for the nid of an unknown public id assigns one in some stores, and the request
+     * would then be answered as though the component existed
+     * ({@code IKE-Network/ike-issues#1188}).
+     *
+     * @param concept the id as the request gave it: one UUID
+     * @return the public id of a component the knowledge base holds
+     * @throws IllegalArgumentException  if the text is not a UUID
+     * @throws UnknownComponentException if the knowledge base does not hold the component
      */
     PublicId getPublicId(String concept);
 

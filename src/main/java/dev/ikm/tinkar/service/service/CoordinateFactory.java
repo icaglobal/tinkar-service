@@ -1,15 +1,16 @@
 package dev.ikm.tinkar.service.service;
 
+import dev.ikm.tinkar.common.id.Nid;
+
 import dev.ikm.tinkar.service.dto.CoordinateOverride;
 import dev.ikm.tinkar.service.dto.LanguageCoordinateDto;
 import dev.ikm.tinkar.service.dto.LanguagePreset;
 import dev.ikm.tinkar.service.dto.NavigationCoordinateDto;
 import dev.ikm.tinkar.service.dto.PremiseType;
 import dev.ikm.tinkar.service.dto.StampCoordinateDto;
-import dev.ikm.tinkar.common.id.IntIdList;
-import dev.ikm.tinkar.common.id.IntIdSet;
-import dev.ikm.tinkar.common.id.IntIds;
-import dev.ikm.tinkar.common.id.PublicId;
+import dev.ikm.tinkar.common.id.LongIdList;
+import dev.ikm.tinkar.common.id.LongIdSet;
+import dev.ikm.tinkar.common.id.LongIds;
 import dev.ikm.tinkar.common.id.PublicIds;
 import dev.ikm.tinkar.coordinate.Calculators;
 import dev.ikm.tinkar.coordinate.Coordinates;
@@ -20,12 +21,12 @@ import dev.ikm.tinkar.coordinate.stamp.StampPositionRecord;
 import dev.ikm.tinkar.coordinate.stamp.StateSet;
 import dev.ikm.tinkar.coordinate.view.ViewCoordinateRecord;
 import dev.ikm.tinkar.coordinate.view.calculator.ViewCalculatorWithCache;
-import dev.ikm.tinkar.entity.EntityService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
-import java.util.UUID;
+import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 /**
  * Builds a {@link ViewCalculatorWithCache} from optional coordinate overrides.
@@ -51,10 +52,10 @@ public class CoordinateFactory {
         }
         StateSet allowedStates = resolveAllowedStates(dto.allowedStates());
         long positionTime = dto.positionTime() != null ? dto.positionTime() : Long.MAX_VALUE;
-        int pathNid = resolvePathNid(dto.positionPathId());
-        IntIdSet moduleNids = resolveModuleNids(dto.moduleIds());
-        IntIdSet excludedModuleNids = resolveModuleNids(dto.excludedModuleIds());
-        IntIdList modulePriorityNids = resolveModulePriorityNids(dto.modulePriorityIds());
+        long pathNid = resolvePathNid(dto.positionPathId());
+        LongIdSet moduleNids = resolveModuleNids(dto.moduleIds());
+        LongIdSet excludedModuleNids = resolveModuleNids(dto.excludedModuleIds());
+        LongIdList modulePriorityNids = resolveModulePriorityNids(dto.modulePriorityIds());
         StampPositionRecord stampPosition = StampPositionRecord.make(positionTime, pathNid);
         return new StampCoordinateRecord(allowedStates, stampPosition, moduleNids, excludedModuleNids, modulePriorityNids);
     }
@@ -141,55 +142,60 @@ public class CoordinateFactory {
         };
     }
 
-    private static int resolvePathNid(String pathId) {
+    private static long resolvePathNid(String pathId) {
         if (pathId == null || pathId.isBlank()) {
             return Coordinates.Stamp.DevelopmentLatest().stampPosition().getPathForPositionNid();
         }
         try {
-            PublicId publicId = PublicIds.of(UUID.fromString(pathId));
-            return EntityService.get().nidForPublicId(publicId);
+            OptionalLong pathNid = KnownComponents.nid(PublicIds.of(pathId));
+            if (pathNid.isPresent()) {
+                return pathNid.getAsLong();
+            }
+            log.warn("No path with UUID '{}' in this knowledge base, using default development path", pathId);
         } catch (Exception e) {
             log.warn("Failed to resolve path UUID '{}', using default development path: {}", pathId, e.getMessage());
-            return Coordinates.Stamp.DevelopmentLatest().stampPosition().getPathForPositionNid();
         }
+        return Coordinates.Stamp.DevelopmentLatest().stampPosition().getPathForPositionNid();
     }
 
-    private static IntIdSet resolveModuleNids(List<String> moduleIds) {
+    /**
+     * The nid of a module a coordinate in a request names, or {@code Integer.MIN_VALUE} when the
+     * knowledge base does not hold it or the text is not a UUID. No nid is assigned for an
+     * unknown module ({@code IKE-Network/ike-issues#1188}).
+     */
+    private static long moduleNidOrNone(String moduleId, String what) {
+        try {
+            OptionalLong moduleNid = KnownComponents.nid(PublicIds.of(moduleId));
+            if (moduleNid.isPresent()) {
+                return moduleNid.getAsLong();
+            }
+            log.warn("No {} with UUID '{}' in this knowledge base, leaving it out", what, moduleId);
+        } catch (Exception e) {
+            log.warn("Failed to resolve {} UUID '{}': {}", what, moduleId, e.getMessage());
+        }
+        return Integer.MIN_VALUE;
+    }
+
+    private static LongIdSet resolveModuleNids(List<String> moduleIds) {
         if (moduleIds == null || moduleIds.isEmpty()) {
-            return IntIds.set.empty();
+            return LongIds.set.empty();
         }
-        int[] nids = moduleIds.stream()
-                .mapToInt(id -> {
-                    try {
-                        PublicId publicId = PublicIds.of(UUID.fromString(id));
-                        return EntityService.get().nidForPublicId(publicId);
-                    } catch (Exception e) {
-                        log.warn("Failed to resolve module UUID '{}': {}", id, e.getMessage());
-                        return Integer.MIN_VALUE;
-                    }
-                })
-                .filter(nid -> nid != Integer.MIN_VALUE)
+        long[] nids = moduleIds.stream()
+                .mapToLong(id -> moduleNidOrNone(id, "module"))
+                .filter(nid -> !Nid.isNone(nid))
                 .toArray();
-        return IntIds.set.of(nids);
+        return LongIds.set.of(nids);
     }
 
-    private static IntIdList resolveModulePriorityNids(List<String> modulePriorityIds) {
+    private static LongIdList resolveModulePriorityNids(List<String> modulePriorityIds) {
         if (modulePriorityIds == null || modulePriorityIds.isEmpty()) {
-            return IntIds.list.empty();
+            return LongIds.list.empty();
         }
-        int[] nids = modulePriorityIds.stream()
-                .mapToInt(id -> {
-                    try {
-                        PublicId publicId = PublicIds.of(UUID.fromString(id));
-                        return EntityService.get().nidForPublicId(publicId);
-                    } catch (Exception e) {
-                        log.warn("Failed to resolve module priority UUID '{}': {}", id, e.getMessage());
-                        return Integer.MIN_VALUE;
-                    }
-                })
-                .filter(nid -> nid != Integer.MIN_VALUE)
+        long[] nids = modulePriorityIds.stream()
+                .mapToLong(id -> moduleNidOrNone(id, "module priority"))
+                .filter(nid -> !Nid.isNone(nid))
                 .toArray();
-        return IntIds.list.of(nids);
+        return LongIds.list.of(nids);
     }
 
     private static NavigationCoordinateRecord resolveNavigation(PremiseType premiseType) {
