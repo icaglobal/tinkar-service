@@ -221,15 +221,6 @@
             <version>${spring-boot.version}</version>
             <scope>test</scope>
         </dependency>
-        <!-- The in-memory store the store-backed tests load the starter data into. The service
-             itself ships no ephemeral store. Its controller is registered for the test
-             classpath in src/test/resources/META-INF/services. -->
-        <dependency>
-            <groupId>dev.ikm.tinkar</groupId>
-            <artifactId>data-ephemeral-provider</artifactId>
-            <version>${tinkar-core.version}</version>
-            <scope>test</scope>
-        </dependency>
         <!-- The IKE starter set's bindings (IkeTerms) for the components the tests name beyond the kernel. -->
         <dependency>
             <groupId>network.ike.foundation</groupId>
