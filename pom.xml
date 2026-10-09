@@ -221,21 +221,21 @@
             <version>${spring-boot.version}</version>
             <scope>test</scope>
         </dependency>
-        <!-- The in-memory store the store-backed tests load the starter data into. The service
-             itself ships no ephemeral store. Its controller is registered for the test
-             classpath in src/test/resources/META-INF/services. -->
-        <dependency>
-            <groupId>dev.ikm.tinkar</groupId>
-            <artifactId>data-ephemeral-provider</artifactId>
-            <version>${tinkar-core.version}</version>
-            <scope>test</scope>
-        </dependency>
         <!-- The IKE starter set's bindings (IkeTerms) for the components the tests name beyond the kernel. -->
         <dependency>
             <groupId>network.ike.foundation</groupId>
             <artifactId>ike-bindings</artifactId>
             <version>${ike-starter-set.version}</version>
             <scope>test</scope>
+            <exclusions>
+                <!-- The knowledge-bindings goal's forked runtime, not the bindings' consumers': through
+                     a snapshot outside the reactor it reaches ike-knowledge-provider 7-SNAPSHOT, which the
+                     sorter cannot order before this module (IkeKometWs_ReactorTest #155, #156). -->
+                <exclusion>
+                    <groupId>network.ike.knowledge</groupId>
+                    <artifactId>ike-knowledge-provider</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <!-- Static analysis -->
