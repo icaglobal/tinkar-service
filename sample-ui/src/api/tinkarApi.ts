@@ -11,6 +11,11 @@ import type {
   ReasonerPhaseEvent,
   ReasonerResultsResponse,
   ReasonerRunEvent,
+  ChangesetJobResult,
+  ExportRequest,
+  JobAttachedEvent,
+  JobProgressEvent,
+  JobSummary,
   DescendantOperationResponse,
   LanguageCoordinateSettings,
   NavigationCoordinateSettings,
@@ -23,7 +28,8 @@ import type {
 
 const GR_API_BASE_URL = 'http://localhost:8085/api/ike/graphrag';
 const KG_API_BASE_URL = 'http://localhost:8085/api/ike/knowledgegraph';
-const ADMIN_API_BASE_URL = 'http://localhost:8085/api/ike/admin';
+const SERVER_ORIGIN = 'http://localhost:8085';
+const ADMIN_API_BASE_URL = `${SERVER_ORIGIN}/api/ike/admin`;
 
 export async function search(query: string): Promise<ConceptSearchResponse> {
   const params = new URLSearchParams({ query });
@@ -599,4 +605,150 @@ async function streamReasoner(
     throw new Error('Reasoner stream ended without a result');
   }
   return result;
+}
+
+// ── Changeset import / export jobs ──────────────────────────────────
+
+/** What a job stream reports, in order: the job, queue position, start, progress, then the result. */
+export type JobStreamHandlers = {
+  onJob?: (job: JobAttachedEvent) => void;
+  /** While waiting: the jobs ahead, running one first. Empty once it is next. */
+  onQueued?: (ahead: JobSummary[]) => void;
+  onStarted?: (startedAt: number) => void;
+  onProgress?: (progress: JobProgressEvent) => void;
+};
+
+/**
+ * Queues an import of `file` and follows it to the end. Imports cannot be cancelled; aborting
+ * `signal` only stops watching.
+ */
+export async function importChangesetStreaming(
+  file: File,
+  handlers: JobStreamHandlers,
+  signal?: AbortSignal
+): Promise<ChangesetJobResult> {
+  const body = new FormData();
+  body.append('file', file);
+  body.append('useMultiPass', 'true');
+  return followJob(
+    fetch(`${ADMIN_API_BASE_URL}/import/stream`, {
+      method: 'POST',
+      headers: { accept: 'text/event-stream' },
+      body,
+      signal,
+    }),
+    handlers
+  );
+}
+
+/** Queues an export and follows it to the end; the result's downloadUrl fetches the zip. */
+export async function exportStreaming(
+  request: ExportRequest,
+  handlers: JobStreamHandlers,
+  signal?: AbortSignal
+): Promise<ChangesetJobResult> {
+  return followJob(
+    fetch(`${ADMIN_API_BASE_URL}/export/stream`, {
+      method: 'POST',
+      headers: { accept: 'text/event-stream', 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+      signal,
+    }),
+    handlers
+  );
+}
+
+/** Rejoins any import or export job, replaying what it has done so far. */
+export async function watchJob(
+  jobId: string,
+  handlers: JobStreamHandlers,
+  signal?: AbortSignal
+): Promise<ChangesetJobResult> {
+  return followJob(
+    fetch(`${ADMIN_API_BASE_URL}/jobs/${jobId}/stream`, {
+      headers: { accept: 'text/event-stream' },
+      signal,
+    }),
+    handlers
+  );
+}
+
+/** Jobs from the last hour — queued, running and finished — oldest first. */
+export async function listJobs(): Promise<JobSummary[]> {
+  const response = await fetch(`${ADMIN_API_BASE_URL}/jobs`);
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/** Asks a queued or running export or reasoner run to stop. Throws with the server's reason if it cannot. */
+export async function cancelJob(jobId: string): Promise<void> {
+  const response = await fetch(`${ADMIN_API_BASE_URL}/jobs/${jobId}/cancel`, { method: 'POST' });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.error ?? `API error: ${response.status} ${response.statusText}`);
+  }
+}
+
+/** The absolute URL for a result's server-relative downloadUrl. */
+export function absoluteDownloadUrl(downloadUrl: string): string {
+  return `${SERVER_ORIGIN}${downloadUrl}`;
+}
+
+async function followJob(
+  request: Promise<Response>,
+  { onJob, onQueued, onStarted, onProgress }: JobStreamHandlers
+): Promise<ChangesetJobResult> {
+  const response = await request;
+  if (!response.ok || !response.body) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.error ?? `API error: ${response.status} ${response.statusText}`);
+  }
+  let result: ChangesetJobResult | null = null;
+  await readEventStream(response.body, (event, payload) => {
+    if (event === 'job') onJob?.(payload as JobAttachedEvent);
+    else if (event === 'queued') onQueued?.((payload as { ahead: JobSummary[] }).ahead);
+    else if (event === 'started') onStarted?.((payload as { startedAt: number }).startedAt);
+    else if (event === 'progress') onProgress?.(payload as JobProgressEvent);
+    else if (event === 'result') result = payload as ChangesetJobResult;
+  });
+  if (!result) {
+    throw new Error('Job stream ended without a result');
+  }
+  return result;
+}
+
+/**
+ * Reads a server-sent event stream, calling `onEvent` with each named event's parsed JSON data.
+ * Heartbeats are SSE comments with no data, so they are skipped.
+ */
+async function readEventStream(
+  body: ReadableStream<Uint8Array>,
+  onEvent: (event: string, payload: unknown) => void
+): Promise<void> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const consumeFrame = (frame: string) => {
+    let eventName = 'message';
+    const dataLines: string[] = [];
+    for (const line of frame.split('\n')) {
+      if (line.startsWith('event:')) eventName = line.slice(6).trim();
+      else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+    }
+    if (dataLines.length > 0) onEvent(eventName, JSON.parse(dataLines.join('\n')));
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
+    let boundary = buffer.indexOf('\n\n');
+    while (boundary !== -1) {
+      consumeFrame(buffer.slice(0, boundary));
+      buffer = buffer.slice(boundary + 2);
+      boundary = buffer.indexOf('\n\n');
+    }
+  }
+  if (buffer.trim()) consumeFrame(buffer);
 }

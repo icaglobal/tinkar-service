@@ -7,6 +7,12 @@ import org.eclipse.collections.api.set.primitive.MutableLongSet;
 import dev.ikm.tinkar.entity.changeset.SchemaIds;
 import dev.ikm.tinkar.common.id.*;
 import dev.ikm.tinkar.common.service.EntityCountSummary;
+import dev.ikm.tinkar.common.service.TrackingListener;
+import dev.ikm.tinkar.entity.export.ExportEntitiesToProtobufFile;
+import dev.ikm.tinkar.service.dto.ExportRequest;
+import dev.ikm.tinkar.common.id.PublicId;
+import dev.ikm.tinkar.common.id.PublicIds;
+import java.util.UUID;
 import dev.ikm.tinkar.common.service.DataServiceController;
 import dev.ikm.tinkar.common.service.PluggableService;
 import dev.ikm.tinkar.common.service.PrimitiveData;
@@ -64,6 +70,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.stream.Stream;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 
@@ -202,9 +209,11 @@ public class TinkarServiceImpl implements TinkarService {
 
         // Convert to response format
         List<SemanticSearchResult> semanticResults = sortedResults.stream()
-                .filter(r -> r.latestVersion().isPresent())
+                .filter(r -> topComponentNid(r).isPresent())
                 .map(this::toSemanticSearchResult)
                 .toList();
+        logLeftOut(query, (int) sortedResults.stream().filter(r -> r.latestVersion().isPresent()).count()
+                - semanticResults.size());
 
         return ConceptSearchResponse.successFlat(query, sortBy, semanticResults);
     }
@@ -235,12 +244,16 @@ public class TinkarServiceImpl implements TinkarService {
         sortedForGrouping.sort((r1, r2) -> Float.compare(r2.score(), r1.score()));
 
         // Group by top component nid
+        int leftOut = 0;
         for (LatestVersionSearchResult result : sortedForGrouping) {
-            if (result.latestVersion().isPresent()) {
-                long topNid = result.latestVersion().get().chronology().topEnclosingComponentNid();
-                groupedByTopNid.computeIfAbsent(topNid, k -> new ArrayList<>()).add(result);
+            OptionalLong topNid = topComponentNid(result);
+            if (topNid.isPresent()) {
+                groupedByTopNid.computeIfAbsent(topNid.getAsLong(), k -> new ArrayList<>()).add(result);
+            } else if (result.latestVersion().isPresent()) {
+                leftOut++;
             }
         }
+        logLeftOut(query, leftOut);
 
         // Convert to response format
         List<GroupedSearchResult> groupedResults = new ArrayList<>();
@@ -294,12 +307,42 @@ public class TinkarServiceImpl implements TinkarService {
         return ConceptSearchResponse.successGrouped(query, sortBy, groupedResults, totalSemanticCount);
     }
 
+    /** One line per search, not per hit: the hits themselves are logged at DEBUG. */
+    private static void logLeftOut(String query, int leftOut) {
+        if (leftOut > 0) {
+            log.info("Search '{}': left out {} hit(s) referring to components this store does not hold"
+                    + " (DEBUG lists them)", query, leftOut);
+        }
+    }
+
+    /**
+     * The concept a search hit belongs to: the top of the chain of components its semantic
+     * refers to — or empty if that chain cannot be followed, and the hit is left out.
+     *
+     * <p>The chain breaks when a semantic refers to a component this store does not hold — a
+     * comment Komet committed about components it deliberately never sends here (its bootstrap
+     * seeding), or a reference a time-range import brought in without its target. One such hit
+     * used to fail the whole search with "Expected entity to be present but entity was absent".
+     */
+    private OptionalLong topComponentNid(LatestVersionSearchResult result) {
+        if (!result.latestVersion().isPresent()) {
+            return OptionalLong.empty();
+        }
+        var chronology = result.latestVersion().get().chronology();
+        try {
+            return OptionalLong.of(chronology.topEnclosingComponentNid());
+        } catch (IllegalStateException e) {
+            log.debug("Search hit {} left out: it refers to a component this store does not hold ({})",
+                    chronology.publicId().idString(), e.getMessage());
+            return OptionalLong.empty();
+        }
+    }
+
     /**
      * Converts a LatestVersionSearchResult to a SemanticSearchResult.
      */
     private SemanticSearchResult toSemanticSearchResult(LatestVersionSearchResult result) {
-        var latestVersion = result.latestVersion().get();
-        long topNid = latestVersion.chronology().topEnclosingComponentNid();
+        long topNid = topComponentNid(result).orElseThrow();
 
         PublicId conceptPublicId = PrimitiveData.publicId(topNid);
         String fqn = getConceptName(topNid);
@@ -1799,8 +1842,14 @@ public class TinkarServiceImpl implements TinkarService {
             // to the raw nid — a machine-local integer shown where a concept name belongs.
             // This is the on-demand counterpart to loadConceptEntityGraph, which already ships
             // descriptions; callers of this cheaper single-entity path need a name just as much.
-            List<SemanticEntity<SemanticEntityVersion>> descriptions = EntityService.get()
-                    .semanticsForComponentOfPattern(nid, KernelTerm.DESCRIPTION_PATTERN.nid()).toList();
+            // The navigation semantics come too: they hold the entity's parents and children, so a
+            // client navigator can place it in the tree and expand it one level at a time.
+            List<SemanticEntity<SemanticEntityVersion>> descriptions = Stream.of(
+                            KernelTerm.DESCRIPTION_PATTERN,
+                            KernelTerm.INFERRED_NAVIGATION_PATTERN,
+                            KernelTerm.STATED_NAVIGATION_PATTERN)
+                    .flatMap(pattern -> EntityService.get().semanticsForComponentOfPattern(nid, pattern.nid()))
+                    .toList();
             for (SemanticEntity<SemanticEntityVersion> descriptionEntity : descriptions) {
                 if (includedNids.contains(descriptionEntity.nid())) {
                     continue;
@@ -1833,7 +1882,56 @@ public class TinkarServiceImpl implements TinkarService {
                                Set<Long> includedNids,
                                Entity<?> entity) {
         if (entity != null && includedNids.add(entity.nid())) {
-            builder.addEntities(transformer.transform(entity));
+            try {
+                builder.addEntities(transformer.transform(entity));
+            } catch (IllegalStateException | UnsupportedOperationException e) {
+                // The entity refers to a component whose identity this store has lost — a nid
+                // with no entity and no recorded UUID. A semantic is sent without the lost ids, so
+                // a navigation semantic still carries the parents and children that do resolve;
+                // anything else is left out rather than failing the whole concept.
+                if (entity instanceof SemanticRecord semantic) {
+                    try {
+                        builder.addEntities(transformer.transform(withoutLostIds(semantic)));
+                        log.warn("Sent {} without the ids whose identity this store has lost: {}",
+                                entity.publicId().idString(), e.getMessage());
+                        return;
+                    } catch (IllegalStateException | UnsupportedOperationException stillFailing) {
+                        // Fall through and leave it out.
+                    }
+                }
+                log.warn("Left {} out of the concept response: {}", entity.publicId().idString(), e.getMessage());
+            }
+        }
+    }
+
+    /** A copy of {@code semantic} whose id-set and id-list fields keep only ids that resolve to a UUID. */
+    private static SemanticRecord withoutLostIds(SemanticRecord semantic) {
+        RecordListBuilder<SemanticVersionRecord> versions = RecordListBuilder.make();
+        SemanticRecord copy = new SemanticRecord(semantic.mostSignificantBits(), semantic.leastSignificantBits(),
+                semantic.additionalUuidLongs(), semantic.nid(), semantic.patternNid(),
+                semantic.referencedComponentNid(), versions);
+        for (SemanticVersionRecord version : semantic.versions()) {
+            versions.add(new SemanticVersionRecord(copy, version.stampNid(),
+                    version.fieldValues().collect(TinkarServiceImpl::withoutLostIds)));
+        }
+        versions.build();
+        return copy;
+    }
+
+    private static Object withoutLostIds(Object fieldValue) {
+        return switch (fieldValue) {
+            case LongIdSet set -> LongIds.set.of(set.longStream().filter(TinkarServiceImpl::hasIdentity).toArray());
+            case LongIdList list -> LongIds.list.of(list.longStream().filter(TinkarServiceImpl::hasIdentity).toArray());
+            default -> fieldValue;
+        };
+    }
+
+    private static boolean hasIdentity(long nid) {
+        try {
+            PrimitiveData.publicId(nid);
+            return true;
+        } catch (IllegalStateException | UnsupportedOperationException e) {
+            return false;
         }
     }
 
@@ -2556,29 +2654,62 @@ public class TinkarServiceImpl implements TinkarService {
 
     @Override
     public EntityCountSummaryResponse importChangeset(File importFile, boolean useMultiPass) {
-        log.info("Importing changeset from: {} (multiPass={})", importFile.getAbsolutePath(), useMultiPass);
         try {
-            LoadEntitiesFromProtobufFile loader = new LoadEntitiesFromProtobufFile(importFile, useMultiPass);
-            EntityCountSummary summary = loader.compute();
-
-            log.info("Import complete: {} concepts, {} semantics, {} patterns, {} stamps",
+            EntityCountSummary summary = importChangeset(importFile, useMultiPass, null);
+            return EntityCountSummaryResponse.success(
                     summary.conceptCount(), summary.semanticCount(),
                     summary.patternCount(), summary.stampCount());
-
-            // Rebuild search index so newly imported entities are searchable
-            log.info("Rebuilding search index after import...");
-            PrimitiveData.get().recreateLuceneIndex();
-
-            // Clear caches so queries reflect the imported data
-            dev.ikm.tinkar.common.service.CachingService.clearAll();
-
-            return EntityCountSummaryResponse.success(
-                    summary.conceptCount(), summary.conceptCount(),
-                    summary.conceptCount(), summary.conceptCount());
         } catch (Exception e) {
             log.error("Import failed: {}", e.getMessage(), e);
             return EntityCountSummaryResponse.error(e.getMessage());
         }
+    }
+
+    @Override
+    public EntityCountSummary importChangeset(File importFile, boolean useMultiPass,
+                                              TrackingListener<EntityCountSummary> progress) throws Exception {
+        log.info("Importing changeset from: {} (multiPass={})", importFile.getAbsolutePath(), useMultiPass);
+        LoadEntitiesFromProtobufFile loader = new LoadEntitiesFromProtobufFile(importFile, useMultiPass);
+        if (progress != null) {
+            loader.addListener(progress);
+        }
+        // The loader keeps the search index current itself — live for a small changeset, a rebuild
+        // past its threshold — so no second rebuild here.
+        EntityCountSummary summary = loader.compute();
+        log.info("Import complete: {} concepts, {} semantics, {} patterns, {} stamps",
+                summary.conceptCount(), summary.semanticCount(),
+                summary.patternCount(), summary.stampCount());
+
+        // Was missing: without it the import lived only in the store's write-back caches and was
+        // lost on restart, the same gap commitEntities had.
+        saveDataStore();
+        dev.ikm.tinkar.common.service.CachingService.clearAll();
+        return summary;
+    }
+
+    @Override
+    public EntityCountSummary exportEntities(File targetFile, ExportRequest request,
+                                             TrackingListener<EntityCountSummary> progress,
+                                             java.util.function.BooleanSupplier cancelled) throws Exception {
+        log.info("Exporting {} to: {}", request.describe(), targetFile.getAbsolutePath());
+        ExportEntitiesToProtobufFile exporter = switch (request.type()) {
+            case FULL -> new ExportEntitiesToProtobufFile(targetFile);
+            case TEMPORAL -> new ExportEntitiesToProtobufFile(
+                    targetFile, request.fromEpochMillis(), request.toEpochMillis());
+            case MEMBERSHIP -> new ExportEntitiesToProtobufFile(targetFile,
+                    request.membershipTagIds().stream()
+                            .map(id -> (PublicId) PublicIds.of(UUID.fromString(id.trim())))
+                            .toList());
+        };
+        if (progress != null) {
+            exporter.addListener(progress);
+        }
+        exporter.cancelWhen(cancelled);
+        EntityCountSummary summary = exporter.compute();
+        log.info("Export complete: {} concepts, {} semantics, {} patterns, {} stamps ({} bytes)",
+                summary.conceptCount(), summary.semanticCount(),
+                summary.patternCount(), summary.stampCount(), targetFile.length());
+        return summary;
     }
 
     @Override
@@ -2598,6 +2729,12 @@ public class TinkarServiceImpl implements TinkarService {
     @Override
     public ClassifierResults runReasoner(ReasonerPhaseListener listener) throws Exception {
         return runReasoner(listener, TinkarService.newCancellationTracker());
+    }
+
+    private static void throwIfCancelled(TrackingCallable<?> tracker, String when) {
+        if (tracker.isCancelled()) {
+            throw new CancellationException("Reasoner cancelled " + when);
+        }
     }
 
     @Override
@@ -2625,8 +2762,13 @@ public class TinkarServiceImpl implements TinkarService {
 
             // Phases and wording match Komet's local RunReasonerTaskBase so that a remote run
             // performs the same work, in the same order, and reports it the same way.
+            // Checked between the steps of the first phase too: extracting and loading are the
+            // slowest part of a large run, and a cancel made then should not have to wait for the
+            // classifier to notice it.
             rs.extractData(tracker);
+            throwIfCancelled(tracker, "while extracting data");
             rs.loadData(tracker);
+            throwIfCancelled(tracker, "while loading data");
             listener.onPhaseComplete(ReasonerPhaseListener.Phase.LOAD_DATA);
 
             // The tracker-taking overload, not computeInferences(): the no-arg form fabricates a
@@ -2644,9 +2786,7 @@ public class TinkarServiceImpl implements TinkarService {
             // The last clean abort point. Everything above is read-only; writeInferredResults
             // stages entities into a transaction over a store other clients read, so once it
             // starts it is allowed to finish.
-            if (tracker.isCancelled()) {
-                throw new CancellationException("Reasoner cancelled before writing results");
-            }
+            throwIfCancelled(tracker, "before writing results");
 
             ClassifierResults results = rs.writeInferredResults(tracker);
             listener.onPhaseComplete(ReasonerPhaseListener.Phase.PROCESS_RESULTS);

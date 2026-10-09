@@ -5,6 +5,13 @@ import dev.ikm.tinkar.service.dto.EntityCountSummaryResponse;
 import dev.ikm.tinkar.reasoner.service.ClassifierResults;
 import dev.ikm.tinkar.service.dto.ReasonerResultsResponse;
 import dev.ikm.tinkar.service.service.ReasonerPhaseListener;
+import dev.ikm.tinkar.service.service.AdminJobQueue;
+import dev.ikm.tinkar.service.service.ChangesetJobService;
+import dev.ikm.tinkar.service.dto.ChangesetJobResult;
+import dev.ikm.tinkar.service.dto.ExportRequest;
+import dev.ikm.tinkar.common.service.EntityCountSummary;
+import org.junit.jupiter.api.io.TempDir;
+import java.nio.file.Path;
 import dev.ikm.tinkar.service.service.ReasonerRunManager;
 import dev.ikm.tinkar.service.service.TinkarService;
 import org.eclipse.collections.api.factory.Sets;
@@ -44,10 +51,17 @@ class AdminRestControllerTest {
 
     private ReasonerRunManager reasonerRuns;
 
+    private AdminJobQueue jobs;
+
+    @TempDir
+    Path exportDir;
+
     @BeforeEach
-    void createController() {
-        reasonerRuns = new ReasonerRunManager(tinkarService);
-        controller = new AdminRestController(tinkarService, reasonerRuns, 14_400_000L);
+    void createController() throws Exception {
+        jobs = new AdminJobQueue(3_600_000L);
+        reasonerRuns = new ReasonerRunManager(tinkarService, jobs);
+        ChangesetJobService changesets = new ChangesetJobService(tinkarService, jobs, exportDir.toString(), 3_600_000L);
+        controller = new AdminRestController(tinkarService, reasonerRuns, jobs, changesets, 14_400_000L);
     }
 
     // -------------------------------------------------------------------------
@@ -55,61 +69,179 @@ class AdminRestControllerTest {
     // -------------------------------------------------------------------------
 
     @Test
-    void importChangeset_delegatesToServiceAndReturns200() throws Exception {
-        // Arrange
-        byte[] content = "fake-zip-bytes".getBytes();
+    void importChangeset_reportsEachCountFromTheImport() throws Exception {
+        // Each count separately: the service used to report the concept count in all four.
         MockMultipartFile multipartFile = new MockMultipartFile(
-                "file", "test.zip", "application/zip", content);
+                "file", "test.zip", "application/zip", "fake-zip-bytes".getBytes());
+        when(tinkarService.importChangeset(any(File.class), anyBoolean(), any()))
+                .thenReturn(new EntityCountSummary(1, 2, 3, 4));
 
-        EntityCountSummaryResponse mockResult = Mockito.mock(EntityCountSummaryResponse.class);
-        when(tinkarService.importChangeset(any(File.class), anyBoolean())).thenReturn(mockResult);
+        ResponseEntity<EntityCountSummaryResponse> response = controller.importChangeset(multipartFile, true);
 
-        // Act
-        ResponseEntity<EntityCountSummaryResponse> response =
-                controller.importChangeset(multipartFile, true);
-
-        // Assert
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody()).isSameAs(mockResult);
-        verify(tinkarService).importChangeset(any(File.class), anyBoolean());
+        assertThat(response.getBody().success()).isTrue();
+        assertThat(response.getBody().conceptsCount()).isEqualTo(1);
+        assertThat(response.getBody().semanticsCount()).isEqualTo(2);
+        assertThat(response.getBody().patternsCount()).isEqualTo(3);
+        assertThat(response.getBody().stampsCount()).isEqualTo(4);
     }
 
     @Test
     void importChangeset_withMultiPassFalse_passesFalseToService() throws Exception {
-        // Arrange
         MockMultipartFile multipartFile = new MockMultipartFile(
                 "file", "test.zip", "application/zip", new byte[]{1, 2, 3});
+        when(tinkarService.importChangeset(any(File.class), anyBoolean(), any()))
+                .thenReturn(new EntityCountSummary(0, 0, 0, 0));
 
-        EntityCountSummaryResponse mockResult = Mockito.mock(EntityCountSummaryResponse.class);
-        when(tinkarService.importChangeset(any(File.class), anyBoolean())).thenReturn(mockResult);
+        controller.importChangeset(multipartFile, false);
 
-        // Act
-        ResponseEntity<EntityCountSummaryResponse> response =
-                controller.importChangeset(multipartFile, false);
-
-        // Assert
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        verify(tinkarService).importChangeset(any(File.class), Mockito.eq(false));
+        verify(tinkarService).importChangeset(any(File.class), Mockito.eq(false), any());
     }
 
     @Test
-    void importChangeset_whenServiceThrows_returnsErrorResponse() throws Exception {
-        // Arrange
+    void importChangeset_whenTheImportFails_returnsErrorResponse() throws Exception {
         MockMultipartFile multipartFile = new MockMultipartFile(
                 "file", "bad.zip", "application/zip", new byte[]{9});
+        when(tinkarService.importChangeset(any(File.class), anyBoolean(), any()))
+                .thenThrow(new IllegalStateException("Tinkar message value not set"));
 
-        when(tinkarService.importChangeset(any(File.class), anyBoolean()))
-                .thenThrow(new RuntimeException("disk full"));
+        ResponseEntity<EntityCountSummaryResponse> response = controller.importChangeset(multipartFile, true);
 
-        // Act
-        ResponseEntity<EntityCountSummaryResponse> response =
-                controller.importChangeset(multipartFile, true);
-
-        // Assert — controller catches and wraps as EntityCountSummaryResponse.error(...)
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().success()).isFalse();
-        assertThat(response.getBody().errorMessage()).contains("disk full");
+        assertThat(response.getBody().errorMessage()).contains("Tinkar message value not set");
+    }
+
+    @Test
+    void importChangeset_deletesTheUploadOnceTheImportEnds() throws Exception {
+        MockMultipartFile multipartFile = new MockMultipartFile(
+                "file", "test.zip", "application/zip", new byte[]{1});
+        java.util.concurrent.atomic.AtomicReference<File> uploaded = new java.util.concurrent.atomic.AtomicReference<>();
+        when(tinkarService.importChangeset(any(File.class), anyBoolean(), any())).thenAnswer(invocation -> {
+            uploaded.set(invocation.getArgument(0));
+            return new EntityCountSummary(0, 0, 0, 0);
+        });
+
+        controller.importChangeset(multipartFile, true);
+
+        assertThat(uploaded.get()).isNotNull();
+        assertThat(uploaded.get()).doesNotExist();
+    }
+
+    // -------------------------------------------------------------------------
+    // export
+    // -------------------------------------------------------------------------
+
+    @Test
+    void exportEntities_returnsTheZipTheServiceWrote() throws Exception {
+        when(tinkarService.exportEntities(any(File.class), any(ExportRequest.class), any(), any())).thenAnswer(invocation -> {
+            java.nio.file.Files.writeString(((File) invocation.getArgument(0)).toPath(), "zip-bytes");
+            return new EntityCountSummary(1, 1, 0, 1);
+        });
+
+        ResponseEntity<?> response = controller.exportEntities(
+                new ExportRequest(ExportRequest.ExportType.FULL, null, null, null));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getHeaders().getFirst("Content-Disposition"))
+                .startsWith("attachment; filename=\"tinkar-export-FULL-");
+        assertThat(((org.springframework.core.io.Resource) response.getBody()).contentLength()).isEqualTo(9);
+    }
+
+    @Test
+    void exportEntities_temporalWithoutARange_isRejectedBeforeItQueues() {
+        ResponseEntity<?> response = controller.exportEntities(
+                new ExportRequest(ExportRequest.ExportType.TEMPORAL, null, null, null));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(jobs.list()).isEmpty();
+    }
+
+    @Test
+    void exportEntities_whenTheExportFails_returns500AndLeavesNoFile() throws Exception {
+        when(tinkarService.exportEntities(any(File.class), any(ExportRequest.class), any(), any())).thenAnswer(invocation -> {
+            java.nio.file.Files.writeString(((File) invocation.getArgument(0)).toPath(), "partial");
+            throw new IllegalStateException("store closed");
+        });
+
+        ResponseEntity<?> response = controller.exportEntities(
+                new ExportRequest(ExportRequest.ExportType.FULL, null, null, null));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(((ChangesetJobResult) response.getBody()).errorMessage()).isEqualTo("store closed");
+        try (var left = java.nio.file.Files.list(exportDir)) {
+            assertThat(left).isEmpty();
+        }
+    }
+
+    @Test
+    void cancelJob_stopsARunningExport_andLeavesNoFile() throws Exception {
+        java.util.concurrent.CountDownLatch running = new java.util.concurrent.CountDownLatch(1);
+        when(tinkarService.exportEntities(any(File.class), any(ExportRequest.class), any(), any())).thenAnswer(invocation -> {
+            java.nio.file.Files.writeString(((File) invocation.getArgument(0)).toPath(), "partial");
+            java.util.function.BooleanSupplier cancelled = invocation.getArgument(3);
+            running.countDown();
+            while (!cancelled.getAsBoolean()) {
+                Thread.sleep(10);
+            }
+            throw new java.util.concurrent.CancellationException("Aggregation cancelled");
+        });
+        controller.exportEntitiesStreaming(new ExportRequest(ExportRequest.ExportType.FULL, null, null, null));
+        assertThat(running.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+        String jobId = jobs.list().getFirst().id();
+
+        assertThat(controller.cancelJob(jobId).getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+
+        AdminJobQueue.Job<?> job = jobs.find(jobId).orElseThrow();
+        for (int i = 0; i < 500 && !job.finished(); i++) {
+            Thread.sleep(10);
+        }
+        assertThat(job.summary().state()).isEqualTo(AdminJobQueue.State.CANCELLED);
+        try (var left = java.nio.file.Files.list(exportDir)) {
+            assertThat(left).isEmpty();
+        }
+    }
+
+    @Test
+    void cancelJob_refusesAnImport() throws Exception {
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        when(tinkarService.importChangeset(any(File.class), anyBoolean(), any())).thenAnswer(invocation -> {
+            release.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            return new EntityCountSummary(0, 0, 0, 0);
+        });
+        controller.importChangesetStreaming(new MockMultipartFile("file", "a.zip", "application/zip", new byte[]{1}), true);
+        try {
+            ResponseEntity<Map<String, String>> response = controller.cancelJob(jobs.list().getFirst().id());
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+            assertThat(response.getBody().get("error")).contains("cannot be cancelled");
+        } finally {
+            release.countDown();
+        }
+    }
+
+    @Test
+    void cancelJob_unknownJob_returns404() {
+        assertThat(controller.cancelJob("no-such-job").getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void downloadExport_unknownJob_returns404() {
+        assertThat(controller.downloadExport("no-such-job").getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void listJobs_includesFinishedImports() throws Exception {
+        when(tinkarService.importChangeset(any(File.class), anyBoolean(), any()))
+                .thenReturn(new EntityCountSummary(0, 0, 0, 0));
+        controller.importChangeset(new MockMultipartFile("file", "named.zip", "application/zip", new byte[]{1}), true);
+
+        assertThat(controller.listJobs())
+                .singleElement()
+                .satisfies(job -> {
+                    assertThat(job.kind()).isEqualTo(AdminJobQueue.Kind.IMPORT);
+                    assertThat(job.label()).isEqualTo("Import named.zip");
+                    assertThat(job.state()).isEqualTo(AdminJobQueue.State.SUCCEEDED);
+                });
     }
 
     // -------------------------------------------------------------------------

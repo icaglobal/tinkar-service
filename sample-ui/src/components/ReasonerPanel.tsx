@@ -163,7 +163,9 @@ export function ReasonerPanel({ onBack }: ReasonerPanelProps) {
         </p>
       )}
 
-      {(isRunning || phase) && (
+      {/* Only while running: after a cancel or failure the last phase would otherwise stay on
+          screen and read as a run still in progress. */}
+      {isRunning && (
         <div className="reasoner-progress">
           <div className="reasoner-steps">
             {Array.from({ length: phase?.totalSteps ?? 4 }, (_, i) => i + 1).map((step) => (
@@ -215,7 +217,8 @@ export function ReasonerPanel({ onBack }: ReasonerPanelProps) {
 
       {cancelled && (
         <p className="reasoner-hint">
-          Cancelled. The classification stopped on the server and nothing was written.
+          Cancelled{phase ? ` during step ${phase.step} of ${phase.totalSteps} (${phase.message})` : ''}.
+          The classification stopped on the server and nothing was written.
         </p>
       )}
 

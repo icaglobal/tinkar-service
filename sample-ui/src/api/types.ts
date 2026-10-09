@@ -329,3 +329,61 @@ export type TestRunSummary = {
   total: number;
   isRunning: boolean;
 };
+
+// ── Changeset import / export jobs ──────────────────────────────────
+
+export type JobKind = 'REASONER' | 'IMPORT' | 'EXPORT';
+
+export type JobState = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+
+/** A job as the server lists it. */
+export type JobSummary = {
+  id: string;
+  kind: JobKind;
+  label: string;
+  state: JobState;
+  queuedAt: number;
+  /** 0 until the job starts. */
+  startedAt: number;
+};
+
+/** First event on a job stream: which job it follows. */
+export type JobAttachedEvent = JobSummary & {
+  jobId: string;
+  /** True if this request created the job, false if it joined one. */
+  submitted: boolean;
+};
+
+export type JobProgressEvent = {
+  done: number;
+  /** 0 or 1 with done < 0 while the total is not known. */
+  total: number;
+  message: string;
+};
+
+/** Final event of an import or export stream. */
+export type ChangesetJobResult = {
+  jobId: string;
+  success: boolean;
+  cancelled?: boolean;
+  errorMessage?: string;
+  conceptsCount?: number;
+  semanticsCount?: number;
+  patternsCount?: number;
+  stampsCount?: number;
+  totalCount?: number;
+  durationMs?: number;
+  fileName?: string;
+  fileSizeBytes?: number;
+  /** Server-relative; prefix with the server origin. */
+  downloadUrl?: string;
+};
+
+export type ExportType = 'FULL' | 'TEMPORAL' | 'MEMBERSHIP';
+
+export type ExportRequest = {
+  type: ExportType;
+  fromEpochMillis?: number;
+  toEpochMillis?: number;
+  membershipTagIds?: string[];
+};
