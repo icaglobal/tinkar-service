@@ -177,7 +177,7 @@ class ResponseTextTest {
     }
 
     @Test
-    void aDefinitionIsWrittenAsATreeOfNames() {
+    void aDefinitionIsWrittenAsATreeOfNamesWithEachReferredComponentIdentified() {
         long nid = KernelTerm.ENGLISH_LANGUAGE.nid();
         ViewCalculatorWithCache view = Calculators.View.Default();
         Latest<DiTreeEntity> stated = view.logicCalculator().getStatedLogicalExpressionForEntity(nid, view.stampCalculator());
@@ -187,8 +187,10 @@ class ResponseTextTest {
         String definition = onlyFieldOf(semanticOfPattern(response, KernelTerm.EL_PLUS_PLUS_STATED_AXIOMS_PATTERN));
 
         assertThat(definition)
-                .as("the layout the assistant writes for a local store: a line break, then the tree")
-                .isEqualTo('\n' + DiTreeText.tree(stated.get(), ResponseTextTest::name))
+                .as("the layout the assistant writes for a local store: a line break, then the tree, "
+                        + "its structure named and each component it refers to identified (#1291)")
+                .isEqualTo('\n' + DiTreeText.tree(stated.get(), ResponseTextTest::name,
+                        referred -> name(referred) + " [UUID " + PrimitiveData.publicId(referred).leastUuid() + "]"))
                 .startsWith("\n   [0]")
                 .doesNotContain("DiTreeEntity{");
         assertThat(definition.lines().filter(line -> line.stripLeading().startsWith("[")).count())
@@ -249,9 +251,9 @@ class ResponseTextTest {
                 + "   [0]➞[1] " + name(KernelTerm.DEFINITION_ROOT) + "\n"
                 + "     [1]➞[2] " + name(KernelTerm.NECESSARY_SET) + "\n"
                 + "       [2]➞[3,4] " + name(KernelTerm.AND) + "\n"
-                + "         [3] " + name(KernelTerm.CONCEPT_REFERENCE) + ": " + UNDESCRIBED + "\n"
+                + "         [3] " + name(KernelTerm.CONCEPT_REFERENCE) + ": " + UNDESCRIBED + " [UUID " + UNDESCRIBED + "]\n"
                 + "         [4] " + name(KernelTerm.ROLE) + "\n"
-                + "            •" + name(KernelTerm.ROLE_TYPE) + ": " + UNDESCRIBED + "\n";
+                + "            •" + name(KernelTerm.ROLE_TYPE) + ": " + UNDESCRIBED + " [UUID " + UNDESCRIBED + "]\n";
         assertThat(onlyFieldOf(definition)).isEqualTo(expected);
         assertNoNid("the definition semantic", definition.toString(), undescribedNid);
     }
@@ -383,7 +385,8 @@ class ResponseTextTest {
 
         String text = service.formatFieldValue(role);
 
-        assertThat(text).isEqualTo(name(KernelTerm.ROLE) + " {" + name(KernelTerm.ROLE_TYPE) + "=" + UNDESCRIBED + "}");
+        assertThat(text).isEqualTo(name(KernelTerm.ROLE) + " {" + name(KernelTerm.ROLE_TYPE) + "="
+                + UNDESCRIBED + " [UUID " + UNDESCRIBED + "]}");
         assertThat(role.toString()).as("the vertex's own text ends its component in a nid").contains("<" + undescribedNid + ">");
         assertNoNid("the vertex", text, undescribedNid);
         // A vertex has a UUID of its own, which makes it a public id, but it is not a component.

@@ -1308,8 +1308,9 @@ public class TinkarServiceImpl implements TinkarService {
      * The text of a semantic field value.
      *
      * <p>A component is its name. A list or set of components is a list of names, each with an
-     * explicitly typed identifier. A definition tree or a vertex is written with names only,
-     * in the layout the assistant writes for a local store. Any other value — a string, a
+     * explicitly typed identifier. A definition tree or a vertex is written in the layout the
+     * assistant writes for a local store: the words of its structure by name, and each component
+     * it refers to by name and typed identifier ({@code IKE-Network/ike-issues#1291}). Any other value — a string, a
      * number, a boolean, an instant — is its own text.
      *
      * <p>No value is written with the {@code toString()} of a component, a tree, or a vertex:
@@ -1325,10 +1326,10 @@ public class TinkarServiceImpl implements TinkarService {
         // Before the public id case: a vertex has a UUID of its own, so it is a public id, but
         // it is not a component, and asking the store for its nid would assign it one.
         if (value instanceof EntityVertex vertex) {
-            return DiTreeText.vertex(vertex, this::getDescriptionForNid);
+            return DiTreeText.vertex(vertex, this::getDescriptionForNid, this::identifiedFor);
         }
         if (value instanceof DiTreeEntity tree) {
-            return '\n' + DiTreeText.tree(tree, this::getDescriptionForNid);
+            return '\n' + DiTreeText.tree(tree, this::getDescriptionForNid, this::identifiedFor);
         }
         if (value instanceof PublicId publicId) {
             try {
@@ -1389,11 +1390,20 @@ public class TinkarServiceImpl implements TinkarService {
             if (i > 0) {
                 sb.append(", ");
             }
-            sb.append(getDescriptionForNid(nids[i]))
-                    .append(' ')
-                    .append(typedIdentifierFor(nids[i]));
+            sb.append(identifiedFor(nids[i]));
         }
         return sb.append(']').toString();
+    }
+
+    /**
+     * A component as text that names and identifies it, {@code name [SCTID x]} or
+     * {@code name [UUID x]}.
+     *
+     * @param nid the component nid
+     * @return the name followed by the {@linkplain #typedIdentifierFor typed identifier}
+     */
+    private String identifiedFor(long nid) {
+        return getDescriptionForNid(nid) + ' ' + typedIdentifierFor(nid);
     }
 
     /**
