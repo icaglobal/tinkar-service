@@ -385,7 +385,7 @@ public class TinkarServiceImpl implements TinkarService {
 
     /**
      * The fully qualified name of a component, falling back to
-     * {@link #getDescriptionForNid(int, ViewCalculatorWithCache) its description}.
+     * {@link #getDescriptionForNid(long, ViewCalculatorWithCache) its description}.
      *
      * @param nid  the component's nid in this store
      * @param calc the view calculator that selects the description
@@ -1051,7 +1051,7 @@ public class TinkarServiceImpl implements TinkarService {
      * values of semantic fields are named this way, whatever view the request names.
      *
      * @param nid the component's nid in this store
-     * @return the description; when none resolves, the {@link #identifierFor(int) identifier};
+     * @return the description; when none resolves, the {@link #identifierFor(long) identifier};
      *         never a nid
      */
     private String getDescriptionForNid(long nid) {
@@ -1072,7 +1072,7 @@ public class TinkarServiceImpl implements TinkarService {
      * @param nid  the component's nid in this store
      * @param calc the view calculator that selects the description
      * @return the description; for a semantic, which has none of its own, what the semantic is;
-     *         when nothing resolves, the {@link #identifierFor(int) identifier}; never a nid
+     *         when nothing resolves, the {@link #identifierFor(long) identifier}; never a nid
      */
     private String getDescriptionForNid(long nid, ViewCalculatorWithCache calc) {
         // First try the provided calculator's language coordinate — this works on a full DB
