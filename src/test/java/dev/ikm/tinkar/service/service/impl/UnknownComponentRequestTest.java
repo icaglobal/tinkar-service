@@ -1,8 +1,8 @@
 package dev.ikm.tinkar.service.service.impl;
 
 import java.util.OptionalLong;
-import network.ike.foundation.ike.bindings.IkeTerms;
-import dev.ikm.tinkar.terms.KernelTerm;
+import dev.ikm.tinkar.terms.KernelConcept;
+import network.ike.foundation.ike.bindings.IkeConcept;
 import dev.ikm.tinkar.common.id.PublicId;
 import dev.ikm.tinkar.common.id.PublicIds;
 import dev.ikm.tinkar.common.service.CachingService;
@@ -154,7 +154,7 @@ class UnknownComponentRequestTest {
 
     @Test
     void theWriteEndpointsWriteNothingForAnIdTheKnowledgeBaseDoesNotHold() {
-        String known = uuidOf(KernelTerm.ENGLISH_LANGUAGE);
+        String known = uuidOf(KernelConcept.ENGLISH_LANGUAGE);
         int conceptsBefore = conceptCount();
         int semanticsBefore = semanticCount();
 
@@ -172,7 +172,7 @@ class UnknownComponentRequestTest {
 
     @Test
     void aComponentTheKnowledgeBaseHoldsIsAnsweredAsBefore() {
-        String known = uuidOf(KernelTerm.ENGLISH_LANGUAGE);
+        String known = uuidOf(KernelConcept.ENGLISH_LANGUAGE);
         SoftAssertions each = new SoftAssertions();
         // The endpoints that read. A write would change the store under the other tests.
         for (String name : List.of("entity", "children", "descendants", "children under a view",
@@ -190,8 +190,8 @@ class UnknownComponentRequestTest {
     void theIdOfARequestIsConvertedOnlyWhenTheKnowledgeBaseHoldsTheComponent() {
         UUID unknown = UUID.randomUUID();
 
-        PublicId known = primitive.getPublicId(uuidOf(KernelTerm.ENGLISH_LANGUAGE));
-        assertThat(PublicId.equals(known, KernelTerm.ENGLISH_LANGUAGE.publicId())).isTrue();
+        PublicId known = primitive.getPublicId(uuidOf(KernelConcept.ENGLISH_LANGUAGE));
+        assertThat(PublicId.equals(known, KernelConcept.ENGLISH_LANGUAGE.publicId())).isTrue();
 
         assertThatThrownBy(() -> primitive.getPublicId(unknown.toString()))
                 .isInstanceOf(UnknownComponentException.class)
@@ -207,8 +207,8 @@ class UnknownComponentRequestTest {
         UUID referredToOnly = UUID.randomUUID();
         long assigned = PrimitiveData.nid(PublicIds.of(referredToOnly));
 
-        assertThat(KnownComponents.nid(KernelTerm.ENGLISH_LANGUAGE.publicId()))
-                .isEqualTo(OptionalLong.of(KernelTerm.ENGLISH_LANGUAGE.nid()));
+        assertThat(KnownComponents.nid(KernelConcept.ENGLISH_LANGUAGE.publicId()))
+                .isEqualTo(OptionalLong.of(KernelConcept.ENGLISH_LANGUAGE.nid()));
         assertThat(KnownComponents.nid(PublicIds.of(unknown))).isEmpty();
         assertThat(PrimitiveData.get().hasUuid(unknown)).isFalse();
         assertThat(KnownComponents.nid(PublicIds.of(referredToOnly)))
@@ -245,14 +245,14 @@ class UnknownComponentRequestTest {
 
     @Test
     void aCoordinateWithAPathAndModulesTheKnowledgeBaseHoldsUsesThem() {
-        String module = uuidOf(IkeTerms.DEVELOPMENT_MODULE);
+        String module = uuidOf(IkeConcept.DEVELOPMENT_MODULE);
 
         StampCoordinateRecord coordinate = CoordinateFactory.buildStampCoordinate(new StampCoordinateDto(
-                null, null, uuidOf(KernelTerm.DEVELOPMENT_PATH), List.of(module), List.of(), List.of(module)));
+                null, null, uuidOf(KernelConcept.DEVELOPMENT_PATH), List.of(module), List.of(), List.of(module)));
 
-        assertThat(coordinate.stampPosition().getPathForPositionNid()).isEqualTo(KernelTerm.DEVELOPMENT_PATH.nid());
-        assertThat(coordinate.moduleNids().toArray()).containsExactly(IkeTerms.DEVELOPMENT_MODULE.nid());
-        assertThat(coordinate.modulePriorityNidList().toArray()).containsExactly(IkeTerms.DEVELOPMENT_MODULE.nid());
+        assertThat(coordinate.stampPosition().getPathForPositionNid()).isEqualTo(KernelConcept.DEVELOPMENT_PATH.nid());
+        assertThat(coordinate.moduleNids().toArray()).containsExactly(IkeConcept.DEVELOPMENT_MODULE.nid());
+        assertThat(coordinate.modulePriorityNidList().toArray()).containsExactly(IkeConcept.DEVELOPMENT_MODULE.nid());
     }
 
     // ── The endpoints ────────────────────────────────────────────────────────
@@ -262,7 +262,7 @@ class UnknownComponentRequestTest {
      * message. Endpoints that take two ids are listed once for each.
      */
     private Map<String, Function<String, Outcome>> endpoints() {
-        String known = uuidOf(KernelTerm.ENGLISH_LANGUAGE);
+        String known = uuidOf(KernelConcept.ENGLISH_LANGUAGE);
         Map<String, Function<String, Outcome>> endpoints = new LinkedHashMap<>();
         endpoints.put("entity", id -> outcome(service.getEntity(id)));
         endpoints.put("children", id -> outcome(service.getChildConcepts(id)));

@@ -6,6 +6,7 @@ import dev.ikm.tinkar.service.dto.SavedLanguageCoordinateResponse;
 import dev.ikm.tinkar.service.dto.SavedNavigationCoordinateResponse;
 import dev.ikm.tinkar.service.dto.SavedStampCoordinateResponse;
 import dev.ikm.tinkar.service.dto.StampCoordinateDto;
+import dev.ikm.tinkar.terms.KernelConcept;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.ikm.tinkar.common.id.PublicId;
 import dev.ikm.tinkar.common.id.PublicIds;
@@ -20,7 +21,6 @@ import dev.ikm.tinkar.entity.SemanticRecord;
 import dev.ikm.tinkar.entity.StampEntity;
 import dev.ikm.tinkar.entity.transaction.Transaction;
 import dev.ikm.tinkar.terms.State;
-import dev.ikm.tinkar.terms.KernelTerm;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.eclipse.collections.api.factory.Lists;
@@ -109,9 +109,9 @@ public class CoordinateStoreService {
         try {
             StampEntity<?> stamp = tx.getStamp(
                     State.ACTIVE, now,
-                    KernelTerm.USER.nid(),
-                    KernelTerm.SOLOR_OVERLAY_MODULE.nid(),
-                    KernelTerm.DEVELOPMENT_PATH.nid());
+                    KernelConcept.USER.nid(),
+                    KernelConcept.SOLOR_OVERLAY_MODULE.nid(),
+                    KernelConcept.DEVELOPMENT_PATH.nid());
 
             SemanticRecord semantic = SemanticRecord.build(
                     UUID.randomUUID(),
@@ -181,9 +181,9 @@ public class CoordinateStoreService {
         try {
             StampEntity<?> stamp = tx.getStamp(
                     State.ACTIVE, now,
-                    KernelTerm.USER.nid(),
-                    KernelTerm.SOLOR_OVERLAY_MODULE.nid(),
-                    KernelTerm.DEVELOPMENT_PATH.nid());
+                    KernelConcept.USER.nid(),
+                    KernelConcept.SOLOR_OVERLAY_MODULE.nid(),
+                    KernelConcept.DEVELOPMENT_PATH.nid());
 
             SemanticRecord semantic = SemanticRecord.build(
                     UUID.randomUUID(),
@@ -253,9 +253,9 @@ public class CoordinateStoreService {
         try {
             StampEntity<?> stamp = tx.getStamp(
                     State.ACTIVE, now,
-                    KernelTerm.USER.nid(),
-                    KernelTerm.SOLOR_OVERLAY_MODULE.nid(),
-                    KernelTerm.DEVELOPMENT_PATH.nid());
+                    KernelConcept.USER.nid(),
+                    KernelConcept.SOLOR_OVERLAY_MODULE.nid(),
+                    KernelConcept.DEVELOPMENT_PATH.nid());
 
             SemanticRecord semantic = SemanticRecord.build(
                     UUID.randomUUID(),
@@ -342,9 +342,9 @@ public class CoordinateStoreService {
         try {
             StampEntity<?> stamp = tx.getStamp(
                     State.ACTIVE, System.currentTimeMillis(),
-                    KernelTerm.USER.nid(),
-                    KernelTerm.SOLOR_OVERLAY_MODULE.nid(),
-                    KernelTerm.DEVELOPMENT_PATH.nid());
+                    KernelConcept.USER.nid(),
+                    KernelConcept.SOLOR_OVERLAY_MODULE.nid(),
+                    KernelConcept.DEVELOPMENT_PATH.nid());
             ConceptRecord stub = ConceptRecord.build(registryUuid, stamp.versions().get(0));
             EntityService.get().putEntity(stub);
             tx.addComponent(stub);
