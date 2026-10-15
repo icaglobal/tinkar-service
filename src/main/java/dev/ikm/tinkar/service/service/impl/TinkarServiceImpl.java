@@ -1963,8 +1963,9 @@ public class TinkarServiceImpl implements TinkarService {
                 } catch (Exception ignored) {
                     // PublicId not registered in this store — skip
                 }
-            } else if (value instanceof EntityProxy proxy) {
-                refs.add(proxy.nid());
+            } else if (value instanceof EntityFacade facade) {
+                // A binding enum is a facade but no PublicId
+                refs.add(facade.nid());
             } else if (value instanceof DiTreeEntity diTree) {
                 // Axiom tree: collect every concept NID referenced by every vertex so the
                 // client can render concept names (role types, role values, etc.)
