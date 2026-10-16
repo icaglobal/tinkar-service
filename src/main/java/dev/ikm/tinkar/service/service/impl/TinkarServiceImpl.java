@@ -1996,7 +1996,7 @@ public class TinkarServiceImpl implements TinkarService {
                                      Set<Long> includedNids, Set<Long> stampNids, Entity<?> entity) {
         addToResponse(builder, transformer, includedNids, entity);
         entity.versions().forEach(v -> stampNids.add(v.stampNid()));
-        EntityService.get().semanticsForComponentOfPattern(entity.nid(), KernelTerm.DESCRIPTION_PATTERN.nid())
+        EntityService.get().semanticsForComponentOfPattern(entity.nid(), KernelPattern.DESCRIPTION_PATTERN.nid())
                 .forEach(description -> {
                     if (!includedNids.contains(description.nid())) {
                         addToResponse(builder, transformer, includedNids, description);
