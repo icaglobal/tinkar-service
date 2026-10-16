@@ -5,6 +5,7 @@ import org.eclipse.collections.api.factory.primitive.LongSets;
 import org.eclipse.collections.api.set.primitive.MutableLongSet;
 
 import dev.ikm.tinkar.entity.changeset.SchemaIds;
+import dev.ikm.tinkar.service.service.CoordinateFactory;
 import dev.ikm.tinkar.common.id.*;
 import dev.ikm.tinkar.common.service.EntityCountSummary;
 import dev.ikm.tinkar.common.service.TrackingListener;
@@ -1883,6 +1884,136 @@ public class TinkarServiceImpl implements TinkarService {
                     .setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName())
                     .setCreatedAt(System.currentTimeMillis())
                     .build();
+        }
+    }
+
+    /** Most members a page of {@link #listPatternMembers} returns. */
+    static final int PATTERN_MEMBERS_PAGE_CAP = 1000;
+
+    @Override
+    public ListPatternsResponse listPatterns() {
+        try {
+            EntityToTinkarSchemaTransformer transformer = EntityToTinkarSchemaTransformer.getInstance();
+            TinkarConceptEntityResponse.Builder entities = TinkarConceptEntityResponse.newBuilder();
+            Set<Long> includedNids = new HashSet<>();
+            Set<Long> stampNids = new HashSet<>();
+            int[] patternCount = {0};
+            EntityService.get().forEachPatternEntity(pattern -> {
+                patternCount[0]++;
+                addWithDescriptions(entities, transformer, includedNids, stampNids, pattern);
+            });
+            addStamps(entities, transformer, includedNids, stampNids);
+            return ListPatternsResponse.newBuilder()
+                    .setSuccess(true)
+                    .addAllEntities(entities.getEntitiesList())
+                    .setPatternCount(patternCount[0])
+                    .setCreatedAt(System.currentTimeMillis())
+                    .build();
+        } catch (Exception e) {
+            log.error("Failed to list patterns: {}", e.getMessage(), e);
+            return ListPatternsResponse.newBuilder()
+                    .setSuccess(false)
+                    .setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName())
+                    .setCreatedAt(System.currentTimeMillis())
+                    .build();
+        }
+    }
+
+    @Override
+    public ListPatternMembersResponse listPatternMembers(String patternId, int offset, int limit,
+                                                         String referencedComponentText,
+                                                         String referencedComponentId) {
+        try {
+            long patternNid = EntityService.get().nidForPublicId(primitive.getPublicId(patternId));
+            if (!(EntityHandle.get(patternNid).orNull() instanceof PatternEntity<?>)) {
+                return ListPatternMembersResponse.newBuilder()
+                        .setSuccess(false)
+                        .setErrorMessage("Pattern not found: " + patternId)
+                        .setCreatedAt(System.currentTimeMillis())
+                        .build();
+            }
+            int pageSize = limit <= 0 || limit > PATTERN_MEMBERS_PAGE_CAP ? PATTERN_MEMBERS_PAGE_CAP : limit;
+            int skip = Math.max(0, offset);
+            long total = EntityService.get().countSemanticsOfPattern(patternNid);
+
+            // A component given: its members of this pattern, read directly. Otherwise the pattern's
+            // members in store order, filtered by text if asked; either way one past the page is read
+            // to tell whether more match.
+            Stream<SemanticEntity<SemanticEntityVersion>> members;
+            if (referencedComponentId != null && !referencedComponentId.isBlank()) {
+                long componentNid = EntityService.get().nidForPublicId(primitive.getPublicId(referencedComponentId));
+                members = EntityService.get().semanticsForComponentOfPattern(componentNid, patternNid);
+            } else {
+                members = EntityService.get().semanticsOfPattern(patternNid);
+            }
+            if (referencedComponentText != null && !referencedComponentText.isBlank()) {
+                String query = referencedComponentText.strip().toLowerCase(Locale.ROOT);
+                ViewCalculatorWithCache calculator = CoordinateFactory.defaultCalculator();
+                members = members.filter(semantic -> getDescriptionForNid(semantic.referencedComponentNid(), calculator)
+                        .toLowerCase(Locale.ROOT).contains(query));
+            }
+            List<SemanticEntity<SemanticEntityVersion>> page = members.skip(skip).limit(pageSize + 1L).toList();
+            boolean hasMore = page.size() > pageSize;
+            if (hasMore) {
+                page = page.subList(0, pageSize);
+            }
+
+            EntityToTinkarSchemaTransformer transformer = EntityToTinkarSchemaTransformer.getInstance();
+            TinkarConceptEntityResponse.Builder entities = TinkarConceptEntityResponse.newBuilder();
+            Set<Long> includedNids = new HashSet<>();
+            Set<Long> stampNids = new HashSet<>();
+            ListPatternMembersResponse.Builder response = ListPatternMembersResponse.newBuilder();
+            for (SemanticEntity<SemanticEntityVersion> member : page) {
+                addToResponse(entities, transformer, includedNids, member);
+                member.versions().forEach(v -> stampNids.add(v.stampNid()));
+                response.addMemberIds(SchemaIds.toSchema(member.publicId()));
+                // The referenced component and its names, so each row can be labelled.
+                Entity<?> referenced = EntityHandle.get(member.referencedComponentNid()).orNull();
+                if (referenced != null && !includedNids.contains(referenced.nid())) {
+                    addWithDescriptions(entities, transformer, includedNids, stampNids, referenced);
+                }
+            }
+            addStamps(entities, transformer, includedNids, stampNids);
+            return response
+                    .setSuccess(true)
+                    .setTotalCount(total)
+                    .addAllEntities(entities.getEntitiesList())
+                    .setHasMore(hasMore)
+                    .setCreatedAt(System.currentTimeMillis())
+                    .build();
+        } catch (Exception e) {
+            log.error("Failed to list members of pattern {}: {}", patternId, e.getMessage(), e);
+            return ListPatternMembersResponse.newBuilder()
+                    .setSuccess(false)
+                    .setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName())
+                    .setCreatedAt(System.currentTimeMillis())
+                    .build();
+        }
+    }
+
+    /** Adds {@code entity} and its description semantics, collecting the stamps of both. */
+    private void addWithDescriptions(TinkarConceptEntityResponse.Builder builder,
+                                     EntityToTinkarSchemaTransformer transformer,
+                                     Set<Long> includedNids, Set<Long> stampNids, Entity<?> entity) {
+        addToResponse(builder, transformer, includedNids, entity);
+        entity.versions().forEach(v -> stampNids.add(v.stampNid()));
+        EntityService.get().semanticsForComponentOfPattern(entity.nid(), KernelTerm.DESCRIPTION_PATTERN.nid())
+                .forEach(description -> {
+                    if (!includedNids.contains(description.nid())) {
+                        addToResponse(builder, transformer, includedNids, description);
+                        description.versions().forEach(v -> stampNids.add(v.stampNid()));
+                    }
+                });
+    }
+
+    /** Adds the stamps in {@code stampNids} not already in the response. */
+    private void addStamps(TinkarConceptEntityResponse.Builder builder, EntityToTinkarSchemaTransformer transformer,
+                           Set<Long> includedNids, Set<Long> stampNids) {
+        for (long stampNid : stampNids) {
+            StampEntity<?> stampEntity = EntityService.get().getStampFast(stampNid);
+            if (stampEntity != null) {
+                addToResponse(builder, transformer, includedNids, stampEntity);
+            }
         }
     }
 

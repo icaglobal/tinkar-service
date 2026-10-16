@@ -189,6 +189,26 @@ public interface TinkarService {
     dev.ikm.tinkar.service.proto.TinkarConceptEntityResponse getEntityByPublicId(String entityId);
 
     /**
+     * Every pattern in the store, with its descriptions and the stamps of both — for a client whose
+     * store is remote, which cannot enumerate patterns from what it happens to have loaded.
+     */
+    dev.ikm.tinkar.service.proto.ListPatternsResponse listPatterns();
+
+    /**
+     * One page of a pattern's members, in the store's order, and the pattern's total member count.
+     *
+     * @param patternId              the pattern's public id
+     * @param offset                 how many matching members to skip
+     * @param limit                  how many to return; capped by the server
+     * @param referencedComponentText optional: only members whose referenced component's preferred
+     *                               description contains this text, ignoring case
+     * @param referencedComponentId  optional: only members that refer to this component
+     */
+    dev.ikm.tinkar.service.proto.ListPatternMembersResponse listPatternMembers(String patternId, int offset, int limit,
+                                                                             String referencedComponentText,
+                                                                             String referencedComponentId);
+
+    /**
      * Gets comprehensive change history for a concept including all attached semantics.
      * This shows changes to the concept itself AND changes to all comments, descriptions, etc.
      * @param conceptId The public ID (UUID) of the concept
