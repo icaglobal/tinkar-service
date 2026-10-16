@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import dev.ikm.tinkar.service.service.KnownComponents;
 import dev.ikm.tinkar.service.service.TinkarPrimitive;
+import dev.ikm.tinkar.terms.ConceptFacade;
 import dev.ikm.tinkar.common.id.PublicId;
 import dev.ikm.tinkar.common.id.PublicIds;
 import dev.ikm.tinkar.coordinate.Calculators;
@@ -26,7 +27,8 @@ import dev.ikm.tinkar.entity.EntityService;
 import dev.ikm.tinkar.entity.PatternEntityVersion;
 import dev.ikm.tinkar.provider.search.Searcher;
 import dev.ikm.tinkar.terms.EntityProxy;
-import dev.ikm.tinkar.terms.KernelTerm;
+import dev.ikm.tinkar.terms.KernelConcept;
+import dev.ikm.tinkar.terms.KernelPattern;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -131,7 +133,7 @@ public final class TinkarPrimitiveImpl implements TinkarPrimitive {
     public List<PublicId> descendantsOf(PublicId parentConceptId) {
         List<PublicId> descendants = new ArrayList<>();
 
-        EntityProxy.Concept concept = EntityProxy.Concept.make(parentConceptId);
+        ConceptFacade concept = EntityProxy.Concept.make(parentConceptId);
         NavigationCalculator navigationCalculator = Calculators.View.Default().navigationCalculator();
 
         navigationCalculator
@@ -157,7 +159,7 @@ public final class TinkarPrimitiveImpl implements TinkarPrimitive {
     public List<PublicId> parentsOf(PublicId conceptId) {
         List<PublicId> parents = new ArrayList<>();
 
-        EntityProxy.Concept concept = EntityProxy.Concept.make(conceptId);
+        ConceptFacade concept = EntityProxy.Concept.make(conceptId);
         NavigationCalculator navigationCalculator = Calculators.View.Default().navigationCalculator();
 
         navigationCalculator.parentsOf(concept).forEach(parent -> parents.add(PrimitiveData.publicId(parent)));
@@ -180,7 +182,7 @@ public final class TinkarPrimitiveImpl implements TinkarPrimitive {
     public List<PublicId> ancestorOf(PublicId conceptId) {
         List<PublicId> ancestors = new ArrayList<>();
 
-        EntityProxy.Concept concept = EntityProxy.Concept.make(conceptId);
+        ConceptFacade concept = EntityProxy.Concept.make(conceptId);
         NavigationCalculator navigationCalculator = Calculators.View.Default().navigationCalculator();
 
         navigationCalculator.ancestorsOf(concept).forEach(parent -> ancestors.add(PrimitiveData.publicId(parent)));
@@ -208,7 +210,7 @@ public final class TinkarPrimitiveImpl implements TinkarPrimitive {
     @Override
     public List<PublicId> childrenOf(PublicId parentConceptId) {
         List<PublicId> children = new ArrayList<>();
-        EntityProxy.Concept concept = EntityProxy.Concept.make(parentConceptId);
+        ConceptFacade concept = EntityProxy.Concept.make(parentConceptId);
         NavigationCalculator navigationCalculator = Calculators.View.Default().navigationCalculator();
 
         navigationCalculator.childrenOf(concept).forEach(parent -> children.add(PrimitiveData.publicId(parent)));
@@ -336,17 +338,17 @@ public final class TinkarPrimitiveImpl implements TinkarPrimitive {
 
         ViewCalculator viewCalc = Calculators.View.Default();
         Latest<PatternEntityVersion> latestIdPattern = viewCalc
-                .latestPatternEntityVersion(KernelTerm.IDENTIFIER_PATTERN);
+                .latestPatternEntityVersion(KernelPattern.IDENTIFIER_PATTERN);
         AtomicReference<PublicId> result = new AtomicReference<>();
 
         try {
             EntityService.get()
                     .forEachSemanticOfPattern(
-                            KernelTerm.IDENTIFIER_PATTERN.nid(),
+                            KernelPattern.IDENTIFIER_PATTERN.nid(),
                             semanticEntity -> viewCalc.latest(semanticEntity).ifPresent(latestSemanticVersion -> {
                                 String idValue = latestIdPattern
                                         .get()
-                                        .getFieldWithMeaning(KernelTerm.IDENTIFIER_VALUE, latestSemanticVersion);
+                                        .getFieldWithMeaning(KernelConcept.IDENTIFIER_VALUE, latestSemanticVersion);
                                 if (idValue.equals(device)) {
                                     result.set(latestSemanticVersion
                                             .referencedComponent()

@@ -1,7 +1,7 @@
 package dev.ikm.tinkar.service.service.impl;
 
-import network.ike.foundation.ike.bindings.IkeTerms;
-import dev.ikm.tinkar.terms.KernelTerm;
+import dev.ikm.tinkar.terms.KernelConcept;
+import network.ike.foundation.ike.bindings.IkeConcept;
 import dev.ikm.tinkar.common.id.PublicId;
 import dev.ikm.tinkar.common.service.CachingService;
 import dev.ikm.tinkar.common.service.PrimitiveData;
@@ -79,13 +79,13 @@ class ComponentResultTest {
 
     @Test
     void anEntityIsDescribedByItsNamesAndTheStampOfItsVersion() {
-        ConceptEntity<?> active = EntityHandle.get(KernelTerm.ACTIVE_STATE).expectConcept();
+        ConceptEntity<?> active = EntityHandle.get(KernelConcept.ACTIVE_STATE).expectConcept();
         assertThat(active.versions())
                 .as("precondition: one version, so the stamp the response reports is unambiguous")
                 .hasSize(1);
         StampEntity stamp = EntityHandle.getStampOrThrow(active.versions().getFirst().stampNid());
 
-        TinkarSearchQueryResponse response = service.getEntity(anyUuid(KernelTerm.ACTIVE_STATE.publicId()));
+        TinkarSearchQueryResponse response = service.getEntity(anyUuid(KernelConcept.ACTIVE_STATE.publicId()));
 
         assertThat(response.getSuccess()).as(response.getErrorMessage()).isTrue();
         assertThat(response.getResultsList()).hasSize(1);
@@ -110,21 +110,21 @@ class ComponentResultTest {
 
     @Test
     void eachChildIsDescribedFromTheStore() {
-        List<PublicId> children = primitive.childrenOf(IkeTerms.STATUS_VALUE.publicId());
+        List<PublicId> children = primitive.childrenOf(IkeConcept.STATUS_VALUE.publicId());
         assertThat(children).as("precondition: the status value concept has children").isNotEmpty();
 
-        TinkarSearchQueryResponse response = service.getChildConcepts(anyUuid(IkeTerms.STATUS_VALUE.publicId()));
+        TinkarSearchQueryResponse response = service.getChildConcepts(anyUuid(IkeConcept.STATUS_VALUE.publicId()));
 
         assertDescribesEach(response, children);
     }
 
     @Test
     void eachDescendantIsDescribedFromTheStore() {
-        List<PublicId> descendants = primitive.descendantsOf(IkeTerms.STATUS_VALUE.publicId());
+        List<PublicId> descendants = primitive.descendantsOf(IkeConcept.STATUS_VALUE.publicId());
         assertThat(descendants).as("precondition: the status value concept has descendants").isNotEmpty();
 
         TinkarSearchQueryResponse response =
-                service.getDescendantConcepts(anyUuid(IkeTerms.STATUS_VALUE.publicId()));
+                service.getDescendantConcepts(anyUuid(IkeConcept.STATUS_VALUE.publicId()));
 
         assertDescribesEach(response, descendants);
     }

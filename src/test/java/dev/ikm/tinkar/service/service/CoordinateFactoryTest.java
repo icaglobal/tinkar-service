@@ -22,7 +22,7 @@ import static org.mockito.ArgumentMatchers.any;
  *
  * <p>Navigation and language coordinate tests are omitted here because
  * {@code NavigationCoordinateRecord.makeInferred/Stated()} and all
- * {@code Coordinates.Language.*} methods call {@code KernelTerm.*.nid()},
+ * {@code Coordinates.Language.*} methods call {@code KernelConcept.*.nid()},
  * which requires PrimitiveData to be running.  Those paths are exercised
  * by integration tests.
  *
