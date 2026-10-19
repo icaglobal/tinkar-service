@@ -2,7 +2,7 @@
 # Stage 1: Build tinkar-service
 # ============================================
 # Force amd64 platform - RocksDB only has linux64 (x86_64) natives, not ARM64
-FROM --platform=linux/amd64 eclipse-temurin:25-jdk AS builder
+FROM --platform=linux/amd64 eclipse-temurin:27-jdk AS builder
 
 WORKDIR /build/tinkar-service
 
@@ -16,7 +16,7 @@ RUN ./mvnw install -DskipTests -Dmaven.javadoc.skip=true -B -q
 # Stage 2: Runtime
 # ============================================
 # Force amd64 platform to match the build
-FROM --platform=linux/amd64 eclipse-temurin:25-jre
+FROM --platform=linux/amd64 eclipse-temurin:27-jre
 
 WORKDIR /app
 

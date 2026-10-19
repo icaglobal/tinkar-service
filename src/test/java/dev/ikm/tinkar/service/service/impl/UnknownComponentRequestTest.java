@@ -2,6 +2,7 @@ package dev.ikm.tinkar.service.service.impl;
 
 import java.util.OptionalLong;
 import dev.ikm.tinkar.terms.KernelConcept;
+import dev.ikm.tinkar.terms.KernelPattern;
 import network.ike.foundation.ike.bindings.IkeConcept;
 import dev.ikm.tinkar.common.id.PublicId;
 import dev.ikm.tinkar.common.id.PublicIds;
@@ -19,6 +20,7 @@ import dev.ikm.tinkar.service.dto.ConceptCreationResponse;
 import dev.ikm.tinkar.service.dto.ConceptSemanticsResponse;
 import dev.ikm.tinkar.service.dto.DescendantOperationResponse;
 import dev.ikm.tinkar.service.dto.StampCoordinateDto;
+import dev.ikm.tinkar.service.proto.ListPatternMembersResponse;
 import dev.ikm.tinkar.service.proto.TinkarConceptEntityResponse;
 import dev.ikm.tinkar.service.proto.TinkarConceptSemanticsResponse;
 import dev.ikm.tinkar.service.proto.TinkarSearchQueryResponse;
@@ -182,6 +184,28 @@ class UnknownComponentRequestTest {
             each.assertThat(outcome.success()).as(name + ": " + outcome.message()).isTrue();
         }
         each.assertAll();
+    }
+
+    // ── A pattern's members, of a component ──────────────────────────────────
+
+    @Test
+    void aComponentTheKnowledgeBaseDoesNotHoldHasNoMembersOfAPattern() {
+        // Komet over gRPC asks for the members of a component it made itself, a window's concept
+        // say, which the server never received. Such a component has none: not an error.
+        UUID unknown = UUID.randomUUID();
+        String pattern = uuidOf(KernelPattern.DESCRIPTION_PATTERN);
+
+        ListPatternMembersResponse response = service.listPatternMembers(pattern, 0, 10, null, unknown.toString());
+
+        assertThat(response.getSuccess()).as(response.getErrorMessage()).isTrue();
+        assertThat(response.getMemberIdsCount()).isZero();
+        assertThat(response.getHasMore()).isFalse();
+        assertThat(PrimitiveData.get().hasUuid(unknown)).as("the UUID is assigned no nid").isFalse();
+
+        ListPatternMembersResponse known = service.listPatternMembers(pattern, 0, 10, null,
+                uuidOf(KernelConcept.ENGLISH_LANGUAGE));
+        assertThat(known.getSuccess()).as(known.getErrorMessage()).isTrue();
+        assertThat(known.getMemberIdsCount()).as("the descriptions of English language").isPositive();
     }
 
     // ── The conversion every handler goes through ────────────────────────────

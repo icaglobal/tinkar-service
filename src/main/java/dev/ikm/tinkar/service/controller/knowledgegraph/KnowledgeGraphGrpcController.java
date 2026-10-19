@@ -344,6 +344,26 @@ public class KnowledgeGraphGrpcController extends IkeKnowledgeGraphGrpc.IkeKnowl
         responseObserver.onCompleted();
     }
 
+    @Override
+    public void listPatterns(ListPatternsRequest request, StreamObserver<ListPatternsResponse> responseObserver) {
+        log.info("IkeKnowledgeGraph listPatterns request");
+        responseObserver.onNext(tinkarService.listPatterns());
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void listPatternMembers(ListPatternMembersRequest request,
+                                   StreamObserver<ListPatternMembersResponse> responseObserver) {
+        String patternId = extractConceptId(request.getPatternId());
+        String referencedComponentId = request.hasReferencedComponentId()
+                ? extractConceptId(request.getReferencedComponentId()) : null;
+        log.debug("IkeKnowledgeGraph listPatternMembers request for pattern {} offset {} limit {}",
+                patternId, request.getOffset(), request.getLimit());
+        responseObserver.onNext(tinkarService.listPatternMembers(patternId, request.getOffset(), request.getLimit(),
+                request.getReferencedComponentText(), referencedComponentId));
+        responseObserver.onCompleted();
+    }
+
     private ViewCalculatorWithCache buildCalculator(CoordinateOverride protoOverride) {
         if (protoOverride == null || protoOverride.equals(CoordinateOverride.getDefaultInstance())) {
             return CoordinateFactory.defaultCalculator();
