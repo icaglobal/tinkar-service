@@ -254,8 +254,11 @@ class ResponseTextTest {
                 + "     [1]➞[2] " + name(KernelConcept.NECESSARY_SET) + "\n"
                 + "       [2]➞[3,4] " + name(KernelConcept.AND) + "\n"
                 + "         [3] " + name(KernelConcept.CONCEPT_REFERENCE) + ": " + UNDESCRIBED + " [UUID " + UNDESCRIBED + "]\n"
-                + "         [4] " + name(KernelConcept.ROLE) + "\n"
-                + "            •" + name(KernelConcept.ROLE_TYPE) + ": " + UNDESCRIBED + " [UUID " + UNDESCRIBED + "]\n";
+                + "         [4]➞[5] " + name(KernelConcept.ROLE) + "\n"
+                + "            •" + name(KernelConcept.ROLE_OPERATOR) + ": " + name(KernelConcept.EXISTENTIAL_RESTRICTION)
+                + " [UUID " + uuidOf(KernelConcept.EXISTENTIAL_RESTRICTION) + "]\n"
+                + "            •" + name(KernelConcept.ROLE_TYPE) + ": " + UNDESCRIBED + " [UUID " + UNDESCRIBED + "]\n"
+                + "           [5] " + name(KernelConcept.CONCEPT_REFERENCE) + ": " + UNDESCRIBED + " [UUID " + UNDESCRIBED + "]\n";
         assertThat(onlyFieldOf(definition)).isEqualTo(expected);
         assertNoNid("the definition semantic", definition.toString(), undescribedNid);
     }
@@ -489,8 +492,9 @@ class ResponseTextTest {
     }
 
     /**
-     * A definition whose necessary set holds a reference to the given concept and a role whose
-     * type is the given concept.
+     * A definition whose necessary set holds a reference to the given concept and an existential
+     * role whose type and restriction are the given concept. The role has its restriction, as the
+     * identity table requires of every role (one successor), or the write path refuses the tree.
      */
     private static DiTreeEntity aDefinitionThatRefersTo(ConceptFacade concept) {
         EntityVertex root = EntityVertex.make(KernelConcept.DEFINITION_ROOT);
@@ -499,7 +503,12 @@ class ResponseTextTest {
         EntityVertex reference = EntityVertex.make(KernelConcept.CONCEPT_REFERENCE);
         setProperty(reference, KernelConcept.CONCEPT_REFERENCE, concept);
         EntityVertex role = EntityVertex.make(KernelConcept.ROLE);
-        setProperty(role, KernelConcept.ROLE_TYPE, concept);
+        MutableLongObjectMap<Object> roleProperties = LongObjectMaps.mutable.empty();
+        roleProperties.put(KernelConcept.ROLE_TYPE.nid(), concept);
+        roleProperties.put(KernelConcept.ROLE_OPERATOR.nid(), KernelConcept.EXISTENTIAL_RESTRICTION);
+        role.setProperties(roleProperties);
+        EntityVertex restriction = EntityVertex.make(KernelConcept.CONCEPT_REFERENCE);
+        setProperty(restriction, KernelConcept.CONCEPT_REFERENCE, concept);
 
         DiTreeEntity.Builder builder = DiTreeEntity.builder();
         builder.setRoot(root);
@@ -507,6 +516,7 @@ class ResponseTextTest {
         builder.addEdge(and, necessarySet);
         builder.addEdge(reference, and);
         builder.addEdge(role, and);
+        builder.addEdge(restriction, role);
         return builder.build();
     }
 
