@@ -202,7 +202,8 @@ public interface TinkarService {
      * @param limit                  how many to return; capped by the server
      * @param referencedComponentText optional: only members whose referenced component's preferred
      *                               description contains this text, ignoring case
-     * @param referencedComponentId  optional: only members that refer to this component
+     * @param referencedComponentId  optional: only members that refer to this component; a
+     *                               component the knowledge base does not hold has none
      */
     dev.ikm.tinkar.service.proto.ListPatternMembersResponse listPatternMembers(String patternId, int offset, int limit,
                                                                              String referencedComponentText,

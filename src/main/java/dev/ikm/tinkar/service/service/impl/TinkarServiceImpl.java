@@ -6,6 +6,8 @@ import org.eclipse.collections.api.set.primitive.MutableLongSet;
 
 import dev.ikm.tinkar.entity.changeset.SchemaIds;
 import dev.ikm.tinkar.service.service.CoordinateFactory;
+import dev.ikm.tinkar.service.service.KnownComponents;
+import dev.ikm.tinkar.service.service.UnknownComponentException;
 import dev.ikm.tinkar.common.id.*;
 import dev.ikm.tinkar.common.service.EntityCountSummary;
 import dev.ikm.tinkar.common.service.TrackingListener;
@@ -77,6 +79,22 @@ import java.util.concurrent.CompletableFuture;
 @Service
 public class TinkarServiceImpl implements TinkarService {
     private static final Logger log = LoggerFactory.getLogger(TinkarServiceImpl.class);
+
+    /**
+     * Logs a read that failed. A request for a component this knowledge base does not hold is
+     * answered with that, and is the caller's to handle: Komet over gRPC asks for components it
+     * made itself and never committed, its windows' for one. So it is logged without a stack
+     * trace, at DEBUG; anything else is an error here.
+     */
+    private static void logReadFailure(Exception e, String message, Object... args) {
+        if (e instanceof UnknownComponentException) {
+            log.debug(message, args);
+        } else {
+            Object[] withCause = Arrays.copyOf(args, args.length + 1);
+            withCause[args.length] = e;
+            log.error(message, withCause);
+        }
+    }
 
     private final TinkarPrimitive primitive;
 
@@ -1605,7 +1623,7 @@ public class TinkarServiceImpl implements TinkarService {
 
             return responseBuilder.build();
         } catch (Exception e) {
-            log.error("Failed to get semantics proto for concept {}: {}", conceptId, e.getMessage(), e);
+            logReadFailure(e, "Failed to get semantics proto for concept {}: {}", conceptId, e.getMessage());
             return TinkarConceptSemanticsResponse.newBuilder()
                     .setConceptPublicId(protoPublicIdOrEmpty(conceptId))
                     .setSuccess(false)
@@ -1643,7 +1661,7 @@ public class TinkarServiceImpl implements TinkarService {
                     .setCreatedAt(System.currentTimeMillis())
                     .build();
         } catch (Exception e) {
-            log.error("Failed to get semantic info for {}: {}", semanticId, e.getMessage(), e);
+            logReadFailure(e, "Failed to get semantic info for {}: {}", semanticId, e.getMessage());
             return TinkarSemanticInfoResponse.newBuilder()
                     .setSuccess(false)
                     .setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName())
@@ -1814,7 +1832,7 @@ public class TinkarServiceImpl implements TinkarService {
 
             return builder.setSuccess(true).setCreatedAt(System.currentTimeMillis()).build();
         } catch (Exception e) {
-            log.error("Failed to get concept with semantics for {}: {}", conceptId, e.getMessage(), e);
+            logReadFailure(e, "Failed to get concept with semantics for {}: {}", conceptId, e.getMessage());
             return TinkarConceptEntityResponse.newBuilder()
                     .setSuccess(false)
                     .setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName())
@@ -1877,7 +1895,7 @@ public class TinkarServiceImpl implements TinkarService {
 
             return builder.setSuccess(true).setCreatedAt(System.currentTimeMillis()).build();
         } catch (Exception e) {
-            log.error("Failed to get entity by public ID {}: {}", entityId, e.getMessage(), e);
+            logReadFailure(e, "Failed to get entity by public ID {}: {}", entityId, e.getMessage());
             return TinkarConceptEntityResponse.newBuilder()
                     .setSuccess(false)
                     .setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName())
@@ -1940,8 +1958,12 @@ public class TinkarServiceImpl implements TinkarService {
             // to tell whether more match.
             Stream<SemanticEntity<SemanticEntityVersion>> members;
             if (referencedComponentId != null && !referencedComponentId.isBlank()) {
-                long componentNid = EntityService.get().nidForPublicId(primitive.getPublicId(referencedComponentId));
-                members = EntityService.get().semanticsForComponentOfPattern(componentNid, patternNid);
+                // A component this knowledge base does not hold is cited by none of its semantics:
+                // one a client made and never committed, such as a Komet window's concept.
+                OptionalLong componentNid = KnownComponents.nid(PublicIds.of(referencedComponentId));
+                members = componentNid.isPresent()
+                        ? EntityService.get().semanticsForComponentOfPattern(componentNid.getAsLong(), patternNid)
+                        : Stream.empty();
             } else {
                 members = EntityService.get().semanticsOfPattern(patternNid);
             }
@@ -1981,7 +2003,7 @@ public class TinkarServiceImpl implements TinkarService {
                     .setCreatedAt(System.currentTimeMillis())
                     .build();
         } catch (Exception e) {
-            log.error("Failed to list members of pattern {}: {}", patternId, e.getMessage(), e);
+            logReadFailure(e, "Failed to list members of pattern {}: {}", patternId, e.getMessage());
             return ListPatternMembersResponse.newBuilder()
                     .setSuccess(false)
                     .setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName())
