@@ -210,6 +210,29 @@ public interface TinkarService {
                                                                              String referencedComponentId);
 
     /**
+     * Every pattern with its definition, as JSON for the REST API: what {@link #listPatterns()}
+     * sends as entities, named under the default view.
+     */
+    dev.ikm.tinkar.service.dto.PatternsResponse patterns();
+
+    /**
+     * One page of a pattern's members, as JSON for the REST API: the members
+     * {@link #listPatternMembers} selects, with their fields named and their referenced
+     * components' names.
+     *
+     * @param patternId              the pattern's public id
+     * @param offset                 how many matching members to skip
+     * @param limit                  how many to return; capped by the server
+     * @param referencedComponentText optional: only members whose referenced component's preferred
+     *                               description contains this text, ignoring case
+     * @param referencedComponentId  optional: only members that refer to this component; a
+     *                               component the knowledge base does not hold has none
+     */
+    dev.ikm.tinkar.service.dto.PatternMembersResponse patternMembers(String patternId, int offset, int limit,
+                                                                     String referencedComponentText,
+                                                                     String referencedComponentId);
+
+    /**
      * Gets comprehensive change history for a concept including all attached semantics.
      * This shows changes to the concept itself AND changes to all comments, descriptions, etc.
      * @param conceptId The public ID (UUID) of the concept

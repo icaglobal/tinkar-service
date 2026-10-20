@@ -9,11 +9,12 @@ import { CoordinatesPanel } from './components/CoordinatesPanel';
 import { CreateConceptPanel } from './components/CreateConceptPanel';
 import { ReasonerPanel } from './components/ReasonerPanel';
 import { ChangesetPanel } from './components/ChangesetPanel';
+import { PatternsPanel } from './components/PatternsPanel';
 import { conceptSearchWithSort, getDescendants, kgGetSemantics, removeDescendant, createAndAddDescendant } from './api/tinkarApi';
 import type { SearchSortOption } from './api/types';
 import './App.css';
 
-type ViewMode = 'search' | 'descendants' | 'semantics' | 'test-runner' | 'coordinates' | 'create-concept' | 'reasoner' | 'changesets';
+type ViewMode = 'search' | 'descendants' | 'semantics' | 'test-runner' | 'coordinates' | 'create-concept' | 'reasoner' | 'changesets' | 'patterns';
 
 const SORT_OPTIONS: { value: SearchSortOption; label: string }[] = [
   { value: 'TOP_COMPONENT', label: 'Top Component (by score)' },
@@ -30,6 +31,9 @@ function App() {
   const [selectedConceptId, setSelectedConceptId] = useState<string | null>(null);
   const [selectedConceptName, setSelectedConceptName] = useState<string>('');
   const [newDescendantName, setNewDescendantName] = useState<string>('');
+  // Where the semantics view was opened from, so Back returns there: the Patterns panel stays
+  // mounted underneath, keeping its pattern, page and filter.
+  const [semanticsFrom, setSemanticsFrom] = useState<'search' | 'patterns'>('search');
 
   const queryClient = useQueryClient();
 
@@ -91,6 +95,7 @@ function App() {
   };
 
   const handleViewSemantics = (conceptId: string, conceptName?: string) => {
+    setSemanticsFrom('search');
     setSelectedConceptName(conceptName || conceptId);
     setSelectedConceptId(conceptId);
     setViewMode('semantics');
@@ -102,7 +107,20 @@ function App() {
     setViewMode('descendants');
   };
 
+  const handleViewMemberSemantics = (conceptId: string, conceptName?: string) => {
+    setSemanticsFrom('patterns');
+    setSelectedConceptName(conceptName || conceptId);
+    setSelectedConceptId(conceptId);
+    setViewMode('semantics');
+  };
+
   const handleBack = () => {
+    if (viewMode === 'semantics' && semanticsFrom === 'patterns') {
+      setViewMode('patterns');
+      setSelectedConceptId(null);
+      setSelectedConceptName('');
+      return;
+    }
     setViewMode('search');
     setSelectedConceptId(null);
     setSelectedConceptName('');
@@ -158,6 +176,12 @@ function App() {
               Reasoner
             </button>
             <button
+              className={`patterns-button ${viewMode === 'patterns' ? 'active' : ''}`}
+              onClick={() => setViewMode('patterns')}
+            >
+              Patterns
+            </button>
+            <button
               className={`changeset-button ${viewMode === 'changesets' ? 'active' : ''}`}
               onClick={() => setViewMode('changesets')}
             >
@@ -174,7 +198,8 @@ function App() {
       </header>
 
       <main className="app-main">
-        {viewMode !== 'test-runner' && viewMode !== 'coordinates' && viewMode !== 'create-concept' && viewMode !== 'reasoner' && viewMode !== 'changesets' && (
+        {viewMode !== 'test-runner' && viewMode !== 'coordinates' && viewMode !== 'create-concept' && viewMode !== 'reasoner' && viewMode !== 'changesets' && viewMode !== 'patterns'
+          && !(viewMode === 'semantics' && semanticsFrom === 'patterns') && (
           <SearchBox onSearch={handleSearch} isLoading={isLoading} />
         )}
 
@@ -330,6 +355,12 @@ function App() {
 
         {viewMode === 'changesets' && (
           <ChangesetPanel onBack={handleBack} />
+        )}
+
+        {(viewMode === 'patterns' || (viewMode === 'semantics' && semanticsFrom === 'patterns')) && (
+          <div hidden={viewMode !== 'patterns'}>
+            <PatternsPanel onBack={handleBack} onViewSemantics={handleViewMemberSemantics} />
+          </div>
         )}
       </main>
     </div>

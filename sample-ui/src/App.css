@@ -2078,3 +2078,205 @@
 .job-succeeded { color: #28a745; }
 .job-failed { color: #d9534f; }
 .job-cancelled { color: #b45309; }
+
+/* ═══════════════════════════════════════════════════════════
+   Patterns Panel
+   ═══════════════════════════════════════════════════════════ */
+
+.patterns-button {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  background-color: transparent;
+  color: #0f766e;
+  border: 1px solid #0f766e;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.patterns-button:hover,
+.patterns-button.active {
+  background-color: #0f766e;
+  color: white;
+}
+
+.patterns-panel {
+  width: 100%;
+}
+
+.patterns-layout {
+  display: grid;
+  grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+  text-align: left;
+}
+
+@media (max-width: 760px) {
+  .patterns-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.patterns-list {
+  position: sticky;
+  top: 1rem;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 0.5rem;
+}
+
+.patterns-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.patterns-list-filter {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.9rem;
+}
+
+.patterns-count {
+  margin: 0.5rem 0.25rem;
+  font-size: 0.8rem;
+  color: #6c757d;
+}
+
+.patterns-list-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.9rem;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: #213547;
+  cursor: pointer;
+}
+
+.patterns-list-item:hover {
+  background-color: #f0fdfa;
+}
+
+.patterns-list-item.active {
+  background-color: #0f766e;
+  color: white;
+}
+
+.patterns-detail {
+  min-width: 0;
+}
+
+.patterns-name {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #213547;
+}
+
+.patterns-id {
+  margin: 0.15rem 0 0.75rem;
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.patterns-definition {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.25rem 1rem;
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+}
+
+.patterns-definition dt {
+  font-weight: 600;
+  color: #495057;
+}
+
+.patterns-definition dd {
+  margin: 0;
+  color: #213547;
+}
+
+.patterns-subhead {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 1rem;
+  color: #213547;
+}
+
+.patterns-total {
+  font-weight: normal;
+  color: #6c757d;
+}
+
+.patterns-fields td,
+.patterns-fields th,
+.patterns-members td,
+.patterns-members th {
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+.patterns-member-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.patterns-member-filter input[type='search'] {
+  flex: 1 1 18rem;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.9rem;
+}
+
+.patterns-member-filter label {
+  font-size: 0.85rem;
+  color: #495057;
+}
+
+.patterns-pager {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin: 0.5rem 0;
+  font-size: 0.85rem;
+  color: #495057;
+}
+
+.patterns-pager .link-button {
+  margin-left: 0;
+}
+
+.patterns-pager .link-button:disabled {
+  color: #adb5bd;
+  cursor: default;
+  text-decoration: none;
+}
+
+.patterns-members-scroll {
+  overflow-x: auto;
+}
+
+.patterns-members.stale {
+  opacity: 0.6;
+}
+
+.patterns-component {
+  margin-left: 0;
+  text-align: left;
+}
+
+.patterns-value {
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

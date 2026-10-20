@@ -387,3 +387,58 @@ export type ExportRequest = {
   toEpochMillis?: number;
   membershipTagIds?: string[];
 };
+
+// ── Patterns ─────────────────────────────────────────────────────────
+
+/** One field of a pattern's semantics. */
+export type PatternFieldDefinition = {
+  index: number;
+  meaning: string;
+  purpose?: string;
+  dataType?: string;
+};
+
+/** A pattern and its definition, as of its latest version. */
+export type PatternSummary = {
+  patternId: string;
+  name: string;
+  meaning?: string;
+  purpose?: string;
+  fields: PatternFieldDefinition[];
+  stamp?: SemanticStampInfo;
+};
+
+export type PatternsResponse = {
+  patterns?: PatternSummary[];
+  success: boolean;
+  errorMessage?: string;
+};
+
+/** A member of a pattern: one semantic, its referenced component and its named fields. */
+export type PatternMember = {
+  semanticId: string;
+  referencedComponentId: string;
+  referencedComponentName: string;
+  fields: { name: string; value: string }[];
+  stamp?: SemanticStampInfo;
+};
+
+export type PatternMembersResponse = {
+  patternId: string;
+  patternName?: string;
+  totalCount?: number;
+  offset?: number;
+  hasMore?: boolean;
+  members?: PatternMember[];
+  success: boolean;
+  errorMessage?: string;
+};
+
+/** Which of a pattern's members to list: a page, optionally filtered by referenced component. */
+export type PatternMembersQuery = {
+  patternId: string;
+  offset: number;
+  limit: number;
+  referencedComponentText?: string;
+  referencedComponentId?: string;
+};

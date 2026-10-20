@@ -24,6 +24,9 @@ import type {
   SavedStampCoordinateResponse,
   StampCoordinateSettings,
   SearchSortOption,
+  PatternsResponse,
+  PatternMembersQuery,
+  PatternMembersResponse,
 } from './types';
 
 const GR_API_BASE_URL = 'http://localhost:8085/api/ike/graphrag';
@@ -272,6 +275,40 @@ export async function kgGetSemantics(
   appendCoordinateParams(params, coords);
 
   const response = await fetch(`${KG_API_BASE_URL}/semantics?${params}`, {
+    method: 'GET',
+    headers: { accept: '*/*' },
+  });
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function listPatterns(): Promise<PatternsResponse> {
+  const response = await fetch(`${KG_API_BASE_URL}/patterns`, {
+    method: 'GET',
+    headers: { accept: '*/*' },
+  });
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function listPatternMembers(query: PatternMembersQuery): Promise<PatternMembersResponse> {
+  const params = new URLSearchParams({
+    patternId: query.patternId,
+    offset: query.offset.toString(),
+    limit: query.limit.toString(),
+  });
+  if (query.referencedComponentText) params.set('referencedComponentText', query.referencedComponentText);
+  if (query.referencedComponentId) params.set('referencedComponentId', query.referencedComponentId);
+
+  const response = await fetch(`${KG_API_BASE_URL}/patterns/members?${params}`, {
     method: 'GET',
     headers: { accept: '*/*' },
   });
