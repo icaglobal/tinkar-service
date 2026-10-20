@@ -1,4 +1,4 @@
-# Sample Tinkar Web App
+# Komet Web
 
 ## Prerequisite
 Node 24

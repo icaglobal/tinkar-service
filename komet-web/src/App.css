@@ -2280,3 +2280,46 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   Sign-in
+   ═══════════════════════════════════════════════════════════ */
+
+.login-panel {
+  width: 100%;
+  max-width: 420px;
+  margin: 2rem auto 0;
+  text-align: left;
+}
+
+.login-form {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.login-form label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #495057;
+  margin-top: 0.5rem;
+}
+
+.login-form select,
+.login-form input {
+  padding: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.login-form button {
+  margin-top: 1rem;
+  justify-self: start;
+}
+
+.signed-in {
+  font-size: 0.85rem;
+  color: #495057;
+}
+
+.signed-in .link-button {
+  margin-left: 0.6rem;
+}

@@ -27,17 +27,91 @@ import type {
   PatternsResponse,
   PatternMembersQuery,
   PatternMembersResponse,
+  AuthStatus,
+  LoginResponse,
 } from './types';
+import { clearSession, getSession, setSession, type SignedInAuthor } from './auth';
 
 const GR_API_BASE_URL = 'http://localhost:8085/api/ike/graphrag';
 const KG_API_BASE_URL = 'http://localhost:8085/api/ike/knowledgegraph';
 const SERVER_ORIGIN = 'http://localhost:8085';
 const ADMIN_API_BASE_URL = `${SERVER_ORIGIN}/api/ike/admin`;
+const AUTH_API_BASE_URL = `${SERVER_ORIGIN}/api/auth`;
+
+/**
+ * fetch, with the signed-in session's token. A 401 ends the session: the token expired or the
+ * service no longer accepts it, and the app goes back to the sign-in screen.
+ */
+async function authFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  const session = getSession();
+  const headers = new Headers(init.headers);
+  if (session) headers.set('Authorization', `Bearer ${session.token}`);
+  const response = await fetch(input, { ...init, headers });
+  if (response.status === 401 && session) {
+    clearSession();
+  }
+  return response;
+}
+
+// ── Signing in ───────────────────────────────────────────────────────
+
+/** Whether the service needs a token, and who the current token names. */
+export async function getAuthStatus(): Promise<AuthStatus> {
+  const response = await authFetch(`${AUTH_API_BASE_URL}/status`);
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/** The authors a caller can sign in as, by name. */
+export async function listAuthors(): Promise<SignedInAuthor[]> {
+  const response = await fetch(`${AUTH_API_BASE_URL}/authors`);
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+  return (await response.json()).authors;
+}
+
+/** Signs in as an author, starting a session; throws with the service's reason when refused. */
+export async function login(username: string, password: string): Promise<void> {
+  const response = await fetch(`${AUTH_API_BASE_URL}/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  const body: LoginResponse | null = await response.json().catch(() => null);
+  if (!response.ok || !body?.success || !body.token || !body.author || body.expiresAt == null) {
+    throw new Error(body?.errorMessage ?? `Sign-in failed: ${response.status} ${response.statusText}`);
+  }
+  setSession({ token: body.token, expiresAt: body.expiresAt, author: body.author });
+}
+
+/**
+ * Downloads a file the service serves, sending the token: a plain link cannot, so the file is
+ * fetched and then saved under the name the service gives it.
+ */
+export async function downloadFile(downloadUrl: string, fallbackName: string): Promise<void> {
+  const response = await authFetch(absoluteDownloadUrl(downloadUrl));
+  if (!response.ok) {
+    throw new Error(`Download failed: ${response.status} ${response.statusText}`);
+  }
+  const disposition = response.headers.get('Content-Disposition') ?? '';
+  const name = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition)?.[1] ?? fallbackName;
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = decodeURIComponent(name);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
 
 export async function search(query: string): Promise<ConceptSearchResponse> {
   const params = new URLSearchParams({ query });
 
-  const response = await fetch(`${GR_API_BASE_URL}/search?${params}`, {
+  const response = await authFetch(`${GR_API_BASE_URL}/search?${params}`, {
     method: 'GET',
     headers: { accept: '*/*' },
   });
@@ -58,7 +132,7 @@ export async function conceptSearch(
     maxResults: maxResults.toString(),
   });
 
-  const response = await fetch(`${GR_API_BASE_URL}/concept-search?${params}`, {
+  const response = await authFetch(`${GR_API_BASE_URL}/concept-search?${params}`, {
     method: 'GET',
     headers: {
       accept: '*/*',
@@ -75,7 +149,7 @@ export async function conceptSearch(
 export async function getDescendants(conceptId: string): Promise<DescendantsResponse> {
   const params = new URLSearchParams({ conceptId });
 
-  const response = await fetch(`${GR_API_BASE_URL}/descendants?${params}`, {
+  const response = await authFetch(`${GR_API_BASE_URL}/descendants?${params}`, {
     method: 'GET',
     headers: {
       accept: '*/*',
@@ -95,7 +169,7 @@ export async function removeDescendant(
 ): Promise<DescendantOperationResponse> {
   const params = new URLSearchParams({ parentConceptId, descendantConceptId });
 
-  const response = await fetch(`${KG_API_BASE_URL}/descendants?${params}`, {
+  const response = await authFetch(`${KG_API_BASE_URL}/descendants?${params}`, {
     method: 'DELETE',
     headers: {
       accept: '*/*',
@@ -115,7 +189,7 @@ export async function addDescendant(
 ): Promise<DescendantOperationResponse> {
   const params = new URLSearchParams({ parentConceptId, descendantConceptId });
 
-  const response = await fetch(`${KG_API_BASE_URL}/descendants?${params}`, {
+  const response = await authFetch(`${KG_API_BASE_URL}/descendants?${params}`, {
     method: 'POST',
     headers: {
       accept: '*/*',
@@ -135,7 +209,7 @@ export async function createAndAddDescendant(
 ): Promise<DescendantOperationResponse> {
   const params = new URLSearchParams({ parentConceptId, conceptName });
 
-  const response = await fetch(`${KG_API_BASE_URL}/descendants/create?${params}`, {
+  const response = await authFetch(`${KG_API_BASE_URL}/descendants/create?${params}`, {
     method: 'POST',
     headers: {
       accept: '*/*',
@@ -159,7 +233,7 @@ export async function createAndAddDescendant(
 export async function createConcept(
   request: CreateConceptRequest
 ): Promise<ConceptCreationResponse> {
-  const response = await fetch(`${KG_API_BASE_URL}/concepts`, {
+  const response = await authFetch(`${KG_API_BASE_URL}/concepts`, {
     method: 'POST',
     headers: {
       accept: '*/*',
@@ -186,7 +260,7 @@ export async function conceptSearchWithSort(
     sortBy,
   });
 
-  const response = await fetch(`${GR_API_BASE_URL}/concept-search-sorted?${params}`, {
+  const response = await authFetch(`${GR_API_BASE_URL}/concept-search-sorted?${params}`, {
     method: 'GET',
     headers: {
       accept: '*/*',
@@ -204,7 +278,7 @@ export async function conceptSearchWithSort(
 export async function getConceptById(conceptId: string): Promise<ConceptSearchResponse> {
   const params = new URLSearchParams({ conceptId });
 
-  const response = await fetch(`${GR_API_BASE_URL}/entity?${params}`, {
+  const response = await authFetch(`${GR_API_BASE_URL}/entity?${params}`, {
     method: 'GET',
     headers: { accept: '*/*' },
   });
@@ -219,7 +293,7 @@ export async function getConceptById(conceptId: string): Promise<ConceptSearchRe
 export async function getChildren(conceptId: string): Promise<ConceptSearchResponse> {
   const params = new URLSearchParams({ conceptId });
 
-  const response = await fetch(`${GR_API_BASE_URL}/children?${params}`, {
+  const response = await authFetch(`${GR_API_BASE_URL}/children?${params}`, {
     method: 'GET',
     headers: { accept: '*/*' },
   });
@@ -234,7 +308,7 @@ export async function getChildren(conceptId: string): Promise<ConceptSearchRespo
 export async function getLidrRecords(testKitConceptId: string): Promise<ConceptSearchResponse> {
   const params = new URLSearchParams({ testKitConceptId });
 
-  const response = await fetch(`${GR_API_BASE_URL}/lidr-records?${params}`, {
+  const response = await authFetch(`${GR_API_BASE_URL}/lidr-records?${params}`, {
     method: 'GET',
     headers: { accept: '*/*' },
   });
@@ -274,7 +348,7 @@ export async function kgGetSemantics(
   const params = new URLSearchParams({ conceptId });
   appendCoordinateParams(params, coords);
 
-  const response = await fetch(`${KG_API_BASE_URL}/semantics?${params}`, {
+  const response = await authFetch(`${KG_API_BASE_URL}/semantics?${params}`, {
     method: 'GET',
     headers: { accept: '*/*' },
   });
@@ -287,7 +361,7 @@ export async function kgGetSemantics(
 }
 
 export async function listPatterns(): Promise<PatternsResponse> {
-  const response = await fetch(`${KG_API_BASE_URL}/patterns`, {
+  const response = await authFetch(`${KG_API_BASE_URL}/patterns`, {
     method: 'GET',
     headers: { accept: '*/*' },
   });
@@ -308,7 +382,7 @@ export async function listPatternMembers(query: PatternMembersQuery): Promise<Pa
   if (query.referencedComponentText) params.set('referencedComponentText', query.referencedComponentText);
   if (query.referencedComponentId) params.set('referencedComponentId', query.referencedComponentId);
 
-  const response = await fetch(`${KG_API_BASE_URL}/patterns/members?${params}`, {
+  const response = await authFetch(`${KG_API_BASE_URL}/patterns/members?${params}`, {
     method: 'GET',
     headers: { accept: '*/*' },
   });
@@ -327,7 +401,7 @@ export async function kgGetComments(
   const params = new URLSearchParams({ conceptId });
   appendCoordinateParams(params, coords);
 
-  const response = await fetch(`${KG_API_BASE_URL}/comments?${params}`, {
+  const response = await authFetch(`${KG_API_BASE_URL}/comments?${params}`, {
     method: 'GET',
     headers: { accept: '*/*' },
   });
@@ -346,7 +420,7 @@ export async function kgGetChangeHistory(
   const params = new URLSearchParams({ entityId });
   appendCoordinateParams(params, coords);
 
-  const response = await fetch(`${KG_API_BASE_URL}/change-history?${params}`, {
+  const response = await authFetch(`${KG_API_BASE_URL}/change-history?${params}`, {
     method: 'GET',
     headers: { accept: '*/*' },
   });
@@ -365,7 +439,7 @@ export async function kgGetChildren(
   const params = new URLSearchParams({ conceptId });
   appendCoordinateParams(params, coords);
 
-  const response = await fetch(`${KG_API_BASE_URL}/children?${params}`, {
+  const response = await authFetch(`${KG_API_BASE_URL}/children?${params}`, {
     method: 'GET',
     headers: { accept: '*/*' },
   });
@@ -384,7 +458,7 @@ export async function kgGetDescendants(
   const params = new URLSearchParams({ conceptId });
   appendCoordinateParams(params, coords);
 
-  const response = await fetch(`${KG_API_BASE_URL}/descendants?${params}`, {
+  const response = await authFetch(`${KG_API_BASE_URL}/descendants?${params}`, {
     method: 'GET',
     headers: { accept: '*/*' },
   });
@@ -403,7 +477,7 @@ export async function kgGetConceptChangeHistory(
   const params = new URLSearchParams({ conceptId });
   appendCoordinateParams(params, coords);
 
-  const response = await fetch(`${KG_API_BASE_URL}/concept-change-history?${params}`, {
+  const response = await authFetch(`${KG_API_BASE_URL}/concept-change-history?${params}`, {
     method: 'GET',
     headers: { accept: '*/*' },
   });
@@ -420,7 +494,7 @@ export async function kgGetConceptChangeHistory(
 export async function saveStampCoordinate(
   settings: StampCoordinateSettings,
 ): Promise<SavedStampCoordinateResponse> {
-  const response = await fetch(`${KG_API_BASE_URL}/coordinates/stamp`, {
+  const response = await authFetch(`${KG_API_BASE_URL}/coordinates/stamp`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', accept: '*/*' },
     body: JSON.stringify(settings),
@@ -434,7 +508,7 @@ export async function saveStampCoordinate(
 }
 
 export async function listStampCoordinates(): Promise<SavedStampCoordinateResponse[]> {
-  const response = await fetch(`${KG_API_BASE_URL}/coordinates/stamp`, {
+  const response = await authFetch(`${KG_API_BASE_URL}/coordinates/stamp`, {
     method: 'GET',
     headers: { accept: '*/*' },
   });
@@ -449,7 +523,7 @@ export async function listStampCoordinates(): Promise<SavedStampCoordinateRespon
 export async function saveNavigationCoordinate(
   settings: NavigationCoordinateSettings,
 ): Promise<SavedNavigationCoordinateResponse> {
-  const response = await fetch(`${KG_API_BASE_URL}/coordinates/navigation`, {
+  const response = await authFetch(`${KG_API_BASE_URL}/coordinates/navigation`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', accept: '*/*' },
     body: JSON.stringify(settings),
@@ -463,7 +537,7 @@ export async function saveNavigationCoordinate(
 }
 
 export async function listNavigationCoordinates(): Promise<SavedNavigationCoordinateResponse[]> {
-  const response = await fetch(`${KG_API_BASE_URL}/coordinates/navigation`, {
+  const response = await authFetch(`${KG_API_BASE_URL}/coordinates/navigation`, {
     method: 'GET',
     headers: { accept: '*/*' },
   });
@@ -478,7 +552,7 @@ export async function listNavigationCoordinates(): Promise<SavedNavigationCoordi
 export async function saveLanguageCoordinate(
   settings: LanguageCoordinateSettings,
 ): Promise<SavedLanguageCoordinateResponse> {
-  const response = await fetch(`${KG_API_BASE_URL}/coordinates/language`, {
+  const response = await authFetch(`${KG_API_BASE_URL}/coordinates/language`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', accept: '*/*' },
     body: JSON.stringify(settings),
@@ -492,7 +566,7 @@ export async function saveLanguageCoordinate(
 }
 
 export async function listLanguageCoordinates(): Promise<SavedLanguageCoordinateResponse[]> {
-  const response = await fetch(`${KG_API_BASE_URL}/coordinates/language`, {
+  const response = await authFetch(`${KG_API_BASE_URL}/coordinates/language`, {
     method: 'GET',
     headers: { accept: '*/*' },
   });
@@ -515,7 +589,7 @@ export async function getSemanticsWithCoordinate(
   if (navigationCoordinateId) params.set('navigationCoordinateId', navigationCoordinateId);
   if (languageCoordinateId) params.set('languageCoordinateId', languageCoordinateId);
 
-  const response = await fetch(`${KG_API_BASE_URL}/semantics-by-coordinate?${params}`, {
+  const response = await authFetch(`${KG_API_BASE_URL}/semantics-by-coordinate?${params}`, {
     method: 'GET',
     headers: { accept: '*/*' },
   });
@@ -568,7 +642,7 @@ export async function watchReasonerStreaming(
  * running.
  */
 export async function cancelReasoner(): Promise<void> {
-  const response = await fetch(`${ADMIN_API_BASE_URL}/reasoner/cancel`, { method: 'POST' });
+  const response = await authFetch(`${ADMIN_API_BASE_URL}/reasoner/cancel`, { method: 'POST' });
   if (response.status === 409) {
     throw new Error('The reasoner is not running');
   }
@@ -592,7 +666,7 @@ async function streamReasoner(
   { onRun, onPhase }: ReasonerStreamHandlers,
   signal?: AbortSignal
 ): Promise<ReasonerResultsResponse | null> {
-  const response = await fetch(`${ADMIN_API_BASE_URL}/reasoner/stream`, {
+  const response = await authFetch(`${ADMIN_API_BASE_URL}/reasoner/stream`, {
     method,
     headers: { accept: 'text/event-stream' },
     signal,
@@ -668,7 +742,7 @@ export async function importChangesetStreaming(
   body.append('file', file);
   body.append('useMultiPass', 'true');
   return followJob(
-    fetch(`${ADMIN_API_BASE_URL}/import/stream`, {
+    authFetch(`${ADMIN_API_BASE_URL}/import/stream`, {
       method: 'POST',
       headers: { accept: 'text/event-stream' },
       body,
@@ -685,7 +759,7 @@ export async function exportStreaming(
   signal?: AbortSignal
 ): Promise<ChangesetJobResult> {
   return followJob(
-    fetch(`${ADMIN_API_BASE_URL}/export/stream`, {
+    authFetch(`${ADMIN_API_BASE_URL}/export/stream`, {
       method: 'POST',
       headers: { accept: 'text/event-stream', 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
@@ -702,7 +776,7 @@ export async function watchJob(
   signal?: AbortSignal
 ): Promise<ChangesetJobResult> {
   return followJob(
-    fetch(`${ADMIN_API_BASE_URL}/jobs/${jobId}/stream`, {
+    authFetch(`${ADMIN_API_BASE_URL}/jobs/${jobId}/stream`, {
       headers: { accept: 'text/event-stream' },
       signal,
     }),
@@ -712,7 +786,7 @@ export async function watchJob(
 
 /** Jobs from the last hour — queued, running and finished — oldest first. */
 export async function listJobs(): Promise<JobSummary[]> {
-  const response = await fetch(`${ADMIN_API_BASE_URL}/jobs`);
+  const response = await authFetch(`${ADMIN_API_BASE_URL}/jobs`);
   if (!response.ok) {
     throw new Error(`API error: ${response.status} ${response.statusText}`);
   }
@@ -721,7 +795,7 @@ export async function listJobs(): Promise<JobSummary[]> {
 
 /** Asks a queued or running export or reasoner run to stop. Throws with the server's reason if it cannot. */
 export async function cancelJob(jobId: string): Promise<void> {
-  const response = await fetch(`${ADMIN_API_BASE_URL}/jobs/${jobId}/cancel`, { method: 'POST' });
+  const response = await authFetch(`${ADMIN_API_BASE_URL}/jobs/${jobId}/cancel`, { method: 'POST' });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
     throw new Error(body?.error ?? `API error: ${response.status} ${response.statusText}`);

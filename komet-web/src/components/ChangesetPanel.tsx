@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  absoluteDownloadUrl,
   cancelJob,
+  downloadFile,
   exportStreaming,
   importChangesetStreaming,
   listJobs,
@@ -188,6 +188,15 @@ export function ChangesetPanel({ onBack }: ChangesetPanelProps) {
     jobs.refetch();
   };
 
+  // Fetched and saved rather than linked: a link cannot send the sign-in token.
+  const download = async (downloadUrl: string, fileName: string) => {
+    try {
+      await downloadFile(downloadUrl, fileName);
+    } catch (e) {
+      setFollowed((f) => ({ ...f, error: e instanceof Error ? e.message : 'Download failed' }));
+    }
+  };
+
   const rejoin = (job: JobSummary) => {
     followedKindRef.current = job.kind;
     follow((handlers, signal) => watchJob(job.id, handlers, signal));
@@ -312,9 +321,12 @@ export function ChangesetPanel({ onBack }: ChangesetPanelProps) {
               </table>
               {result.downloadUrl && (
                 <p>
-                  <a className="changeset-download" href={absoluteDownloadUrl(result.downloadUrl)}>
+                  <button
+                    className="link-button changeset-download"
+                    onClick={() => download(result.downloadUrl!, result.fileName ?? 'export.zip')}
+                  >
                     Download {result.fileName}
-                  </a>
+                  </button>
                   {result.fileSizeBytes != null && <span className="reasoner-hint"> ({formatBytes(result.fileSizeBytes)}, kept for an hour)</span>}
                 </p>
               )}
@@ -339,7 +351,12 @@ export function ChangesetPanel({ onBack }: ChangesetPanelProps) {
                   <td className={`job-state job-${j.state.toLowerCase()}`}>{j.state.toLowerCase()}</td>
                   <td className="changeset-job-actions">
                     {j.kind === 'EXPORT' && j.state === 'SUCCEEDED' && (
-                      <a href={absoluteDownloadUrl(`/api/ike/admin/export/${j.id}/file`)}>Download</a>
+                      <button
+                        className="link-button"
+                        onClick={() => download(`/api/ike/admin/export/${j.id}/file`, `export-${j.id}.zip`)}
+                      >
+                        Download
+                      </button>
                     )}
                     {j.kind !== 'REASONER' && j.id !== job?.jobId && (
                       <button className="link-button" onClick={() => rejoin(j)}>

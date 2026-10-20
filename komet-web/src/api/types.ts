@@ -442,3 +442,18 @@ export type PatternMembersQuery = {
   referencedComponentText?: string;
   referencedComponentId?: string;
 };
+
+// ── Signing in ───────────────────────────────────────────────────────
+
+export type AuthStatus = {
+  enabled: boolean;
+  signedInAs?: { authorId: string; name: string };
+};
+
+export type LoginResponse = {
+  success: boolean;
+  token?: string;
+  expiresAt?: number;
+  author?: { authorId: string; name: string };
+  errorMessage?: string;
+};

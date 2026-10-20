@@ -7,6 +7,9 @@ import org.eclipse.collections.api.set.primitive.MutableLongSet;
 import dev.ikm.tinkar.entity.changeset.SchemaIds;
 import dev.ikm.tinkar.service.service.CoordinateFactory;
 import dev.ikm.tinkar.service.service.KnownComponents;
+import dev.ikm.tinkar.service.auth.AuthProperties;
+import dev.ikm.tinkar.service.auth.CurrentAuthor;
+import org.springframework.beans.factory.annotation.Autowired;
 import dev.ikm.tinkar.service.service.UnknownComponentException;
 import dev.ikm.tinkar.common.id.*;
 import dev.ikm.tinkar.common.service.EntityCountSummary;
@@ -108,6 +111,18 @@ public class TinkarServiceImpl implements TinkarService {
 
     public TinkarServiceImpl(TinkarPrimitive primitive) {
         this.primitive = primitive;
+    }
+
+    /** What to do when a commit's new stamps name an author other than the signed-in one. */
+    private AuthProperties.CommitAuthorCheck commitAuthorCheck = AuthProperties.CommitAuthorCheck.LOG;
+
+    @Autowired(required = false)
+    void setAuthProperties(AuthProperties auth) {
+        this.commitAuthorCheck = auth.commitAuthorCheck();
+    }
+
+    void setCommitAuthorCheck(AuthProperties.CommitAuthorCheck commitAuthorCheck) {
+        this.commitAuthorCheck = commitAuthorCheck;
     }
 
     /**
@@ -848,7 +863,7 @@ public class TinkarServiceImpl implements TinkarService {
                 StampEntity<?> stamp = transaction.getStamp(
                         dev.ikm.tinkar.terms.State.ACTIVE,
                         currentTime,
-                        KernelConcept.USER.nid(),
+                        CurrentAuthor.nidForStamp(),
                         KernelConcept.SOLOR_OVERLAY_MODULE.nid(),
                         KernelConcept.DEVELOPMENT_PATH.nid()
                 );
@@ -2582,7 +2597,7 @@ public class TinkarServiceImpl implements TinkarService {
                 StampEntity<?> stamp = transaction.getStamp(
                         dev.ikm.tinkar.terms.State.ACTIVE,
                         currentTime,
-                        KernelConcept.USER.nid(),
+                        CurrentAuthor.nidForStamp(),
                         KernelConcept.SOLOR_OVERLAY_MODULE.nid(),
                         KernelConcept.DEVELOPMENT_PATH.nid()
                 );
@@ -2648,7 +2663,7 @@ public class TinkarServiceImpl implements TinkarService {
                 StampEntity<?> stamp = transaction.getStamp(
                         dev.ikm.tinkar.terms.State.ACTIVE,
                         currentTime,
-                        KernelConcept.USER.nid(),
+                        CurrentAuthor.nidForStamp(),
                         KernelConcept.SOLOR_OVERLAY_MODULE.nid(),
                         KernelConcept.DEVELOPMENT_PATH.nid()
                 );
@@ -2861,7 +2876,7 @@ public class TinkarServiceImpl implements TinkarService {
                 StampEntity<?> stamp = transaction.getStamp(
                         dev.ikm.tinkar.terms.State.ACTIVE,
                         currentTime,
-                        KernelConcept.USER.nid(),
+                        CurrentAuthor.nidForStamp(),
                         KernelConcept.SOLOR_OVERLAY_MODULE.nid(),
                         KernelConcept.DEVELOPMENT_PATH.nid()
                 );
@@ -3101,6 +3116,45 @@ public class TinkarServiceImpl implements TinkarService {
         }
     }
 
+    /**
+     * Checks that a commit's new stamps name the signed-in author: a signed-in caller writes as
+     * itself, not as someone else. A stamp this store already holds is history the commit carries
+     * along, and is not checked. Without a signed-in author, or with the check off, nothing is.
+     *
+     * @return why the commit is refused, or null to store it
+     */
+    String checkCommitAuthors(List<StampEntity<StampEntityVersion>> stamps, String transactionName) {
+        Optional<String> signedIn = CurrentAuthor.id();
+        if (signedIn.isEmpty() || commitAuthorCheck == AuthProperties.CommitAuthorCheck.OFF) {
+            return null;
+        }
+        OptionalLong signedInNid = dev.ikm.tinkar.service.auth.Authors.nidOf(signedIn.get());
+        List<String> others = new ArrayList<>();
+        for (StampEntity<StampEntityVersion> stamp : stamps) {
+            if (EntityHandle.get(stamp.nid()).isPresent()) {
+                continue;
+            }
+            long authorNid = stamp.authorNid();
+            if (signedInNid.isEmpty() || authorNid != signedInNid.getAsLong()) {
+                others.add(getDescriptionForNid(authorNid) + " (" + identifierFor(authorNid) + ")");
+            }
+        }
+        if (others.isEmpty()) {
+            return null;
+        }
+        String signedInName = signedInNid.isPresent()
+                ? getDescriptionForNid(signedInNid.getAsLong()) + " (" + signedIn.get() + ")"
+                : signedIn.get();
+        String message = "Commit '" + transactionName + "' has " + others.size() + " new stamp(s) by another author than "
+                + signedInName + ", the one signed in: " + String.join(", ", new LinkedHashSet<>(others));
+        if (commitAuthorCheck == AuthProperties.CommitAuthorCheck.REJECT) {
+            log.warn("Refused: {}", message);
+            return message;
+        }
+        log.warn("{} (stored: tinkar.auth.commit-author-check=log)", message);
+        return null;
+    }
+
     @Override
     public CommitEntitiesResponse commitEntities(List<TinkarMsg> entities, String transactionName) {
         long startTime = System.currentTimeMillis();
@@ -3134,6 +3188,15 @@ public class TinkarServiceImpl implements TinkarService {
             List<StampEntity<StampEntityVersion>> decodedStamps = new ArrayList<>();
             for (TinkarMsg message : entities) {
                 transformer.transform(message, decodedEntities::add, decodedStamps::add);
+            }
+
+            String authorRefusal = checkCommitAuthors(decodedStamps, name);
+            if (authorRefusal != null) {
+                return CommitEntitiesResponse.newBuilder()
+                        .setSuccess(false)
+                        .setErrorMessage(authorRefusal)
+                        .setCreatedAt(System.currentTimeMillis())
+                        .build();
             }
 
             // Stamps first: every entity version cites its stamp by NID, so the stamp has to be
@@ -3306,7 +3369,7 @@ public class TinkarServiceImpl implements TinkarService {
             StampEntity<?> stamp = transaction.getStamp(
                     dev.ikm.tinkar.terms.State.ACTIVE,
                     System.currentTimeMillis(),
-                    KernelConcept.USER.nid(),
+                    CurrentAuthor.nidForStamp(),
                     KernelConcept.SOLOR_OVERLAY_MODULE.nid(),
                     KernelConcept.DEVELOPMENT_PATH.nid());
 

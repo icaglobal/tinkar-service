@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { clearSession, getSession, onSessionChange, type Session } from './api/auth';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { SearchBox } from './components/SearchBox';
 import { ResultsTable } from './components/ResultsTable';
@@ -10,7 +11,8 @@ import { CreateConceptPanel } from './components/CreateConceptPanel';
 import { ReasonerPanel } from './components/ReasonerPanel';
 import { ChangesetPanel } from './components/ChangesetPanel';
 import { PatternsPanel } from './components/PatternsPanel';
-import { conceptSearchWithSort, getDescendants, kgGetSemantics, removeDescendant, createAndAddDescendant } from './api/tinkarApi';
+import { LoginPanel } from './components/LoginPanel';
+import { getAuthStatus, conceptSearchWithSort, getDescendants, kgGetSemantics, removeDescendant, createAndAddDescendant } from './api/tinkarApi';
 import type { SearchSortOption } from './api/types';
 import './App.css';
 
@@ -36,6 +38,16 @@ function App() {
   const [semanticsFrom, setSemanticsFrom] = useState<'search' | 'patterns'>('search');
 
   const queryClient = useQueryClient();
+
+  // Signing in: needed only when the service has authentication on.
+  const [session, setSessionState] = useState<Session | null>(getSession);
+  useEffect(() => onSessionChange((next) => {
+    setSessionState(next);
+    // Answers cached for one author are not shown to the next.
+    queryClient.clear();
+  }), [queryClient]);
+  const authStatus = useQuery({ queryKey: ['auth-status'], queryFn: getAuthStatus, staleTime: Infinity, retry: false });
+  const needsSignIn = authStatus.data?.enabled === true && session === null;
 
   const {
     data: searchData,
@@ -151,11 +163,34 @@ function App() {
   const isError = viewMode === 'descendants' ? isDescendantsError : viewMode === 'semantics' ? isSemanticsError : isSearchError;
   const error = viewMode === 'descendants' ? descendantsError : viewMode === 'semantics' ? semanticsError : searchError;
 
+  if (needsSignIn) {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <div className="header-row">
+            <h1>Komet Web</h1>
+          </div>
+        </header>
+        <main className="app-main">
+          <LoginPanel />
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       <header className="app-header">
         <div className="header-row">
-          <h1>Tinkar Search</h1>
+          <h1>Komet Web</h1>
+          {session && (
+            <div className="signed-in">
+              Signed in as <strong>{session.author.name}</strong>
+              <button type="button" className="link-button" onClick={clearSession}>
+                Sign out
+              </button>
+            </div>
+          )}
           <div className="header-buttons">
             <button
               className={`coordinates-button ${viewMode === 'coordinates' ? 'active' : ''}`}
