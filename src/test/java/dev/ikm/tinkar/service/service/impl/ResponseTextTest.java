@@ -1,5 +1,7 @@
 package dev.ikm.tinkar.service.service.impl;
 
+import dev.ikm.tinkar.common.id.impl.NidLayout;
+import dev.ikm.tinkar.common.id.Nid;
 import org.eclipse.collections.impl.factory.primitive.LongObjectMaps;
 import org.eclipse.collections.api.map.primitive.MutableLongObjectMap;
 import dev.ikm.tinkar.terms.KernelConcept;
@@ -81,18 +83,14 @@ import static org.assertj.core.api.Assertions.fail;
  * reached with components written here: a concept with no description, and semantics that hold
  * it in a component field, in an id set, and in a definition tree.
  *
- * <p>The ephemeral store numbers components upward from {@code Integer.MIN_VALUE + 1}, so in
- * decimal every nid it assigns is a minus sign and ten digits beginning {@code 21474} or
- * {@code 21473}. {@link #assertNoNid} looks for a number of that shape and for the forms a nid
- * has been written in: {@code <nid>}, {@code nid: N}, and {@code [nid N]}.
+ * <p>{@link #assertNoNid} looks for a number the store holds an entity under ({@link StoreNids}),
+ * whatever the store's nid layout, and for the forms a nid has been written in: {@code <nid>},
+ * {@code nid: N}, and {@code [nid N]}.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class ResponseTextTest {
 
     private static final File PB_STARTER_DATA = new File("target/data/ike-starter-set-reasoned-pb.zip");
-
-    /** A nid of the ephemeral store in decimal: {@code Integer.MIN_VALUE} plus a small count. */
-    private static final Pattern EPHEMERAL_NID = Pattern.compile("-2147[34]\\d{5}(?!\\d)");
 
     /** The form {@code PrimitiveData.text} writes for a component with no description. */
     private static final Pattern ANGLE_BRACKET_NID = Pattern.compile("<-?\\d+>");
@@ -101,10 +99,12 @@ class ResponseTextTest {
     private static final Pattern LABELLED_NID = Pattern.compile("(?i)\\bnid\\b\\s*[=:]?\\s*-?\\d+");
 
     /**
-     * A nid the store has assigned to no component, so it has no public id for it: the store
-     * numbers components upward from the bottom of the int range and never reaches the top.
+     * A nid the store has assigned to no component, so it has no public id for it: the last
+     * element of the concept pattern in a 64-bit store, which numbers each pattern's elements up
+     * from 1; the top of the int range in a sequential store, which numbers components up from the
+     * bottom. Set once the store is open, since it depends on the store's nid layout.
      */
-    private static final long UNASSIGNED_NID = Integer.MAX_VALUE - 1;
+    private static long UNASSIGNED_NID;
 
     /** A word no description of the starter data holds; a comment written here does. */
     private static final String SEARCH_WORD = "quaggamarker";
@@ -144,8 +144,11 @@ class ResponseTextTest {
         dataRoot = Files.createTempDirectory("response-text-test").toFile();
         CachingService.clearAll();
         ServiceProperties.set(ServiceKeys.DATA_STORE_ROOT, dataRoot);
-        PrimitiveData.selectControllerByName("Load Ephemeral Store");
+        PrimitiveData.selectControllerByName("Load Memory-Only 64-bit Store");
         PrimitiveData.start();
+        UNASSIGNED_NID = NidLayout.active() == NidLayout.SIXTY_FOUR_BIT
+                ? Nid.compose64(2, Nid.MAX_SEQUENCE_64)
+                : Integer.MAX_VALUE - 1;
         long count = new LoadEntitiesFromProtobufFile(PB_STARTER_DATA).compute().getTotalCount();
         assertThat(count).as("entities loaded from the starter data").isPositive();
 
@@ -153,7 +156,7 @@ class ResponseTextTest {
 
         // The store is running, so the primitive layer attaches to it instead of opening one.
         service = new TinkarServiceImpl(
-                new TinkarPrimitiveImpl(dataRoot.getParent(), dataRoot.getName(), "Load Ephemeral Store"));
+                new TinkarPrimitiveImpl(dataRoot.getParent(), dataRoot.getName(), "Load Memory-Only 64-bit Store"));
     }
 
     @AfterAll
@@ -449,7 +452,7 @@ class ResponseTextTest {
      */
     private void writeTheComponentsUnderTest() {
         for (UUID uuid : List.of(UNDESCRIBED, HOLDER, IDENTIFIER, ID_SET, DEFINITION, BARE, COMMENTED, COMMENT)) {
-            assertThat(EPHEMERAL_NID.matcher(uuid.toString()).find())
+            assertThat(StoreNids.find(uuid.toString()).isPresent())
                     .as("a UUID written by the test must not look like a nid: " + uuid)
                     .isFalse();
         }
@@ -595,12 +598,13 @@ class ResponseTextTest {
      * the forms it has been written in, or one of the given nids in decimal.
      */
     private static void assertNoNid(String what, String text, long... nids) {
-        for (Pattern form : new Pattern[]{EPHEMERAL_NID, ANGLE_BRACKET_NID, LABELLED_NID}) {
+        for (Pattern form : new Pattern[]{ANGLE_BRACKET_NID, LABELLED_NID}) {
             Matcher matcher = form.matcher(text);
             if (matcher.find()) {
                 fail(what + " holds a nid: \"" + matcher.group() + "\" in:\n" + text);
             }
         }
+        StoreNids.find(text).ifPresent(nid -> fail(what + " holds the store's nid " + nid + " in:\n" + text));
         for (long nid : nids) {
             if (text.contains(Long.toString(nid))) {
                 fail(what + " holds the nid " + nid + " in:\n" + text);

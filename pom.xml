@@ -168,6 +168,13 @@
             <artifactId>data-spinedarray-provider</artifactId>
             <version>${tinkar-core.version}</version>
         </dependency>
+        <!-- The memory-only store the tests run on (IKE-Network/ike-issues#1313). -->
+        <dependency>
+            <groupId>dev.ikm.tinkar</groupId>
+            <artifactId>data-spinedarray64-provider</artifactId>
+            <version>${tinkar-core.version}</version>
+            <scope>test</scope>
+        </dependency>
 
         <!-- Lets SearchProvider open Lucene indexes written by the previous major Lucene
              version (e.g. codec Lucene912) instead of deleting and rebuilding them at
