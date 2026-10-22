@@ -18,10 +18,6 @@ import type {
   JobSummary,
 } from '../api/types';
 
-interface ChangesetPanelProps {
-  onBack: () => void;
-}
-
 /** The job this panel is following: what the server has said about it so far. */
 type FollowedJob = {
   job: JobAttachedEvent | null;
@@ -68,7 +64,7 @@ function kindLabel(kind: JobSummary['kind']): string {
  * only stops watching: the job carries on, and reopening the panel picks it back up. Imports
  * cannot be cancelled — stopped part way they would leave some entities written.
  */
-export function ChangesetPanel({ onBack }: ChangesetPanelProps) {
+export function ChangesetPanel() {
   const queryClient = useQueryClient();
   const [followed, setFollowed] = useState<FollowedJob>(EMPTY);
   const [busy, setBusy] = useState(false);
@@ -209,7 +205,6 @@ export function ChangesetPanel({ onBack }: ChangesetPanelProps) {
   return (
     <div className="changeset-panel">
       <div className="reasoner-header">
-        <button className="back-button" onClick={onBack}>&larr; Back</button>
         <h2>Import / Export</h2>
       </div>
 

@@ -5,10 +5,6 @@ import { runAllTests } from './testExecutor';
 import { TestScenarioGroup } from './TestScenarioGroup';
 import { TestSummaryBar } from './TestSummaryBar';
 
-interface TestRunnerProps {
-  onBack: () => void;
-}
-
 function buildInitialGroups(): TestGroup[] {
   return allTestGroups.map((g) => ({
     id: g.id,
@@ -39,7 +35,7 @@ const INITIAL_SUMMARY: TestRunSummary = {
   isRunning: false,
 };
 
-export function TestRunner({ onBack }: TestRunnerProps) {
+export function TestRunner() {
   const [groups, setGroups] = useState<TestGroup[]>(buildInitialGroups);
   const [summary, setSummary] = useState<TestRunSummary>(INITIAL_SUMMARY);
   const [isRunning, setIsRunning] = useState(false);
@@ -112,10 +108,6 @@ export function TestRunner({ onBack }: TestRunnerProps) {
 
   return (
     <div className="test-runner">
-      <button className="back-button" onClick={onBack}>
-        &larr; Back to search
-      </button>
-
       <div className="test-runner-header">
         <h2>DeX Scenario Test Runner</h2>
         <p className="test-runner-subtitle">

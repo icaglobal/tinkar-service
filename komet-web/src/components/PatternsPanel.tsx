@@ -4,7 +4,6 @@ import { listPatternMembers, listPatterns } from '../api/tinkarApi';
 import type { PatternMember, PatternSummary } from '../api/types';
 
 interface PatternsPanelProps {
-  onBack: () => void;
   /** Opens a member's referenced component in the semantics view. */
   onViewSemantics: (conceptId: string, conceptName?: string) => void;
 }
@@ -26,7 +25,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
  * by UUID. A name filter reads through the members in order on the server, so on a pattern with
  * millions of members it can take a while.
  */
-export function PatternsPanel({ onBack, onViewSemantics }: PatternsPanelProps) {
+export function PatternsPanel({ onViewSemantics }: PatternsPanelProps) {
   const [patternFilter, setPatternFilter] = useState('');
   const [selected, setSelected] = useState<PatternSummary | null>(null);
   const [pageSize, setPageSize] = useState(50);
@@ -90,7 +89,6 @@ export function PatternsPanel({ onBack, onViewSemantics }: PatternsPanelProps) {
   return (
     <div className="patterns-panel">
       <div className="reasoner-header">
-        <button className="back-button" onClick={onBack}>&larr; Back</button>
         <h2>Patterns</h2>
       </div>
 

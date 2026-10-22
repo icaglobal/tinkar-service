@@ -2316,10 +2316,58 @@
 }
 
 .signed-in {
+  margin-left: auto;
   font-size: 0.85rem;
   color: #495057;
+  white-space: nowrap;
 }
 
 .signed-in .link-button {
   margin-left: 0.6rem;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Section tabs
+   ═══════════════════════════════════════════════════════════ */
+
+.app-header .header-row h1 {
+  margin: 0;
+}
+
+.app-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 1rem;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.app-tab {
+  padding: 0.55rem 1rem;
+  font-size: 0.9rem;
+  color: #495057;
+  background: none;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  margin-bottom: -1px;
+  cursor: pointer;
+}
+
+.app-tab:hover {
+  color: #213547;
+  background-color: #f8f9fa;
+}
+
+.app-tab.active {
+  color: #213547;
+  font-weight: 600;
+  background-color: #fff;
+  border-color: #dee2e6;
+  border-bottom: 1px solid #fff;
+}
+
+.app-tab:focus-visible {
+  outline: 2px solid #646cff;
+  outline-offset: -2px;
 }

@@ -8,10 +8,6 @@ import {
 } from '../api/tinkarApi';
 import type { ReasonerPhaseEvent, ReasonerResultsResponse, ReasonerRunEvent } from '../api/types';
 
-interface ReasonerPanelProps {
-  onBack: () => void;
-}
-
 /**
  * The result sections, named and ordered as Komet's reasoner results accordion names them
  * (`ReasonerResultsInterface.fxml`), so someone who knows the Komet view recognises this one.
@@ -50,7 +46,7 @@ function formatTime(epochMs: number): string {
  * is still going — or shows how the last one ended — and leaving it only stops watching.
  * Stopping the run is the Cancel button, which asks the server to.
  */
-export function ReasonerPanel({ onBack }: ReasonerPanelProps) {
+export function ReasonerPanel() {
   const queryClient = useQueryClient();
   const [runInfo, setRunInfo] = useState<ReasonerRunEvent | null>(null);
   const [phase, setPhase] = useState<ReasonerPhaseEvent | null>(null);
@@ -135,7 +131,6 @@ export function ReasonerPanel({ onBack }: ReasonerPanelProps) {
   return (
     <div className="reasoner-panel">
       <div className="reasoner-header">
-        <button className="back-button" onClick={onBack}>&larr; Back</button>
         <h2>Reasoner</h2>
       </div>
 

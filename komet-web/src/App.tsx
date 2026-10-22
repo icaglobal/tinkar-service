@@ -18,6 +18,19 @@ import './App.css';
 
 type ViewMode = 'search' | 'descendants' | 'semantics' | 'test-runner' | 'coordinates' | 'create-concept' | 'reasoner' | 'changesets' | 'patterns';
 
+/** The sections along the top. A concept's descendants and semantics open within a tab, not as one. */
+type TabId = 'search' | 'patterns' | 'create-concept' | 'coordinates' | 'reasoner' | 'changesets' | 'test-runner';
+
+const TABS: { id: TabId; label: string }[] = [
+  { id: 'search', label: 'Search' },
+  { id: 'patterns', label: 'Patterns' },
+  { id: 'create-concept', label: 'New Concept' },
+  { id: 'coordinates', label: 'Coordinates' },
+  { id: 'reasoner', label: 'Reasoner' },
+  { id: 'changesets', label: 'Import / Export' },
+  { id: 'test-runner', label: 'DeX Tests' },
+];
+
 const SORT_OPTIONS: { value: SearchSortOption; label: string }[] = [
   { value: 'TOP_COMPONENT', label: 'Top Component (by score)' },
   { value: 'TOP_COMPONENT_ALPHA', label: 'Top Component (alphabetical)' },
@@ -163,6 +176,20 @@ function App() {
   const isError = viewMode === 'descendants' ? isDescendantsError : viewMode === 'semantics' ? isSemanticsError : isSearchError;
   const error = viewMode === 'descendants' ? descendantsError : viewMode === 'semantics' ? semanticsError : searchError;
 
+  // Descendants and semantics belong to the tab they were opened from.
+  const activeTab: TabId =
+    viewMode === 'descendants' || (viewMode === 'semantics' && semanticsFrom === 'search')
+      ? 'search'
+      : viewMode === 'semantics'
+        ? 'patterns'
+        : viewMode;
+
+  const openTab = (tab: TabId) => {
+    setSelectedConceptId(null);
+    setSelectedConceptName('');
+    setViewMode(tab);
+  };
+
   if (needsSignIn) {
     return (
       <div className="app">
@@ -191,45 +218,21 @@ function App() {
               </button>
             </div>
           )}
-          <div className="header-buttons">
-            <button
-              className={`coordinates-button ${viewMode === 'coordinates' ? 'active' : ''}`}
-              onClick={() => setViewMode('coordinates')}
-            >
-              Coordinates
-            </button>
-            <button
-              className={`create-concept-button ${viewMode === 'create-concept' ? 'active' : ''}`}
-              onClick={() => setViewMode('create-concept')}
-            >
-              New Concept
-            </button>
-            <button
-              className={`reasoner-button ${viewMode === 'reasoner' ? 'active' : ''}`}
-              onClick={() => setViewMode('reasoner')}
-            >
-              Reasoner
-            </button>
-            <button
-              className={`patterns-button ${viewMode === 'patterns' ? 'active' : ''}`}
-              onClick={() => setViewMode('patterns')}
-            >
-              Patterns
-            </button>
-            <button
-              className={`changeset-button ${viewMode === 'changesets' ? 'active' : ''}`}
-              onClick={() => setViewMode('changesets')}
-            >
-              Import / Export
-            </button>
-            <button
-              className={`test-runner-button ${viewMode === 'test-runner' ? 'active' : ''}`}
-              onClick={() => setViewMode('test-runner')}
-            >
-              Run DeX Tests
-            </button>
-          </div>
         </div>
+        <nav className="app-tabs" role="tablist" aria-label="Sections">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              className={`app-tab ${activeTab === tab.id ? 'active' : ''}`}
+              onClick={() => openTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
       </header>
 
       <main className="app-main">
@@ -373,28 +376,28 @@ function App() {
         )}
 
         {viewMode === 'test-runner' && (
-          <TestRunner onBack={handleBack} />
+          <TestRunner />
         )}
 
         {viewMode === 'coordinates' && (
-          <CoordinatesPanel onBack={handleBack} />
+          <CoordinatesPanel />
         )}
 
         {viewMode === 'create-concept' && (
-          <CreateConceptPanel onBack={handleBack} />
+          <CreateConceptPanel />
         )}
 
         {viewMode === 'reasoner' && (
-          <ReasonerPanel onBack={handleBack} />
+          <ReasonerPanel />
         )}
 
         {viewMode === 'changesets' && (
-          <ChangesetPanel onBack={handleBack} />
+          <ChangesetPanel />
         )}
 
         {(viewMode === 'patterns' || (viewMode === 'semantics' && semanticsFrom === 'patterns')) && (
           <div hidden={viewMode !== 'patterns'}>
-            <PatternsPanel onBack={handleBack} onViewSemantics={handleViewMemberSemantics} />
+            <PatternsPanel onViewSemantics={handleViewMemberSemantics} />
           </div>
         )}
       </main>
