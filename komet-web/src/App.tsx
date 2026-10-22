@@ -12,6 +12,8 @@ import { ReasonerPanel } from './components/ReasonerPanel';
 import { ChangesetPanel } from './components/ChangesetPanel';
 import { PatternsPanel } from './components/PatternsPanel';
 import { LoginPanel } from './components/LoginPanel';
+import { PoweredByIke } from './components/PoweredByIke';
+import kometLogo from './assets/komet-logo.png';
 import { getAuthStatus, conceptSearchWithSort, getDescendants, kgGetSemantics, removeDescendant, createAndAddDescendant } from './api/tinkarApi';
 import type { SearchSortOption } from './api/types';
 import './App.css';
@@ -191,25 +193,19 @@ function App() {
   };
 
   if (needsSignIn) {
-    return (
-      <div className="app">
-        <header className="app-header">
-          <div className="header-row">
-            <h1>Komet Web</h1>
-          </div>
-        </header>
-        <main className="app-main">
-          <LoginPanel />
-        </main>
-      </div>
-    );
+    return <LoginPanel />;
   }
 
   return (
     <div className="app">
       <header className="app-header">
         <div className="header-row">
-          <h1>Komet Web</h1>
+          <div className="header-brand">
+            <h1 className="app-logo">
+              <img src={kometLogo} alt="Komet" />
+            </h1>
+            <PoweredByIke className="header-powered-by" />
+          </div>
           {session && (
             <div className="signed-in">
               Signed in as <strong>{session.author.name}</strong>

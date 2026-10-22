@@ -2282,37 +2282,131 @@
 }
 
 /* ═══════════════════════════════════════════════════════════
-   Sign-in
+   Sign-in: laid out like Komet desktop's author screen
    ═══════════════════════════════════════════════════════════ */
 
+.login-screen {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  background: #c8d1e2 url('./assets/login-background.jpg') center / cover no-repeat;
+}
+
 .login-panel {
-  width: 100%;
-  max-width: 420px;
-  margin: 2rem auto 0;
+  width: min(380px, calc(100% - 32px));
+  margin: clamp(2rem, 10vh, 6rem) 0 2rem clamp(16px, 9vw, 160px);
   text-align: left;
+}
+
+.login-logo {
+  height: 48px;
+  width: auto;
+  display: block;
+}
+
+.login-title {
+  margin: 1.5rem 0 0.5rem;
+  font-size: 2.2rem;
+  font-weight: 400;
+  line-height: 1.15;
+  color: #2b2b2b;
+}
+
+.login-subtitle {
+  margin: 0 0 2.5rem;
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: #3a3a3a;
 }
 
 .login-form {
   display: grid;
-  gap: 0.5rem;
-}
-
-.login-form label {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: #495057;
-  margin-top: 0.5rem;
+  gap: 1.25rem;
 }
 
 .login-form select,
-.login-form input {
-  padding: 0.5rem;
-  font-size: 0.95rem;
+.login-password input {
+  width: 100%;
+  height: 48px;
+  padding: 0 0.9rem;
+  font-size: 1rem;
+  color: #2b2b2b;
+  background: #fff;
+  border: 1px solid #d6d9e0;
+  border-radius: 4px;
 }
 
-.login-form button {
-  margin-top: 1rem;
-  justify-self: start;
+.login-password {
+  position: relative;
+}
+
+.login-password input {
+  padding-right: 4.5rem;
+}
+
+.login-show {
+  position: absolute;
+  top: 50%;
+  right: 0.6rem;
+  transform: translateY(-50%);
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  color: #6c757d;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.login-submit {
+  height: 48px;
+  margin-top: 1.5rem;
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background-color: #4581de;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.login-submit:hover:not(:disabled) {
+  background-color: #3a70c4;
+}
+
+.login-submit:disabled {
+  background-color: #8fb0e6;
+  cursor: not-allowed;
+}
+
+.login-powered-by {
+  display: block;
+  margin-top: 3rem;
+}
+
+.login-powered-by img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Header: Komet logo, signed-in author, Powered by IKE
+   ═══════════════════════════════════════════════════════════ */
+
+.app-logo {
+  margin: 0;
+  line-height: 0;
+}
+
+.app-logo img {
+  height: 40px;
+  width: auto;
+}
+
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
 }
 
 .signed-in {
@@ -2326,13 +2420,29 @@
   margin-left: 0.6rem;
 }
 
+.header-powered-by {
+  line-height: 0;
+}
+
+.header-powered-by img {
+  height: 26px;
+  width: auto;
+}
+
+@media (max-width: 640px) {
+  .header-row {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .header-powered-by {
+    display: none;
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════
    Section tabs
    ═══════════════════════════════════════════════════════════ */
-
-.app-header .header-row h1 {
-  margin: 0;
-}
 
 .app-tabs {
   display: flex;
@@ -2365,6 +2475,7 @@
   background-color: #fff;
   border-color: #dee2e6;
   border-bottom: 1px solid #fff;
+  box-shadow: inset 0 3px 0 #4581de;
 }
 
 .app-tab:focus-visible {
