@@ -175,8 +175,10 @@ class AdminGrpcControllerTest {
 
     @Test
     void cancelJob_refusesAnImport_andUnknownJobs() throws Exception {
+        java.util.concurrent.CountDownLatch running = new java.util.concurrent.CountDownLatch(1);
         java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
         when(tinkarService.importChangeset(any(File.class), anyBoolean(), any())).thenAnswer(invocation -> {
+            running.countDown();
             release.await(WAIT_MS, TimeUnit.MILLISECONDS);
             return new dev.ikm.tinkar.common.service.EntityCountSummary(0, 0, 0, 0);
         });
@@ -185,6 +187,9 @@ class AdminGrpcControllerTest {
         StreamObserver<ImportChangesetChunk> upload = controller.importChangeset(events);
         upload.onNext(ImportChangesetChunk.newBuilder().setStart(ImportChangesetStart.newBuilder()).build());
         upload.onCompleted();
+        // The import runs on the job queue's thread; cancel only once it is running, or the test
+        // can end before the import is ever called.
+        assertThat(running.await(WAIT_MS, TimeUnit.MILLISECONDS)).isTrue();
         String importId = jobs.list().getFirst().id();
         try {
             @SuppressWarnings("unchecked")

@@ -84,13 +84,13 @@ class UnknownComponentRequestTest {
         dataRoot = Files.createTempDirectory("unknown-component-request-test").toFile();
         CachingService.clearAll();
         ServiceProperties.set(ServiceKeys.DATA_STORE_ROOT, dataRoot);
-        PrimitiveData.selectControllerByName("Load Ephemeral Store");
+        PrimitiveData.selectControllerByName("Load Memory-Only 64-bit Store");
         PrimitiveData.start();
         long count = new LoadEntitiesFromProtobufFile(PB_STARTER_DATA).compute().getTotalCount();
         assertThat(count).as("entities loaded from the starter data").isPositive();
 
         // The store is running, so the primitive layer attaches to it instead of opening one.
-        primitive = new TinkarPrimitiveImpl(dataRoot.getParent(), dataRoot.getName(), "Load Ephemeral Store");
+        primitive = new TinkarPrimitiveImpl(dataRoot.getParent(), dataRoot.getName(), "Load Memory-Only 64-bit Store");
         service = new TinkarServiceImpl(primitive);
     }
 
@@ -131,7 +131,7 @@ class UnknownComponentRequestTest {
         SoftAssertions each = new SoftAssertions();
         for (Map.Entry<String, Function<String, Outcome>> endpoint : endpoints().entrySet()) {
             UUID referredToOnly = UUID.randomUUID();
-            PrimitiveData.nid(PublicIds.of(referredToOnly));
+            EntityService.get().nidForConcept(PublicIds.of(referredToOnly));   // a concept referred to, never written
 
             Outcome outcome = endpoint.getValue().apply(referredToOnly.toString());
 
@@ -229,7 +229,7 @@ class UnknownComponentRequestTest {
     void aLookupAssignsNothingAndWantsAnEntity() {
         UUID unknown = UUID.randomUUID();
         UUID referredToOnly = UUID.randomUUID();
-        long assigned = PrimitiveData.nid(PublicIds.of(referredToOnly));
+        long assigned = EntityService.get().nidForConcept(PublicIds.of(referredToOnly));
 
         assertThat(KnownComponents.nid(KernelConcept.ENGLISH_LANGUAGE.publicId()))
                 .isEqualTo(OptionalLong.of(KernelConcept.ENGLISH_LANGUAGE.nid()));

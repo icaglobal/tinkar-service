@@ -7,7 +7,7 @@
     <parent>
         <groupId>network.ike.platform</groupId>
         <artifactId>ike-parent</artifactId>
-        <version>204</version>
+        <version>206</version>
         <relativePath/>
     </parent>
 
@@ -173,6 +173,13 @@
             <groupId>dev.ikm.tinkar</groupId>
             <artifactId>data-spinedarray-provider</artifactId>
             <version>${tinkar-core.version}</version>
+        </dependency>
+        <!-- The memory-only store the tests run on (IKE-Network/ike-issues#1313). -->
+        <dependency>
+            <groupId>dev.ikm.tinkar</groupId>
+            <artifactId>data-spinedarray64-provider</artifactId>
+            <version>${tinkar-core.version}</version>
+            <scope>test</scope>
         </dependency>
 
         <!-- Lets SearchProvider open Lucene indexes written by the previous major Lucene

@@ -265,30 +265,8 @@ class TinkarPrimitiveImplTest {
 
     // ── ancestorOf ───────────────────────────────────────────────────────────
 
-    @Test
-    void ancestorOf_emptyResult_returnsEmptyList() {
-        try (MockedStatic<PrimitiveData> pdMock = Mockito.mockStatic(PrimitiveData.class);
-             MockedStatic<Calculators.View> calcMock = Mockito.mockStatic(Calculators.View.class);
-             MockedStatic<Searcher> searcherMock = Mockito.mockStatic(Searcher.class)) {
-
-            TinkarPrimitiveImpl impl = createImpl(pdMock);
-
-            ViewCalculatorWithCache mockCalc = Mockito.mock(ViewCalculatorWithCache.class);
-            calcMock.when(Calculators.View::Default).thenReturn(mockCalc);
-
-            NavigationCalculator mockNavCalc = Mockito.mock(NavigationCalculator.class);
-            when(mockCalc.navigationCalculator()).thenReturn(mockNavCalc);
-
-            LongIdSet mockIntIdSet = Mockito.mock(LongIdSet.class);
-            when(mockNavCalc.ancestorsOf(any())).thenReturn(mockIntIdSet);
-
-            searcherMock.when(() -> Searcher.descriptionsOf(any())).thenReturn(List.of("desc"));
-
-            List<PublicId> result = impl.ancestorOf(publicId("cccccccc-0000-0000-0000-000000000001"));
-
-            assertThat(result).isEmpty();
-        }
-    }
+    // Tested against a real store in TinkarPrimitiveNavigationTest. A mocked navigation
+    // calculator stubbed the method that was wrong, so the defect could not show here.
 
     // ── childrenOf ───────────────────────────────────────────────────────────
 
