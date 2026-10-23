@@ -50,13 +50,13 @@ class PatternsJsonTest {
         dataRoot = Files.createTempDirectory("patterns-json-test").toFile();
         CachingService.clearAll();
         ServiceProperties.set(ServiceKeys.DATA_STORE_ROOT, dataRoot);
-        PrimitiveData.selectControllerByName("Load Ephemeral Store");
+        PrimitiveData.selectControllerByName("Load Memory-Only 64-bit Store");
         PrimitiveData.start();
         long count = new LoadEntitiesFromProtobufFile(PB_STARTER_DATA).compute().getTotalCount();
         assertThat(count).as("entities loaded from the starter data").isPositive();
 
         // The store is running, so the primitive layer attaches to it instead of opening one.
-        TinkarPrimitiveImpl primitive = new TinkarPrimitiveImpl(dataRoot.getParent(), dataRoot.getName(), "Load Ephemeral Store");
+        TinkarPrimitiveImpl primitive = new TinkarPrimitiveImpl(dataRoot.getParent(), dataRoot.getName(), "Load Memory-Only 64-bit Store");
         service = new TinkarServiceImpl(primitive);
     }
 

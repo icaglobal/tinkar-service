@@ -78,11 +78,11 @@ class SignInTest {
         dataRoot = Files.createTempDirectory("sign-in-test").toFile();
         CachingService.clearAll();
         ServiceProperties.set(ServiceKeys.DATA_STORE_ROOT, dataRoot);
-        PrimitiveData.selectControllerByName("Load Ephemeral Store");
+        PrimitiveData.selectControllerByName("Load Memory-Only 64-bit Store");
         PrimitiveData.start();
         assertThat(new LoadEntitiesFromProtobufFile(PB_STARTER_DATA).compute().getTotalCount()).isPositive();
 
-        TinkarPrimitiveImpl primitive = new TinkarPrimitiveImpl(dataRoot.getParent(), dataRoot.getName(), "Load Ephemeral Store");
+        TinkarPrimitiveImpl primitive = new TinkarPrimitiveImpl(dataRoot.getParent(), dataRoot.getName(), "Load Memory-Only 64-bit Store");
         service = new TinkarServiceImpl(primitive);
 
         author = Authors.list().getFirst();
@@ -239,7 +239,7 @@ class SignInTest {
 
     /** The author of the stamp on the component's latest version. */
     private static long authorOf(String componentId) {
-        long nid = PrimitiveData.nid(PublicIds.of(UUID.fromString(componentId)));
+        long nid = EntityService.get().nidForPublicId(PublicIds.of(UUID.fromString(componentId)));
         Entity<? extends EntityVersion> entity = EntityHandle.get(nid).orNull();
         assertThat(entity).as("component " + componentId).isNotNull();
         return entity.versions().stream().map(EntityVersion::stamp)
@@ -252,7 +252,7 @@ class SignInTest {
         UUID stampUuid = UUID.randomUUID();
         RecordListBuilder<StampVersionRecord> versions = RecordListBuilder.make();
         StampRecord stamp = new StampRecord(stampUuid.getMostSignificantBits(), stampUuid.getLeastSignificantBits(),
-                null, PrimitiveData.nid(PublicIds.of(stampUuid)), versions);
+                null, EntityService.get().nidForStamp(PublicIds.of(stampUuid)), versions);   // a stamp's nid, never written
         versions.add(new StampVersionRecord(stamp, State.ACTIVE.nid(), System.currentTimeMillis(), authorNid,
                 KernelConcept.PRIMORDIAL_MODULE.nid(), KernelConcept.DEVELOPMENT_PATH.nid()));
         versions.build();
