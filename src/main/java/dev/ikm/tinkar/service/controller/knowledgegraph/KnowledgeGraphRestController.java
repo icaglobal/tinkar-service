@@ -428,6 +428,35 @@ public class KnowledgeGraphRestController {
         return CoordinateFactory.buildCalculator(override);
     }
 
+    @Operation(summary = "List every pattern",
+            description = "Returns every pattern in the knowledge base with its definition: its meaning, its " +
+                    "purpose, and the fields its semantics hold. Sorted by name.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Patterns retrieved successfully", content = @Content(schema = @Schema(implementation = PatternsResponse.class)))
+    })
+    @GetMapping("/patterns")
+    public PatternsResponse listPatterns() {
+        return tinkarService.patterns();
+    }
+
+    @Operation(summary = "List one page of a pattern's members",
+            description = "Returns one page of the semantics made by a pattern, with the pattern's total member " +
+                    "count and whether more members follow. Optionally only the members whose referenced " +
+                    "component's name contains some text, or that refer to one component. A page holds at " +
+                    "most 1000 members.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Members retrieved successfully", content = @Content(schema = @Schema(implementation = PatternMembersResponse.class)))
+    })
+    @GetMapping("/patterns/members")
+    public PatternMembersResponse listPatternMembers(
+            @Parameter(description = "Pattern ID (UUID)", required = true, example = "a4de0039-2625-5842-8a4c-d1ce6aebf021") @RequestParam("patternId") String patternId,
+            @Parameter(description = "How many matching members to skip") @RequestParam(value = "offset", defaultValue = "0") int offset,
+            @Parameter(description = "How many members to return, at most 1000") @RequestParam(value = "limit", defaultValue = "50") int limit,
+            @Parameter(description = "Only members whose referenced component's name contains this text, ignoring case") @RequestParam(value = "referencedComponentText", required = false) String referencedComponentText,
+            @Parameter(description = "Only members that refer to this component (UUID)") @RequestParam(value = "referencedComponentId", required = false) String referencedComponentId) {
+        return tinkarService.patternMembers(patternId, offset, limit, referencedComponentText, referencedComponentId);
+    }
+
     @Operation(summary = "Get entity by public ID",
             description = "Returns a single entity and its stamps as serialized protobuf bytes " +
                     "(Content-Type: application/x-protobuf). Deserialize as TinkarConceptEntityResponse. " +

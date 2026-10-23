@@ -8,11 +8,7 @@ import {
   saveNavigationCoordinate,
 } from '../api/tinkarApi';
 
-interface CoordinatesPanelProps {
-  onBack: () => void;
-}
-
-export function CoordinatesPanel({ onBack }: CoordinatesPanelProps) {
+export function CoordinatesPanel() {
   const queryClient = useQueryClient();
   const [saveMessage, setSaveMessage] = useState<{ text: string; isError: boolean } | null>(null);
 
@@ -57,7 +53,6 @@ export function CoordinatesPanel({ onBack }: CoordinatesPanelProps) {
   return (
     <div className="coordinates-panel">
       <div className="coordinates-header">
-        <button className="back-button" onClick={onBack}>&larr; Back</button>
         <div className="coordinates-title-row">
           <h2>Saved Coordinates</h2>
           <button

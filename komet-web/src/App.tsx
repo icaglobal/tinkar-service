@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { clearSession, getSession, onSessionChange, type Session } from './api/auth';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { SearchBox } from './components/SearchBox';
 import { ResultsTable } from './components/ResultsTable';
@@ -9,11 +10,28 @@ import { CoordinatesPanel } from './components/CoordinatesPanel';
 import { CreateConceptPanel } from './components/CreateConceptPanel';
 import { ReasonerPanel } from './components/ReasonerPanel';
 import { ChangesetPanel } from './components/ChangesetPanel';
-import { conceptSearchWithSort, getDescendants, kgGetSemantics, removeDescendant, createAndAddDescendant } from './api/tinkarApi';
+import { PatternsPanel } from './components/PatternsPanel';
+import { LoginPanel } from './components/LoginPanel';
+import { PoweredByIke } from './components/PoweredByIke';
+import kometLogo from './assets/komet-logo.png';
+import { getAuthStatus, conceptSearchWithSort, getDescendants, kgGetSemantics, removeDescendant, createAndAddDescendant } from './api/tinkarApi';
 import type { SearchSortOption } from './api/types';
 import './App.css';
 
-type ViewMode = 'search' | 'descendants' | 'semantics' | 'test-runner' | 'coordinates' | 'create-concept' | 'reasoner' | 'changesets';
+type ViewMode = 'search' | 'descendants' | 'semantics' | 'test-runner' | 'coordinates' | 'create-concept' | 'reasoner' | 'changesets' | 'patterns';
+
+/** The sections along the top. A concept's descendants and semantics open within a tab, not as one. */
+type TabId = 'search' | 'patterns' | 'create-concept' | 'coordinates' | 'reasoner' | 'changesets' | 'test-runner';
+
+const TABS: { id: TabId; label: string }[] = [
+  { id: 'search', label: 'Search' },
+  { id: 'patterns', label: 'Patterns' },
+  { id: 'create-concept', label: 'New Concept' },
+  { id: 'coordinates', label: 'Coordinates' },
+  { id: 'reasoner', label: 'Reasoner' },
+  { id: 'changesets', label: 'Import / Export' },
+  { id: 'test-runner', label: 'DeX Tests' },
+];
 
 const SORT_OPTIONS: { value: SearchSortOption; label: string }[] = [
   { value: 'TOP_COMPONENT', label: 'Top Component (by score)' },
@@ -30,8 +48,21 @@ function App() {
   const [selectedConceptId, setSelectedConceptId] = useState<string | null>(null);
   const [selectedConceptName, setSelectedConceptName] = useState<string>('');
   const [newDescendantName, setNewDescendantName] = useState<string>('');
+  // Where the semantics view was opened from, so Back returns there: the Patterns panel stays
+  // mounted underneath, keeping its pattern, page and filter.
+  const [semanticsFrom, setSemanticsFrom] = useState<'search' | 'patterns'>('search');
 
   const queryClient = useQueryClient();
+
+  // Signing in: needed only when the service has authentication on.
+  const [session, setSessionState] = useState<Session | null>(getSession);
+  useEffect(() => onSessionChange((next) => {
+    setSessionState(next);
+    // Answers cached for one author are not shown to the next.
+    queryClient.clear();
+  }), [queryClient]);
+  const authStatus = useQuery({ queryKey: ['auth-status'], queryFn: getAuthStatus, staleTime: Infinity, retry: false });
+  const needsSignIn = authStatus.data?.enabled === true && session === null;
 
   const {
     data: searchData,
@@ -91,6 +122,7 @@ function App() {
   };
 
   const handleViewSemantics = (conceptId: string, conceptName?: string) => {
+    setSemanticsFrom('search');
     setSelectedConceptName(conceptName || conceptId);
     setSelectedConceptId(conceptId);
     setViewMode('semantics');
@@ -102,7 +134,20 @@ function App() {
     setViewMode('descendants');
   };
 
+  const handleViewMemberSemantics = (conceptId: string, conceptName?: string) => {
+    setSemanticsFrom('patterns');
+    setSelectedConceptName(conceptName || conceptId);
+    setSelectedConceptId(conceptId);
+    setViewMode('semantics');
+  };
+
   const handleBack = () => {
+    if (viewMode === 'semantics' && semanticsFrom === 'patterns') {
+      setViewMode('patterns');
+      setSelectedConceptId(null);
+      setSelectedConceptName('');
+      return;
+    }
     setViewMode('search');
     setSelectedConceptId(null);
     setSelectedConceptName('');
@@ -133,48 +178,62 @@ function App() {
   const isError = viewMode === 'descendants' ? isDescendantsError : viewMode === 'semantics' ? isSemanticsError : isSearchError;
   const error = viewMode === 'descendants' ? descendantsError : viewMode === 'semantics' ? semanticsError : searchError;
 
+  // Descendants and semantics belong to the tab they were opened from.
+  const activeTab: TabId =
+    viewMode === 'descendants' || (viewMode === 'semantics' && semanticsFrom === 'search')
+      ? 'search'
+      : viewMode === 'semantics'
+        ? 'patterns'
+        : viewMode;
+
+  const openTab = (tab: TabId) => {
+    setSelectedConceptId(null);
+    setSelectedConceptName('');
+    setViewMode(tab);
+  };
+
+  if (needsSignIn) {
+    return <LoginPanel />;
+  }
+
   return (
     <div className="app">
       <header className="app-header">
         <div className="header-row">
-          <h1>Tinkar Search</h1>
-          <div className="header-buttons">
-            <button
-              className={`coordinates-button ${viewMode === 'coordinates' ? 'active' : ''}`}
-              onClick={() => setViewMode('coordinates')}
-            >
-              Coordinates
-            </button>
-            <button
-              className={`create-concept-button ${viewMode === 'create-concept' ? 'active' : ''}`}
-              onClick={() => setViewMode('create-concept')}
-            >
-              New Concept
-            </button>
-            <button
-              className={`reasoner-button ${viewMode === 'reasoner' ? 'active' : ''}`}
-              onClick={() => setViewMode('reasoner')}
-            >
-              Reasoner
-            </button>
-            <button
-              className={`changeset-button ${viewMode === 'changesets' ? 'active' : ''}`}
-              onClick={() => setViewMode('changesets')}
-            >
-              Import / Export
-            </button>
-            <button
-              className={`test-runner-button ${viewMode === 'test-runner' ? 'active' : ''}`}
-              onClick={() => setViewMode('test-runner')}
-            >
-              Run DeX Tests
-            </button>
+          <div className="header-brand">
+            <h1 className="app-logo">
+              <img src={kometLogo} alt="Komet" />
+            </h1>
+            <PoweredByIke className="header-powered-by" />
           </div>
+          {session && (
+            <div className="signed-in">
+              Signed in as <strong>{session.author.name}</strong>
+              <button type="button" className="link-button" onClick={clearSession}>
+                Sign out
+              </button>
+            </div>
+          )}
         </div>
+        <nav className="app-tabs" role="tablist" aria-label="Sections">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              className={`app-tab ${activeTab === tab.id ? 'active' : ''}`}
+              onClick={() => openTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
       </header>
 
       <main className="app-main">
-        {viewMode !== 'test-runner' && viewMode !== 'coordinates' && viewMode !== 'create-concept' && viewMode !== 'reasoner' && viewMode !== 'changesets' && (
+        {viewMode !== 'test-runner' && viewMode !== 'coordinates' && viewMode !== 'create-concept' && viewMode !== 'reasoner' && viewMode !== 'changesets' && viewMode !== 'patterns'
+          && !(viewMode === 'semantics' && semanticsFrom === 'patterns') && (
           <SearchBox onSearch={handleSearch} isLoading={isLoading} />
         )}
 
@@ -313,23 +372,29 @@ function App() {
         )}
 
         {viewMode === 'test-runner' && (
-          <TestRunner onBack={handleBack} />
+          <TestRunner />
         )}
 
         {viewMode === 'coordinates' && (
-          <CoordinatesPanel onBack={handleBack} />
+          <CoordinatesPanel />
         )}
 
         {viewMode === 'create-concept' && (
-          <CreateConceptPanel onBack={handleBack} />
+          <CreateConceptPanel />
         )}
 
         {viewMode === 'reasoner' && (
-          <ReasonerPanel onBack={handleBack} />
+          <ReasonerPanel />
         )}
 
         {viewMode === 'changesets' && (
-          <ChangesetPanel onBack={handleBack} />
+          <ChangesetPanel />
+        )}
+
+        {(viewMode === 'patterns' || (viewMode === 'semantics' && semanticsFrom === 'patterns')) && (
+          <div hidden={viewMode !== 'patterns'}>
+            <PatternsPanel onViewSemantics={handleViewMemberSemantics} />
+          </div>
         )}
       </main>
     </div>

@@ -2078,3 +2078,407 @@
 .job-succeeded { color: #28a745; }
 .job-failed { color: #d9534f; }
 .job-cancelled { color: #b45309; }
+
+/* ═══════════════════════════════════════════════════════════
+   Patterns Panel
+   ═══════════════════════════════════════════════════════════ */
+
+.patterns-button {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  background-color: transparent;
+  color: #0f766e;
+  border: 1px solid #0f766e;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.patterns-button:hover,
+.patterns-button.active {
+  background-color: #0f766e;
+  color: white;
+}
+
+.patterns-panel {
+  width: 100%;
+}
+
+.patterns-layout {
+  display: grid;
+  grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+  text-align: left;
+}
+
+@media (max-width: 760px) {
+  .patterns-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.patterns-list {
+  position: sticky;
+  top: 1rem;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 0.5rem;
+}
+
+.patterns-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.patterns-list-filter {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.9rem;
+}
+
+.patterns-count {
+  margin: 0.5rem 0.25rem;
+  font-size: 0.8rem;
+  color: #6c757d;
+}
+
+.patterns-list-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.9rem;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: #213547;
+  cursor: pointer;
+}
+
+.patterns-list-item:hover {
+  background-color: #f0fdfa;
+}
+
+.patterns-list-item.active {
+  background-color: #0f766e;
+  color: white;
+}
+
+.patterns-detail {
+  min-width: 0;
+}
+
+.patterns-name {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #213547;
+}
+
+.patterns-id {
+  margin: 0.15rem 0 0.75rem;
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.patterns-definition {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.25rem 1rem;
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+}
+
+.patterns-definition dt {
+  font-weight: 600;
+  color: #495057;
+}
+
+.patterns-definition dd {
+  margin: 0;
+  color: #213547;
+}
+
+.patterns-subhead {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 1rem;
+  color: #213547;
+}
+
+.patterns-total {
+  font-weight: normal;
+  color: #6c757d;
+}
+
+.patterns-fields td,
+.patterns-fields th,
+.patterns-members td,
+.patterns-members th {
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+.patterns-member-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.patterns-member-filter input[type='search'] {
+  flex: 1 1 18rem;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.9rem;
+}
+
+.patterns-member-filter label {
+  font-size: 0.85rem;
+  color: #495057;
+}
+
+.patterns-pager {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin: 0.5rem 0;
+  font-size: 0.85rem;
+  color: #495057;
+}
+
+.patterns-pager .link-button {
+  margin-left: 0;
+}
+
+.patterns-pager .link-button:disabled {
+  color: #adb5bd;
+  cursor: default;
+  text-decoration: none;
+}
+
+.patterns-members-scroll {
+  overflow-x: auto;
+}
+
+.patterns-members.stale {
+  opacity: 0.6;
+}
+
+.patterns-component {
+  margin-left: 0;
+  text-align: left;
+}
+
+.patterns-value {
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Sign-in: laid out like Komet desktop's author screen
+   ═══════════════════════════════════════════════════════════ */
+
+.login-screen {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  background: #c8d1e2 url('./assets/login-background.jpg') center / cover no-repeat;
+}
+
+.login-panel {
+  width: min(380px, calc(100% - 32px));
+  margin: clamp(2rem, 10vh, 6rem) 0 2rem clamp(16px, 9vw, 160px);
+  text-align: left;
+}
+
+.login-logo {
+  height: 48px;
+  width: auto;
+  display: block;
+}
+
+.login-title {
+  margin: 1.5rem 0 0.5rem;
+  font-size: 2.2rem;
+  font-weight: 400;
+  line-height: 1.15;
+  color: #2b2b2b;
+}
+
+.login-subtitle {
+  margin: 0 0 2.5rem;
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: #3a3a3a;
+}
+
+.login-form {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.login-form select,
+.login-password input {
+  width: 100%;
+  height: 48px;
+  padding: 0 0.9rem;
+  font-size: 1rem;
+  color: #2b2b2b;
+  background: #fff;
+  border: 1px solid #d6d9e0;
+  border-radius: 4px;
+}
+
+.login-password {
+  position: relative;
+}
+
+.login-password input {
+  padding-right: 4.5rem;
+}
+
+.login-show {
+  position: absolute;
+  top: 50%;
+  right: 0.6rem;
+  transform: translateY(-50%);
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  color: #6c757d;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.login-submit {
+  height: 48px;
+  margin-top: 1.5rem;
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background-color: #4581de;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.login-submit:hover:not(:disabled) {
+  background-color: #3a70c4;
+}
+
+.login-submit:disabled {
+  background-color: #8fb0e6;
+  cursor: not-allowed;
+}
+
+.login-powered-by {
+  display: block;
+  margin-top: 3rem;
+}
+
+.login-powered-by img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Header: Komet logo, signed-in author, Powered by IKE
+   ═══════════════════════════════════════════════════════════ */
+
+.app-logo {
+  margin: 0;
+  line-height: 0;
+}
+
+.app-logo img {
+  height: 40px;
+  width: auto;
+}
+
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.signed-in {
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: #495057;
+  white-space: nowrap;
+}
+
+.signed-in .link-button {
+  margin-left: 0.6rem;
+}
+
+.header-powered-by {
+  line-height: 0;
+}
+
+.header-powered-by img {
+  height: 26px;
+  width: auto;
+}
+
+@media (max-width: 640px) {
+  .header-row {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .header-powered-by {
+    display: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Section tabs
+   ═══════════════════════════════════════════════════════════ */
+
+.app-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 1rem;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.app-tab {
+  padding: 0.55rem 1rem;
+  font-size: 0.9rem;
+  color: #495057;
+  background: none;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  margin-bottom: -1px;
+  cursor: pointer;
+}
+
+.app-tab:hover {
+  color: #213547;
+  background-color: #f8f9fa;
+}
+
+.app-tab.active {
+  color: #213547;
+  font-weight: 600;
+  background-color: #fff;
+  border-color: #dee2e6;
+  border-bottom: 1px solid #fff;
+  box-shadow: inset 0 3px 0 #4581de;
+}
+
+.app-tab:focus-visible {
+  outline: 2px solid #646cff;
+  outline-offset: -2px;
+}

@@ -7,6 +7,9 @@ import org.eclipse.collections.api.set.primitive.MutableLongSet;
 import dev.ikm.tinkar.entity.changeset.SchemaIds;
 import dev.ikm.tinkar.service.service.CoordinateFactory;
 import dev.ikm.tinkar.service.service.KnownComponents;
+import dev.ikm.tinkar.service.auth.AuthProperties;
+import dev.ikm.tinkar.service.auth.CurrentAuthor;
+import org.springframework.beans.factory.annotation.Autowired;
 import dev.ikm.tinkar.service.service.UnknownComponentException;
 import dev.ikm.tinkar.common.id.*;
 import dev.ikm.tinkar.common.service.EntityCountSummary;
@@ -108,6 +111,18 @@ public class TinkarServiceImpl implements TinkarService {
 
     public TinkarServiceImpl(TinkarPrimitive primitive) {
         this.primitive = primitive;
+    }
+
+    /** What to do when a commit's new stamps name an author other than the signed-in one. */
+    private AuthProperties.CommitAuthorCheck commitAuthorCheck = AuthProperties.CommitAuthorCheck.LOG;
+
+    @Autowired(required = false)
+    void setAuthProperties(AuthProperties auth) {
+        this.commitAuthorCheck = auth.commitAuthorCheck();
+    }
+
+    void setCommitAuthorCheck(AuthProperties.CommitAuthorCheck commitAuthorCheck) {
+        this.commitAuthorCheck = commitAuthorCheck;
     }
 
     /**
@@ -848,7 +863,7 @@ public class TinkarServiceImpl implements TinkarService {
                 StampEntity<?> stamp = transaction.getStamp(
                         dev.ikm.tinkar.terms.State.ACTIVE,
                         currentTime,
-                        KernelConcept.USER.nid(),
+                        CurrentAuthor.nidForStamp(),
                         KernelConcept.SOLOR_OVERLAY_MODULE.nid(),
                         KernelConcept.DEVELOPMENT_PATH.nid()
                 );
@@ -1936,48 +1951,76 @@ public class TinkarServiceImpl implements TinkarService {
         }
     }
 
+    /**
+     * One page of a pattern's members: those matching, the pattern's total, and whether more match.
+     *
+     * @param patternNid the pattern
+     * @param total      how many members the pattern has, unfiltered
+     * @param members    the page
+     * @param hasMore    whether more matching members follow the page
+     */
+    private record MembersPage(long patternNid, long total, List<SemanticEntity<SemanticEntityVersion>> members,
+                               boolean hasMore) {
+    }
+
+    /**
+     * Reads one page of a pattern's members, as both the gRPC and the REST answers send it.
+     *
+     * @return the page, or null when the id names a component that is not a pattern
+     * @throws UnknownComponentException when the knowledge base does not hold the pattern
+     */
+    private MembersPage membersPage(String patternId, int offset, int limit,
+                                    String referencedComponentText, String referencedComponentId) {
+        long patternNid = EntityService.get().nidForPublicId(primitive.getPublicId(patternId));
+        if (!(EntityHandle.get(patternNid).orNull() instanceof PatternEntity<?>)) {
+            return null;
+        }
+        int pageSize = limit <= 0 || limit > PATTERN_MEMBERS_PAGE_CAP ? PATTERN_MEMBERS_PAGE_CAP : limit;
+        int skip = Math.max(0, offset);
+        long total = EntityService.get().countSemanticsOfPattern(patternNid);
+
+        // A component given: its members of this pattern, read directly. Otherwise the pattern's
+        // members in store order, filtered by text if asked; either way one past the page is read
+        // to tell whether more match.
+        Stream<SemanticEntity<SemanticEntityVersion>> members;
+        if (referencedComponentId != null && !referencedComponentId.isBlank()) {
+            // A component this knowledge base does not hold is cited by none of its semantics:
+            // one a client made and never committed, such as a Komet window's concept.
+            OptionalLong componentNid = KnownComponents.nid(PublicIds.of(referencedComponentId));
+            members = componentNid.isPresent()
+                    ? EntityService.get().semanticsForComponentOfPattern(componentNid.getAsLong(), patternNid)
+                    : Stream.empty();
+        } else {
+            members = EntityService.get().semanticsOfPattern(patternNid);
+        }
+        if (referencedComponentText != null && !referencedComponentText.isBlank()) {
+            String query = referencedComponentText.strip().toLowerCase(Locale.ROOT);
+            ViewCalculatorWithCache calculator = CoordinateFactory.defaultCalculator();
+            members = members.filter(semantic -> getDescriptionForNid(semantic.referencedComponentNid(), calculator)
+                    .toLowerCase(Locale.ROOT).contains(query));
+        }
+        List<SemanticEntity<SemanticEntityVersion>> page = members.skip(skip).limit(pageSize + 1L).toList();
+        boolean hasMore = page.size() > pageSize;
+        if (hasMore) {
+            page = page.subList(0, pageSize);
+        }
+        return new MembersPage(patternNid, total, page, hasMore);
+    }
+
     @Override
     public ListPatternMembersResponse listPatternMembers(String patternId, int offset, int limit,
                                                          String referencedComponentText,
                                                          String referencedComponentId) {
         try {
-            long patternNid = EntityService.get().nidForPublicId(primitive.getPublicId(patternId));
-            if (!(EntityHandle.get(patternNid).orNull() instanceof PatternEntity<?>)) {
+            MembersPage selected = membersPage(patternId, offset, limit, referencedComponentText, referencedComponentId);
+            if (selected == null) {
                 return ListPatternMembersResponse.newBuilder()
                         .setSuccess(false)
                         .setErrorMessage("Pattern not found: " + patternId)
                         .setCreatedAt(System.currentTimeMillis())
                         .build();
             }
-            int pageSize = limit <= 0 || limit > PATTERN_MEMBERS_PAGE_CAP ? PATTERN_MEMBERS_PAGE_CAP : limit;
-            int skip = Math.max(0, offset);
-            long total = EntityService.get().countSemanticsOfPattern(patternNid);
-
-            // A component given: its members of this pattern, read directly. Otherwise the pattern's
-            // members in store order, filtered by text if asked; either way one past the page is read
-            // to tell whether more match.
-            Stream<SemanticEntity<SemanticEntityVersion>> members;
-            if (referencedComponentId != null && !referencedComponentId.isBlank()) {
-                // A component this knowledge base does not hold is cited by none of its semantics:
-                // one a client made and never committed, such as a Komet window's concept.
-                OptionalLong componentNid = KnownComponents.nid(PublicIds.of(referencedComponentId));
-                members = componentNid.isPresent()
-                        ? EntityService.get().semanticsForComponentOfPattern(componentNid.getAsLong(), patternNid)
-                        : Stream.empty();
-            } else {
-                members = EntityService.get().semanticsOfPattern(patternNid);
-            }
-            if (referencedComponentText != null && !referencedComponentText.isBlank()) {
-                String query = referencedComponentText.strip().toLowerCase(Locale.ROOT);
-                ViewCalculatorWithCache calculator = CoordinateFactory.defaultCalculator();
-                members = members.filter(semantic -> getDescriptionForNid(semantic.referencedComponentNid(), calculator)
-                        .toLowerCase(Locale.ROOT).contains(query));
-            }
-            List<SemanticEntity<SemanticEntityVersion>> page = members.skip(skip).limit(pageSize + 1L).toList();
-            boolean hasMore = page.size() > pageSize;
-            if (hasMore) {
-                page = page.subList(0, pageSize);
-            }
+            List<SemanticEntity<SemanticEntityVersion>> page = selected.members();
 
             EntityToTinkarSchemaTransformer transformer = EntityToTinkarSchemaTransformer.getInstance();
             TinkarConceptEntityResponse.Builder entities = TinkarConceptEntityResponse.newBuilder();
@@ -1997,9 +2040,9 @@ public class TinkarServiceImpl implements TinkarService {
             addStamps(entities, transformer, includedNids, stampNids);
             return response
                     .setSuccess(true)
-                    .setTotalCount(total)
+                    .setTotalCount(selected.total())
                     .addAllEntities(entities.getEntitiesList())
-                    .setHasMore(hasMore)
+                    .setHasMore(selected.hasMore())
                     .setCreatedAt(System.currentTimeMillis())
                     .build();
         } catch (Exception e) {
@@ -2010,6 +2053,98 @@ public class TinkarServiceImpl implements TinkarService {
                     .setCreatedAt(System.currentTimeMillis())
                     .build();
         }
+    }
+
+    @Override
+    public PatternsResponse patterns() {
+        try {
+            ViewCalculatorWithCache calc = CoordinateFactory.defaultCalculator();
+            List<PatternsResponse.PatternSummary> patterns = new ArrayList<>();
+            EntityService.get().forEachPatternEntity(pattern -> patterns.add(patternSummary(pattern, calc)));
+            patterns.sort(Comparator.comparing(PatternsResponse.PatternSummary::name, String.CASE_INSENSITIVE_ORDER));
+            return PatternsResponse.success(patterns);
+        } catch (Exception e) {
+            log.error("Failed to list patterns: {}", e.getMessage(), e);
+            return PatternsResponse.error(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+        }
+    }
+
+    /** A pattern and its definition as of the latest version the view sees; the name alone if it sees none. */
+    private PatternsResponse.PatternSummary patternSummary(PatternEntity<?> pattern, ViewCalculatorWithCache calc) {
+        String name = getDescriptionForNid(pattern.nid(), calc);
+        Latest<PatternEntityVersion> latest = calc.stampCalculator().latest(pattern.nid());
+        if (!latest.isPresent()) {
+            return new PatternsResponse.PatternSummary(identifierFor(pattern.nid()), name, null, null, List.of(), null);
+        }
+        PatternEntityVersion version = latest.get();
+        List<PatternsResponse.FieldDefinition> fields = new ArrayList<>();
+        int[] index = {0};
+        version.fieldDefinitions().forEach(field -> fields.add(new PatternsResponse.FieldDefinition(
+                index[0]++,
+                getDescriptionForNid(field.meaningNid(), calc),
+                getDescriptionForNid(field.purposeNid(), calc),
+                getDescriptionForNid(field.dataTypeNid(), calc))));
+        return new PatternsResponse.PatternSummary(
+                identifierFor(pattern.nid()),
+                name,
+                getDescriptionForNid(version.semanticMeaningNid(), calc),
+                getDescriptionForNid(version.semanticPurposeNid(), calc),
+                fields,
+                semanticsStampInfo(version.stampNid(), calc));
+    }
+
+    @Override
+    public PatternMembersResponse patternMembers(String patternId, int offset, int limit,
+                                                 String referencedComponentText, String referencedComponentId) {
+        try {
+            MembersPage selected = membersPage(patternId, offset, limit, referencedComponentText, referencedComponentId);
+            if (selected == null) {
+                return PatternMembersResponse.error(patternId, "Pattern not found: " + patternId);
+            }
+            ViewCalculatorWithCache calc = CoordinateFactory.defaultCalculator();
+            List<String> fieldNames = fieldNamesForPattern(selected.patternNid(), calc);
+            List<PatternMembersResponse.Member> members = new ArrayList<>();
+            for (SemanticEntity<SemanticEntityVersion> semantic : selected.members()) {
+                members.add(patternMember(semantic, fieldNames, calc));
+            }
+            return PatternMembersResponse.success(identifierFor(selected.patternNid()),
+                    getDescriptionForNid(selected.patternNid(), calc), selected.total(),
+                    Math.max(0, offset), selected.hasMore(), members);
+        } catch (Exception e) {
+            logReadFailure(e, "Failed to list members of pattern {}: {}", patternId, e.getMessage());
+            return PatternMembersResponse.error(patternId,
+                    e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * A member of a pattern with its fields as of the latest version the view sees. A member the
+     * view sees no version of is still listed, by its ids and referenced component.
+     */
+    private PatternMembersResponse.Member patternMember(SemanticEntity<SemanticEntityVersion> semantic,
+                                                        List<String> fieldNames, ViewCalculatorWithCache calc) {
+        long referenced = semantic.referencedComponentNid();
+        Latest<SemanticEntityVersion> latest = calc.stampCalculator().latest(semantic.nid());
+        List<PatternMembersResponse.NamedField> fields = new ArrayList<>();
+        ConceptSemanticsResponse.StampInfo stamp = null;
+        if (latest.isPresent()) {
+            Object[] values = latest.get().fieldValues().toArray();
+            for (int i = 0; i < values.length; i++) {
+                String value = formatFieldValue(values[i], calc);
+                fields.add(new PatternMembersResponse.NamedField(
+                        i < fieldNames.size() ? fieldNames.get(i) : "field " + i, value == null ? "" : value));
+            }
+            stamp = semanticsStampInfo(latest.get().stampNid(), calc);
+        }
+        return new PatternMembersResponse.Member(identifierFor(semantic.nid()), identifierFor(referenced),
+                getDescriptionForNid(referenced, calc), fields, stamp);
+    }
+
+    /** The STAMP of a version, as the semantics responses write it. */
+    private ConceptSemanticsResponse.StampInfo semanticsStampInfo(long stampNid, ViewCalculatorWithCache calc) {
+        StampInfo stamp = buildStampInfo(stampNid, calc);
+        return new ConceptSemanticsResponse.StampInfo(
+                stamp.status(), stamp.author(), stamp.module(), stamp.path(), stamp.time(), stamp.formattedTime());
     }
 
     /** Adds {@code entity} and its description semantics, collecting the stamps of both. */
@@ -2462,7 +2597,7 @@ public class TinkarServiceImpl implements TinkarService {
                 StampEntity<?> stamp = transaction.getStamp(
                         dev.ikm.tinkar.terms.State.ACTIVE,
                         currentTime,
-                        KernelConcept.USER.nid(),
+                        CurrentAuthor.nidForStamp(),
                         KernelConcept.SOLOR_OVERLAY_MODULE.nid(),
                         KernelConcept.DEVELOPMENT_PATH.nid()
                 );
@@ -2528,7 +2663,7 @@ public class TinkarServiceImpl implements TinkarService {
                 StampEntity<?> stamp = transaction.getStamp(
                         dev.ikm.tinkar.terms.State.ACTIVE,
                         currentTime,
-                        KernelConcept.USER.nid(),
+                        CurrentAuthor.nidForStamp(),
                         KernelConcept.SOLOR_OVERLAY_MODULE.nid(),
                         KernelConcept.DEVELOPMENT_PATH.nid()
                 );
@@ -2741,7 +2876,7 @@ public class TinkarServiceImpl implements TinkarService {
                 StampEntity<?> stamp = transaction.getStamp(
                         dev.ikm.tinkar.terms.State.ACTIVE,
                         currentTime,
-                        KernelConcept.USER.nid(),
+                        CurrentAuthor.nidForStamp(),
                         KernelConcept.SOLOR_OVERLAY_MODULE.nid(),
                         KernelConcept.DEVELOPMENT_PATH.nid()
                 );
@@ -2981,6 +3116,45 @@ public class TinkarServiceImpl implements TinkarService {
         }
     }
 
+    /**
+     * Checks that a commit's new stamps name the signed-in author: a signed-in caller writes as
+     * itself, not as someone else. A stamp this store already holds is history the commit carries
+     * along, and is not checked. Without a signed-in author, or with the check off, nothing is.
+     *
+     * @return why the commit is refused, or null to store it
+     */
+    String checkCommitAuthors(List<StampEntity<StampEntityVersion>> stamps, String transactionName) {
+        Optional<String> signedIn = CurrentAuthor.id();
+        if (signedIn.isEmpty() || commitAuthorCheck == AuthProperties.CommitAuthorCheck.OFF) {
+            return null;
+        }
+        OptionalLong signedInNid = dev.ikm.tinkar.service.auth.Authors.nidOf(signedIn.get());
+        List<String> others = new ArrayList<>();
+        for (StampEntity<StampEntityVersion> stamp : stamps) {
+            if (EntityHandle.get(stamp.nid()).isPresent()) {
+                continue;
+            }
+            long authorNid = stamp.authorNid();
+            if (signedInNid.isEmpty() || authorNid != signedInNid.getAsLong()) {
+                others.add(getDescriptionForNid(authorNid) + " (" + identifierFor(authorNid) + ")");
+            }
+        }
+        if (others.isEmpty()) {
+            return null;
+        }
+        String signedInName = signedInNid.isPresent()
+                ? getDescriptionForNid(signedInNid.getAsLong()) + " (" + signedIn.get() + ")"
+                : signedIn.get();
+        String message = "Commit '" + transactionName + "' has " + others.size() + " new stamp(s) by another author than "
+                + signedInName + ", the one signed in: " + String.join(", ", new LinkedHashSet<>(others));
+        if (commitAuthorCheck == AuthProperties.CommitAuthorCheck.REJECT) {
+            log.warn("Refused: {}", message);
+            return message;
+        }
+        log.warn("{} (stored: tinkar.auth.commit-author-check=log)", message);
+        return null;
+    }
+
     @Override
     public CommitEntitiesResponse commitEntities(List<TinkarMsg> entities, String transactionName) {
         long startTime = System.currentTimeMillis();
@@ -3014,6 +3188,15 @@ public class TinkarServiceImpl implements TinkarService {
             List<StampEntity<StampEntityVersion>> decodedStamps = new ArrayList<>();
             for (TinkarMsg message : entities) {
                 transformer.transform(message, decodedEntities::add, decodedStamps::add);
+            }
+
+            String authorRefusal = checkCommitAuthors(decodedStamps, name);
+            if (authorRefusal != null) {
+                return CommitEntitiesResponse.newBuilder()
+                        .setSuccess(false)
+                        .setErrorMessage(authorRefusal)
+                        .setCreatedAt(System.currentTimeMillis())
+                        .build();
             }
 
             // Stamps first: every entity version cites its stamp by NID, so the stamp has to be
@@ -3186,7 +3369,7 @@ public class TinkarServiceImpl implements TinkarService {
             StampEntity<?> stamp = transaction.getStamp(
                     dev.ikm.tinkar.terms.State.ACTIVE,
                     System.currentTimeMillis(),
-                    KernelConcept.USER.nid(),
+                    CurrentAuthor.nidForStamp(),
                     KernelConcept.SOLOR_OVERLAY_MODULE.nid(),
                     KernelConcept.DEVELOPMENT_PATH.nid());
 

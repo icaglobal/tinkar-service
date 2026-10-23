@@ -11,10 +11,6 @@ import type {
   GroupedSearchResult,
 } from '../api/types';
 
-interface CreateConceptPanelProps {
-  onBack: () => void;
-}
-
 /** A concept chosen for an axiom set. */
 type ParentConcept = { id: string; name: string };
 
@@ -59,7 +55,7 @@ const newDescription = (type: DescriptionType): ConceptDescription => ({
  * with their own type, language and case significance, and a stated axiom that may carry
  * necessary and sufficient sets together.
  */
-export function CreateConceptPanel({ onBack }: CreateConceptPanelProps) {
+export function CreateConceptPanel() {
   // The fully qualified name is seeded because exactly one is required; the server rejects
   // a request without it, so starting with an empty one keeps that rule visible in the form.
   const queryClient = useQueryClient();
@@ -140,7 +136,6 @@ export function CreateConceptPanel({ onBack }: CreateConceptPanelProps) {
   return (
     <div className="create-concept-panel">
       <div className="create-concept-header">
-        <button className="back-button" onClick={onBack}>&larr; Back</button>
         <h2>New Concept</h2>
       </div>
 

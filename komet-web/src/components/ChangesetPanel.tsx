@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  absoluteDownloadUrl,
   cancelJob,
+  downloadFile,
   exportStreaming,
   importChangesetStreaming,
   listJobs,
@@ -17,10 +17,6 @@ import type {
   JobProgressEvent,
   JobSummary,
 } from '../api/types';
-
-interface ChangesetPanelProps {
-  onBack: () => void;
-}
 
 /** The job this panel is following: what the server has said about it so far. */
 type FollowedJob = {
@@ -68,7 +64,7 @@ function kindLabel(kind: JobSummary['kind']): string {
  * only stops watching: the job carries on, and reopening the panel picks it back up. Imports
  * cannot be cancelled — stopped part way they would leave some entities written.
  */
-export function ChangesetPanel({ onBack }: ChangesetPanelProps) {
+export function ChangesetPanel() {
   const queryClient = useQueryClient();
   const [followed, setFollowed] = useState<FollowedJob>(EMPTY);
   const [busy, setBusy] = useState(false);
@@ -188,6 +184,15 @@ export function ChangesetPanel({ onBack }: ChangesetPanelProps) {
     jobs.refetch();
   };
 
+  // Fetched and saved rather than linked: a link cannot send the sign-in token.
+  const download = async (downloadUrl: string, fileName: string) => {
+    try {
+      await downloadFile(downloadUrl, fileName);
+    } catch (e) {
+      setFollowed((f) => ({ ...f, error: e instanceof Error ? e.message : 'Download failed' }));
+    }
+  };
+
   const rejoin = (job: JobSummary) => {
     followedKindRef.current = job.kind;
     follow((handlers, signal) => watchJob(job.id, handlers, signal));
@@ -200,7 +205,6 @@ export function ChangesetPanel({ onBack }: ChangesetPanelProps) {
   return (
     <div className="changeset-panel">
       <div className="reasoner-header">
-        <button className="back-button" onClick={onBack}>&larr; Back</button>
         <h2>Import / Export</h2>
       </div>
 
@@ -312,9 +316,12 @@ export function ChangesetPanel({ onBack }: ChangesetPanelProps) {
               </table>
               {result.downloadUrl && (
                 <p>
-                  <a className="changeset-download" href={absoluteDownloadUrl(result.downloadUrl)}>
+                  <button
+                    className="link-button changeset-download"
+                    onClick={() => download(result.downloadUrl!, result.fileName ?? 'export.zip')}
+                  >
                     Download {result.fileName}
-                  </a>
+                  </button>
                   {result.fileSizeBytes != null && <span className="reasoner-hint"> ({formatBytes(result.fileSizeBytes)}, kept for an hour)</span>}
                 </p>
               )}
@@ -339,7 +346,12 @@ export function ChangesetPanel({ onBack }: ChangesetPanelProps) {
                   <td className={`job-state job-${j.state.toLowerCase()}`}>{j.state.toLowerCase()}</td>
                   <td className="changeset-job-actions">
                     {j.kind === 'EXPORT' && j.state === 'SUCCEEDED' && (
-                      <a href={absoluteDownloadUrl(`/api/ike/admin/export/${j.id}/file`)}>Download</a>
+                      <button
+                        className="link-button"
+                        onClick={() => download(`/api/ike/admin/export/${j.id}/file`, `export-${j.id}.zip`)}
+                      >
+                        Download
+                      </button>
                     )}
                     {j.kind !== 'REASONER' && j.id !== job?.jobId && (
                       <button className="link-button" onClick={() => rejoin(j)}>
