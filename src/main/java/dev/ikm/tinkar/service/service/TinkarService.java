@@ -228,6 +228,19 @@ public interface TinkarService {
      * @param referencedComponentId  optional: only members that refer to this component; a
      *                               component the knowledge base does not hold has none
      */
+    /** The data types a pattern's field can have: the ones Komet's pattern window offers. */
+    dev.ikm.tinkar.service.dto.PatternCreation.FieldDataTypesResponse fieldDataTypes();
+
+    /**
+     * Creates a pattern: its names, what its semantics mean and are for, and the fields each one
+     * holds, stamped with the signed-in author.
+     *
+     * @param request the new pattern
+     * @return the pattern as {@link #patterns()} lists it, or why it was not created
+     */
+    dev.ikm.tinkar.service.dto.PatternCreation.PatternCreationResponse createPattern(
+            dev.ikm.tinkar.service.dto.PatternCreation.CreatePatternRequest request);
+
     dev.ikm.tinkar.service.dto.PatternMembersResponse patternMembers(String patternId, int offset, int limit,
                                                                      String referencedComponentText,
                                                                      String referencedComponentId);

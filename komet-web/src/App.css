@@ -2482,3 +2482,148 @@
   outline: 2px solid #646cff;
   outline-offset: -2px;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   New pattern form and concept picker
+   ═══════════════════════════════════════════════════════════ */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.patterns-new {
+  width: 100%;
+  margin-bottom: 0.5rem;
+}
+
+.new-pattern {
+  display: grid;
+  gap: 1rem;
+  text-align: left;
+}
+
+.new-pattern-section {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.9rem 1rem 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+
+.new-pattern-section legend {
+  padding: 0 0.35rem;
+  font-weight: 600;
+  color: #213547;
+}
+
+.new-pattern input[type='text'],
+.new-pattern input[type='search'],
+.new-pattern select {
+  width: 100%;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.9rem;
+}
+
+.new-pattern-row,
+.concept-picker-search {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.new-pattern-row input,
+.concept-picker-search input {
+  flex: 1 1 auto;
+}
+
+.new-pattern-add {
+  justify-self: start;
+  margin-left: 0;
+}
+
+.new-pattern-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 1rem;
+}
+
+.new-pattern-field {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background-color: #f8f9fa;
+  border-radius: 6px;
+}
+
+.new-pattern-field-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.new-pattern-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.concept-picker {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.concept-picker-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #495057;
+}
+
+.concept-picker-chosen {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  background-color: #eef3fc;
+  border: 1px solid #c9d8f3;
+  border-radius: 4px;
+}
+
+.concept-picker-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 14rem;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+}
+
+.concept-picker-results button {
+  display: block;
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  font-size: 0.88rem;
+  background: none;
+  border: none;
+  border-bottom: 1px solid #f1f3f5;
+  cursor: pointer;
+}
+
+.concept-picker-results button:hover,
+.concept-picker-results button:focus-visible {
+  background-color: #eef3fc;
+}

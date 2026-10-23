@@ -27,6 +27,9 @@ import type {
   PatternsResponse,
   PatternMembersQuery,
   PatternMembersResponse,
+  CreatePatternRequest,
+  FieldDataTypesResponse,
+  PatternCreationResponse,
   AuthStatus,
   LoginResponse,
 } from './types';
@@ -370,6 +373,31 @@ export async function listPatterns(): Promise<PatternsResponse> {
     throw new Error(`API error: ${response.status} ${response.statusText}`);
   }
 
+  return response.json();
+}
+
+/** The data types a pattern's field can have, by name: the ones Komet's pattern window offers. */
+export async function listFieldDataTypes(): Promise<FieldDataTypesResponse> {
+  const response = await authFetch(`${KG_API_BASE_URL}/patterns/field-data-types`, {
+    method: 'GET',
+    headers: { accept: '*/*' },
+  });
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/** Creates a pattern; the answer says why when it was not created. */
+export async function createPattern(request: CreatePatternRequest): Promise<PatternCreationResponse> {
+  const response = await authFetch(`${KG_API_BASE_URL}/patterns`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', accept: '*/*' },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
   return response.json();
 }
 
