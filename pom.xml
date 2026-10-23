@@ -517,7 +517,11 @@
                     <!-- log4j's JUL manager defaults to its API adapter, which refuses the JUnit
                          provider's Logger.setLevel call and prints three lines in every forked JVM;
                          the core adapter honors it. -->
+                    <!-- Spring Boot's logging starter brings logback, and the shared test logging brings
+                         log4j's SLF4J provider; SLF4J picks logback but prints five lines about the
+                         choice in every forked JVM. Naming logback makes the choice without them. -->
                     <argLine>@{argLine} --enable-preview --enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow -Djava.util.logging.manager=org.apache.logging.log4j.jul.LogManager -Dlog4j.jul.LoggerAdapter=org.apache.logging.log4j.jul.CoreLoggerAdapter -Dnet.bytebuddy.experimental=true
+                        -Dslf4j.provider=ch.qos.logback.classic.spi.LogbackServiceProvider
                         --add-modules jdk.incubator.vector -Dorg.apache.lucene.vectorization.upperJavaFeatureVersion=27</argLine>
                 </configuration>
             </plugin>
