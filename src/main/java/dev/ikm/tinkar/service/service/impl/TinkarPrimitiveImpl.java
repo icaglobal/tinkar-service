@@ -43,12 +43,12 @@ public final class TinkarPrimitiveImpl implements TinkarPrimitive {
      * 
      * @param pathParent Parent path
      * @param pathChild  Child path
-     * @param controllerName Optional controller name (defaults to SpinedArrayStore if not specified)
+     * @param controllerName Optional controller name (defaults to the 64-bit SpinedArrayStore if not specified)
      */
     public TinkarPrimitiveImpl(
             @Value("${data.path.parent}") String pathParent, 
             @Value("${data.path.child}") String pathChild,
-            @Value("${data.controller.name:Open SpinedArrayStore}") String controllerName) {
+            @Value("${data.controller.name:Open 64-bit SpinedArrayStore}") String controllerName) {
         log.info("Creating IKM Interface: pathParent={}, pathChild={}", pathParent, pathChild);
 
         File dataRoot = new File(pathParent, pathChild);

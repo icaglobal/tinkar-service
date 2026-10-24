@@ -43,6 +43,7 @@
 
         <!-- Tinkar Core dependency version -->
         <tinkar-core.version>1.127.7-SNAPSHOT</tinkar-core.version>
+        <komet-sequential-store-plugin.version>1-SNAPSHOT</komet-sequential-store-plugin.version>
         <!-- tinkar-schema must include Tinkar.proto in the jar (added in 1.43.0). -->
         <tinkar-schema.version>1.43.5-SNAPSHOT</tinkar-schema.version>
         <!-- The IKE starter set the tests load, from starter-data-ws, which builds after this repository. -->
@@ -169,17 +170,20 @@
             <artifactId>entity-provider</artifactId>
             <version>${tinkar-core.version}</version>
         </dependency>
-        <dependency>
-            <groupId>dev.ikm.tinkar</groupId>
-            <artifactId>data-spinedarray-provider</artifactId>
-            <version>${tinkar-core.version}</version>
-        </dependency>
-        <!-- The memory-only store the tests run on (IKE-Network/ike-issues#1313). -->
+        <!-- The 64-bit spined array: the default store, and the memory-only store the tests run on
+             (IKE-Network/ike-issues#1313). -->
         <dependency>
             <groupId>dev.ikm.tinkar</groupId>
             <artifactId>data-spinedarray64-provider</artifactId>
             <version>${tinkar-core.version}</version>
-            <scope>test</scope>
+        </dependency>
+        <!-- The sequential spined array, out of tinkar-core since #1313: the published reasoned-sa
+             datasets the dataset registry provisions are its stores. -->
+        <dependency>
+            <groupId>network.ike.komet</groupId>
+            <artifactId>komet-sequential-store-plugin</artifactId>
+            <version>${komet-sequential-store-plugin.version}</version>
+            <scope>runtime</scope>
         </dependency>
 
         <!-- Lets SearchProvider open Lucene indexes written by the previous major Lucene
