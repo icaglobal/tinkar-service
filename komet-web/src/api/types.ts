@@ -457,3 +457,25 @@ export type LoginResponse = {
   author?: { authorId: string; name: string };
   errorMessage?: string;
 };
+
+// ── Creating a pattern ───────────────────────────────────────────────
+
+/** A concept to choose from, such as a field data type. */
+export type Choice = { id: string; name: string };
+
+export type FieldDataTypesResponse = { dataTypes: Choice[] };
+
+export type NewPatternField = { meaningId: string; purposeId: string; dataTypeId: string };
+
+export type CreatePatternRequest = {
+  descriptions: { text: string; type: 'FULLY_QUALIFIED_NAME' | 'REGULAR_NAME' }[];
+  meaningId: string;
+  purposeId: string;
+  fields: NewPatternField[];
+};
+
+export type PatternCreationResponse = {
+  success: boolean;
+  pattern?: PatternSummary;
+  errorMessage?: string;
+};

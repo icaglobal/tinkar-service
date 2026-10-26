@@ -439,6 +439,24 @@ public class KnowledgeGraphRestController {
         return tinkarService.patterns();
     }
 
+    @Operation(summary = "List the data types a pattern's field can have",
+            description = "The children of Display Fields, as Komet's pattern window offers them, by name.")
+    @GetMapping("/patterns/field-data-types")
+    public PatternCreation.FieldDataTypesResponse fieldDataTypes() {
+        return tinkarService.fieldDataTypes();
+    }
+
+    @Operation(summary = "Create a pattern",
+            description = "Creates a pattern from its names (exactly one fully qualified name, and any regular " +
+                    "names), the concepts its semantics mean and are for, and its fields in order (each with a " +
+                    "meaning, a purpose and a data type from GET /patterns/field-data-types). Written as " +
+                    "Komet's pattern window writes one: active, in the SOLOR overlay module, on the development " +
+                    "path, by the signed-in author. Answers with the new pattern, or with why it was not created.")
+    @PostMapping(value = "/patterns", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public PatternCreation.PatternCreationResponse createPattern(@RequestBody PatternCreation.CreatePatternRequest request) {
+        return tinkarService.createPattern(request);
+    }
+
     @Operation(summary = "List one page of a pattern's members",
             description = "Returns one page of the semantics made by a pattern, with the pattern's total member " +
                     "count and whether more members follow. Optionally only the members whose referenced " +

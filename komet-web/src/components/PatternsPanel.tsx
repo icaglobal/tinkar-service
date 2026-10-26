@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { listPatternMembers, listPatterns } from '../api/tinkarApi';
 import type { PatternMember, PatternSummary } from '../api/types';
+import { NewPatternForm } from './NewPatternForm';
 
 interface PatternsPanelProps {
   /** Opens a member's referenced component in the semantics view. */
@@ -32,6 +33,8 @@ export function PatternsPanel({ onViewSemantics }: PatternsPanelProps) {
   const [offset, setOffset] = useState(0);
   const [filterInput, setFilterInput] = useState('');
   const [filter, setFilter] = useState<MemberFilter>({ kind: 'none' });
+  const [creating, setCreating] = useState(false);
+  const queryClient = useQueryClient();
 
   const patterns = useQuery({
     queryKey: ['patterns'],
@@ -60,6 +63,7 @@ export function PatternsPanel({ onViewSemantics }: PatternsPanelProps) {
   }, [patterns.data, patternFilter]);
 
   const select = (pattern: PatternSummary) => {
+    setCreating(false);
     setSelected(pattern);
     setOffset(0);
     setFilterInput('');
@@ -94,6 +98,9 @@ export function PatternsPanel({ onViewSemantics }: PatternsPanelProps) {
 
       <div className="patterns-layout">
         <aside className="patterns-list">
+          <button type="button" className="changeset-run patterns-new" onClick={() => setCreating(true)} disabled={creating}>
+            + New pattern
+          </button>
           <input
             type="search"
             className="patterns-list-filter"
@@ -135,9 +142,19 @@ export function PatternsPanel({ onViewSemantics }: PatternsPanelProps) {
         </aside>
 
         <section className="patterns-detail">
-          {!selected && <p className="instructions">Select a pattern to see its definition and members.</p>}
+          {creating && (
+            <NewPatternForm
+              onCancel={() => setCreating(false)}
+              onCreated={(pattern) => {
+                queryClient.invalidateQueries({ queryKey: ['patterns'] });
+                select(pattern);
+              }}
+            />
+          )}
 
-          {selected && (
+          {!creating && !selected && <p className="instructions">Select a pattern to see its definition and members.</p>}
+
+          {!creating && selected && (
             <>
               <h3 className="patterns-name">{selected.name}</h3>
               <p className="concept-id patterns-id">{selected.patternId}</p>

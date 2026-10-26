@@ -3378,20 +3378,7 @@ public class TinkarServiceImpl implements TinkarService {
             transaction.addComponent(conceptRecord);
             long conceptNid = conceptRecord.nid();
 
-            for (CreateConceptRequest.Description description : descriptions) {
-                SemanticRecord semantic = SemanticRecord.build(
-                        UUID.randomUUID(),
-                        KernelPattern.DESCRIPTION_PATTERN.nid(),
-                        conceptNid,
-                        stamp.versions().get(0),
-                        Lists.immutable.of(
-                                languageConcept(description.language()).publicId(),
-                                description.text(),
-                                caseSignificanceConcept(description.caseSignificance()).publicId(),
-                                descriptionTypeConcept(description.type()).publicId()));
-                EntityService.get().putEntity(semantic);
-                transaction.addComponent(semantic);
-            }
+            writeDescriptions(descriptions, conceptNid, stamp, transaction);
 
             SemanticRecord statedAxioms = SemanticRecord.build(
                     UUID.randomUUID(),
@@ -3421,6 +3408,188 @@ public class TinkarServiceImpl implements TinkarService {
             return ConceptCreationResponse.error(fullyQualifiedName,
                     e.getMessage() == null ? e.toString() : e.getMessage());
         }
+    }
+
+    /** Writes a component's names as description semantics, under the transaction's stamp. */
+    private static void writeDescriptions(List<CreateConceptRequest.Description> descriptions, long componentNid,
+                                          StampEntity<?> stamp, Transaction transaction) {
+        for (CreateConceptRequest.Description description : descriptions) {
+            SemanticRecord semantic = SemanticRecord.build(
+                    UUID.randomUUID(),
+                    KernelPattern.DESCRIPTION_PATTERN.nid(),
+                    componentNid,
+                    stamp.versions().get(0),
+                    Lists.immutable.of(
+                            languageConcept(description.language()).publicId(),
+                            description.text(),
+                            caseSignificanceConcept(description.caseSignificance()).publicId(),
+                            descriptionTypeConcept(description.type()).publicId()));
+            EntityService.get().putEntity(semantic);
+            transaction.addComponent(semantic);
+        }
+    }
+
+    // ── Creating a pattern ─────────────────────────────────────────────────────
+
+    /** The concept the field data types sit under, as Komet's pattern window lists them: Display Fields. */
+    static final PublicId DISPLAY_FIELDS = PublicIds.of(UUID.fromString("4e627b9c-cecb-5563-82fc-cb0ee25113b1"));
+
+    @Override
+    public PatternCreation.FieldDataTypesResponse fieldDataTypes() {
+        ViewCalculatorWithCache calc = CoordinateFactory.defaultCalculator();
+        List<PatternCreation.Choice> dataTypes = new ArrayList<>();
+        for (long nid : fieldDataTypeNids(calc)) {
+            dataTypes.add(new PatternCreation.Choice(identifierFor(nid), getDescriptionForNid(nid, calc)));
+        }
+        dataTypes.sort(Comparator.comparing(PatternCreation.Choice::name, String.CASE_INSENSITIVE_ORDER));
+        return new PatternCreation.FieldDataTypesResponse(dataTypes);
+    }
+
+    /** The children of Display Fields: the data types Komet's pattern window offers a field. */
+    private static List<Long> fieldDataTypeNids(ViewCalculatorWithCache calc) {
+        OptionalLong displayFields = KnownComponents.nid(DISPLAY_FIELDS);
+        if (displayFields.isEmpty()) {
+            return List.of();
+        }
+        List<Long> nids = new ArrayList<>();
+        calc.childrenOf(displayFields.getAsLong()).forEach(nids::add);
+        return nids;
+    }
+
+    /** A request this service refuses as asked, with the reason it gives the caller. */
+    private static final class Refused extends RuntimeException {
+        Refused(String reason) {
+            super(reason);
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Written as Komet's pattern window writes one: a pattern with one version, and its names
+     * as description semantics, in one transaction. Active, in the SOLOR overlay module, on the
+     * development path, by the signed-in author: the window offers no choice of these, so this
+     * does not either.
+     */
+    @Override
+    public PatternCreation.PatternCreationResponse createPattern(PatternCreation.CreatePatternRequest request) {
+        if (request == null) {
+            return PatternCreation.PatternCreationResponse.error("A pattern is required");
+        }
+        List<CreateConceptRequest.Description> descriptions = request.descriptions();
+        String fullyQualifiedName = descriptions.stream()
+                .filter(d -> d.type() == CreateConceptRequest.DescriptionType.FULLY_QUALIFIED_NAME)
+                .map(CreateConceptRequest.Description::text)
+                .findFirst()
+                .orElse(null);
+        String rejection = validate(descriptions, fullyQualifiedName);
+        if (rejection != null) {
+            return PatternCreation.PatternCreationResponse.error(rejection);
+        }
+
+        Transaction transaction = null;
+        try {
+            // Every concept it names is resolved before anything is written, so a bad id leaves
+            // nothing behind.
+            ViewCalculatorWithCache calc = CoordinateFactory.defaultCalculator();
+            long meaningNid = conceptNid(request.meaningId(), "The meaning");
+            long purposeNid = conceptNid(request.purposeId(), "The purpose");
+            List<Long> dataTypes = fieldDataTypeNids(calc);
+            List<long[]> fields = new ArrayList<>();
+            for (int i = 0; i < request.fields().size(); i++) {
+                PatternCreation.Field field = request.fields().get(i);
+                String which = "Field " + (i + 1);
+                if (field == null) {
+                    throw new Refused(which + " is empty");
+                }
+                long dataTypeNid = conceptNid(field.dataTypeId(), which + "'s data type");
+                if (!dataTypes.contains(dataTypeNid)) {
+                    throw new Refused(which + "'s data type, " + getDescriptionForNid(dataTypeNid, calc)
+                            + ", is not a field data type; GET /api/ike/knowledgegraph/patterns/field-data-types lists them");
+                }
+                fields.add(new long[]{
+                        conceptNid(field.meaningId(), which + "'s meaning"),
+                        conceptNid(field.purposeId(), which + "'s purpose"),
+                        dataTypeNid});
+            }
+
+            log.info("Creating pattern '{}' with {} field(s)", fullyQualifiedName, fields.size());
+            transaction = Transaction.make("Create pattern: " + fullyQualifiedName);
+            StampEntity<?> stamp = transaction.getStamp(
+                    dev.ikm.tinkar.terms.State.ACTIVE,
+                    System.currentTimeMillis(),
+                    CurrentAuthor.nidForStamp(),
+                    KernelConcept.SOLOR_OVERLAY_MODULE.nid(),
+                    KernelConcept.DEVELOPMENT_PATH.nid());
+
+            PublicId patternId = PublicIds.of(UUID.randomUUID());
+            long patternNid = EntityService.get().nidForPattern(patternId);
+            PublicIdentifierRecord identifier = PublicIdentifierRecord.make(patternId);
+            RecordListBuilder<PatternVersionRecord> versions = RecordListBuilder.make();
+            PatternRecord pattern = PatternRecordBuilder.builder()
+                    .leastSignificantBits(identifier.leastSignificantBits())
+                    .mostSignificantBits(identifier.mostSignificantBits())
+                    .additionalUuidLongs(identifier.additionalUuidLongs())
+                    .nid(patternNid)
+                    .versions(versions)
+                    .build();
+            List<FieldDefinitionRecord> fieldDefinitions = new ArrayList<>();
+            for (int i = 0; i < fields.size(); i++) {
+                long[] field = fields.get(i);
+                fieldDefinitions.add(new FieldDefinitionRecord(field[2], field[1], field[0], stamp.nid(), patternNid, i));
+            }
+            versions.addAndBuild(new PatternVersionRecord(pattern, stamp.nid(), purposeNid, meaningNid,
+                    Lists.immutable.ofAll(fieldDefinitions)));
+            EntityService.get().putEntity(pattern);
+            transaction.addComponent(pattern);
+            writeDescriptions(descriptions, patternNid, stamp, transaction);
+
+            transaction.commit();
+            dev.ikm.tinkar.common.service.CachingService.clearAll();
+            saveDataStore();
+
+            log.info("Created pattern {} '{}'", patternId.leastUuid(), fullyQualifiedName);
+            PatternEntity<?> created = (PatternEntity<?>) EntityHandle.get(patternNid).expectEntity();
+            return PatternCreation.PatternCreationResponse.success(patternSummary(created, calc));
+        } catch (Refused | UnknownComponentException e) {
+            log.info("Pattern '{}' not created: {}", fullyQualifiedName, e.getMessage());
+            return PatternCreation.PatternCreationResponse.error(e.getMessage());
+        } catch (Exception e) {
+            log.error("Failed to create pattern '{}': {}", fullyQualifiedName, e.getMessage(), e);
+            if (transaction != null && transaction.isOpen()) {
+                transaction.cancel();
+            }
+            return PatternCreation.PatternCreationResponse.error(e.getMessage() == null ? e.toString() : e.getMessage());
+        }
+    }
+
+    /**
+     * The nid of the concept a request names.
+     *
+     * @param id   the concept's UUID
+     * @param what what the concept is, for the reason given when it is refused
+     * @throws Refused when there is no id, it is not a UUID, or it names something other than a concept
+     * @throws UnknownComponentException when the knowledge base does not hold it
+     */
+    private long conceptNid(String id, String what) {
+        if (id == null || id.isBlank()) {
+            throw new Refused(what + " is required");
+        }
+        PublicId publicId;
+        try {
+            publicId = primitive.getPublicId(id.strip());
+        } catch (IllegalArgumentException notAUuid) {
+            throw new Refused(what + " is not a UUID: " + id);
+        }
+        long nid = EntityService.get().nidForPublicId(publicId);
+        Entity<?> entity = EntityHandle.get(nid).orNull();
+        if (!(entity instanceof ConceptEntity<?>)) {
+            // Search finds patterns and semantics too; say which one was chosen.
+            String kind = entity instanceof PatternEntity<?> ? "a pattern" : entity instanceof SemanticEntity<?> ? "a semantic" : "not a concept";
+            throw new Refused(what + ", " + getDescriptionForNid(nid) + " (" + id + "), is " + kind
+                    + (kind.startsWith("a ") ? ", not a concept; choose a concept" : ""));
+        }
+        return nid;
     }
 
     /** @return why the request cannot be honoured, or null if it can. */

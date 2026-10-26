@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { conceptSearchWithSort, createConcept } from '../api/tinkarApi';
+import { createConcept } from '../api/tinkarApi';
+import { ConceptPicker } from './ConceptPicker';
 import type {
   AxiomSetType,
   CaseSignificance,
@@ -8,7 +9,6 @@ import type {
   ConceptDescription,
   DescriptionLanguage,
   DescriptionType,
-  GroupedSearchResult,
 } from '../api/types';
 
 /** A concept chosen for an axiom set. */
@@ -39,10 +39,6 @@ const SET_TYPES: { value: AxiomSetType; label: string }[] = [
   { value: 'SUFFICIENT', label: 'Sufficient set' },
 ];
 
-function labelFor(result: GroupedSearchResult): string {
-  return result.fullyQualifiedName || result.publicId[0];
-}
-
 const newDescription = (type: DescriptionType): ConceptDescription => ({
   text: '',
   type,
@@ -63,24 +59,8 @@ export function CreateConceptPanel() {
     newDescription('FULLY_QUALIFIED_NAME'),
   ]);
   const [axioms, setAxioms] = useState<AxiomDraft[]>([{ setType: 'NECESSARY', parents: [] }]);
-  const [parentQuery, setParentQuery] = useState('');
-  const [parentResults, setParentResults] = useState<GroupedSearchResult[]>([]);
   const [activeAxiom, setActiveAxiom] = useState(0);
   const [message, setMessage] = useState<{ text: string; isError: boolean } | null>(null);
-
-  const searchParents = useMutation({
-    // The same search, ranking and default as the main search box, so a concept found there
-    // is found here in the same place. Inactive concepts are dropped as the main search drops
-    // them by default — a new concept should not be defined against a retired one.
-    mutationFn: () => conceptSearchWithSort(parentQuery, 20, 'TOP_COMPONENT'),
-    onSuccess: (data) =>
-      setParentResults((data.groupedResults ?? []).filter((result) => result.active)),
-    onError: (e) =>
-      setMessage({
-        text: `Parent search failed: ${e instanceof Error ? e.message : 'unknown error'}`,
-        isError: true,
-      }),
-  });
 
   const create = useMutation({
     mutationFn: () => {
@@ -102,8 +82,6 @@ export function CreateConceptPanel() {
         });
         setDescriptions([newDescription('FULLY_QUALIFIED_NAME')]);
         setAxioms([{ setType: 'NECESSARY', parents: [] }]);
-        setParentQuery('');
-        setParentResults([]);
       } else {
         setMessage({ text: response.errorMessage ?? 'Concept creation failed', isError: true });
       }
@@ -118,12 +96,11 @@ export function CreateConceptPanel() {
   const updateDescription = (index: number, patch: Partial<ConceptDescription>) =>
     setDescriptions(descriptions.map((d, i) => (i === index ? { ...d, ...patch } : d)));
 
-  const addParent = (result: GroupedSearchResult) => {
-    const id = result.publicId[0];
+  const addParent = (parent: ParentConcept) => {
     setAxioms(
       axioms.map((a, i) =>
-        i === activeAxiom && !a.parents.some((p) => p.id === id)
-          ? { ...a, parents: [...a.parents, { id, name: labelFor(result) }] }
+        i === activeAxiom && !a.parents.some((p) => p.id === parent.id)
+          ? { ...a, parents: [...a.parents, parent] }
           : a
       )
     );
@@ -309,39 +286,15 @@ export function CreateConceptPanel() {
           </div>
         ))}
 
-        <div className="parent-search">
-          <input
-            type="text"
-            className="create-concept-input"
-            value={parentQuery}
-            onChange={(e) => setParentQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && parentQuery.trim()) searchParents.mutate();
-            }}
-            placeholder={`Search a concept to add to the ${
-              SET_TYPES.find((s) => s.value === axioms[activeAxiom]?.setType)?.label ?? 'set'
-            }`}
-          />
-          <button
-            type="button"
-            onClick={() => searchParents.mutate()}
-            disabled={!parentQuery.trim() || searchParents.isPending}
-          >
-            {searchParents.isPending ? 'Searching…' : 'Search'}
-          </button>
-        </div>
-
-        {parentResults.length > 0 && (
-          <ul className="parent-results">
-            {parentResults.map((result) => (
-              <li key={result.publicId[0]}>
-                <button type="button" onClick={() => addParent(result)}>
-                  {labelFor(result)}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        {/* Searches as you type and adds each choice to the active set; the box clears for the
+            next. Inactive concepts are left out: a new concept is not defined against a retired one. */}
+        <ConceptPicker
+          label={`Add a concept to the ${SET_TYPES.find((s) => s.value === axioms[activeAxiom]?.setType)?.label ?? 'set'}`}
+          value={null}
+          onChange={(choice) => choice && addParent(choice)}
+          activeOnly
+          placeholder="Type to search, or paste a concept UUID"
+        />
       </section>
 
       <button className="create-concept-submit" onClick={() => create.mutate()} disabled={!canSubmit}>
