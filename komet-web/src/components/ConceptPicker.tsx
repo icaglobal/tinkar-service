@@ -1,8 +1,14 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { conceptSearchWithSort } from '../api/tinkarApi';
 import type { Choice } from '../api/types';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** How long typing pauses before the search runs, as Komet's search boxes wait. */
+const SEARCH_DELAY_MS = 300;
+
+/** The fewest characters searched for. */
+const MIN_QUERY = 2;
 
 interface ConceptPickerProps {
   /** The visible label, also the accessible name of the search box. */
@@ -10,57 +16,102 @@ interface ConceptPickerProps {
   value: Choice | null;
   onChange: (value: Choice | null) => void;
   disabled?: boolean;
+  /** Leave inactive concepts out of the results, as the main search does by default. */
+  activeOnly?: boolean;
+  /** The search box's placeholder. */
+  placeholder?: string;
 }
 
 /**
- * Chooses one concept: search by name and pick a result, or paste a concept's UUID. The service
- * checks a pasted UUID when the form is submitted.
+ * Chooses one concept from a drop-down of search results. The search runs as you type, after a
+ * short pause, as it does in Komet; a pasted concept UUID is offered as a choice of its own, and
+ * the service checks it when the form is submitted.
  *
- * Every step works from the keyboard: Enter searches, the results are buttons, and Clear returns
- * to the search box.
+ * A combobox in the WAI-ARIA sense: the arrow keys move through the results, Enter chooses,
+ * Escape closes the list, and a screen reader hears the highlighted result.
  */
-export function ConceptPicker({ label, value, onChange, disabled }: ConceptPickerProps) {
+export function ConceptPicker({ label, value, onChange, disabled, activeOnly, placeholder }: ConceptPickerProps) {
   const inputId = useId();
+  const listId = useId();
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Choice[] | null>(null);
+  const [results, setResults] = useState<Choice[]>([]);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Each search is numbered, so an answer to an older one never replaces a newer one's.
+  const searchNumber = useRef(0);
 
-  const search = async () => {
+  useEffect(() => {
     const text = query.trim();
-    if (!text) return;
+    const number = ++searchNumber.current;
     if (UUID_PATTERN.test(text)) {
-      onChange({ id: text.toLowerCase(), name: text });
-      setQuery('');
-      setResults(null);
+      setResults([{ id: text.toLowerCase(), name: `Concept ${text.toLowerCase()}` }]);
+      setSearching(false);
+      setError(null);
+      return;
+    }
+    if (text.length < MIN_QUERY) {
+      setResults([]);
+      setSearching(false);
+      setError(null);
       return;
     }
     setSearching(true);
-    setError(null);
-    try {
-      const response = await conceptSearchWithSort(text, 15, 'TOP_COMPONENT');
-      if (!response.success) {
-        setError(response.errorMessage || 'Search failed');
+    const timer = setTimeout(async () => {
+      try {
+        const response = await conceptSearchWithSort(text, 15, 'TOP_COMPONENT');
+        if (number !== searchNumber.current) return;
+        if (!response.success) {
+          setError(response.errorMessage || 'Search failed');
+          setResults([]);
+        } else {
+          setError(null);
+          setResults(
+            (response.groupedResults ?? [])
+              .filter((r) => r.publicId.length > 0 && (!activeOnly || r.active))
+              .map((r) => ({ id: r.publicId[0], name: r.fullyQualifiedName }))
+          );
+        }
+      } catch (e) {
+        if (number !== searchNumber.current) return;
+        setError(e instanceof Error ? e.message : 'Search failed');
         setResults([]);
-        return;
+      } finally {
+        if (number === searchNumber.current) setSearching(false);
       }
-      setResults(
-        (response.groupedResults ?? [])
-          .filter((r) => r.publicId.length > 0)
-          .map((r) => ({ id: r.publicId[0], name: r.fullyQualifiedName }))
-      );
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Search failed');
-      setResults([]);
-    } finally {
-      setSearching(false);
-    }
-  };
+    }, SEARCH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [query, activeOnly]);
 
-  const pick = (choice: Choice) => {
+  const choose = (choice: Choice) => {
     onChange(choice);
     setQuery('');
-    setResults(null);
+    setResults([]);
+    setOpen(false);
+    setActive(-1);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setOpen(true);
+      setActive((i) => Math.min(i + 1, results.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActive((i) => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter') {
+      // Enter chooses; it never submits the form around the picker.
+      e.preventDefault();
+      if (open && active >= 0 && active < results.length) {
+        choose(results[active]);
+      } else if (results.length === 1) {
+        choose(results[0]);
+      }
+    } else if (e.key === 'Escape') {
+      setOpen(false);
+      setActive(-1);
+    }
   };
 
   if (value) {
@@ -70,48 +121,78 @@ export function ConceptPicker({ label, value, onChange, disabled }: ConceptPicke
         <div className="concept-picker-chosen">
           <span title={value.id}>{value.name}</span>
           <button type="button" className="link-button" onClick={() => onChange(null)} disabled={disabled}>
-            Clear<span className="visually-hidden"> {label}</span>
+            Change<span className="visually-hidden"> {label}</span>
           </button>
         </div>
       </div>
     );
   }
 
+  const showList = open && query.trim().length >= MIN_QUERY;
+  const status = searching
+    ? 'Searching...'
+    : error
+      ? error
+      : results.length === 0
+        ? 'No concepts match.'
+        : null;
+
   return (
     <div className="concept-picker">
       <label htmlFor={inputId} className="concept-picker-label">{label}</label>
-      <div className="concept-picker-search">
+      <div className="concept-picker-box">
         <input
           id={inputId}
-          type="search"
-          placeholder="Search by name, or paste a concept UUID"
+          type="text"
+          className="concept-picker-input"
+          role="combobox"
+          aria-expanded={showList}
+          aria-controls={listId}
+          aria-autocomplete="list"
+          aria-activedescendant={showList && active >= 0 ? `${listId}-${active}` : undefined}
+          autoComplete="off"
+          placeholder={placeholder ?? 'Type to search, or paste a concept UUID'}
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              search();
-            }
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setOpen(true);
+            setActive(-1);
           }}
+          onFocus={() => setOpen(true)}
+          // Closed after the click that chooses a result has landed.
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onKeyDown={onKeyDown}
           disabled={disabled}
         />
-        <button type="button" className="link-button" onClick={search} disabled={disabled || searching || !query.trim()}>
-          {searching ? 'Searching...' : 'Search'}
-        </button>
+        {showList && (
+          <ul id={listId} role="listbox" className="concept-picker-dropdown" aria-label={`Concepts for ${label}`}>
+            {status && (
+              <li className={`concept-picker-status ${error ? 'is-error' : ''}`} role="presentation">
+                {status}
+              </li>
+            )}
+            {!searching &&
+              results.map((r, i) => (
+                <li
+                  key={r.id}
+                  id={`${listId}-${i}`}
+                  role="option"
+                  aria-selected={i === active}
+                  className={i === active ? 'is-active' : ''}
+                  title={r.id}
+                  // mousedown, not click: it lands before the input's blur closes the list.
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    choose(r);
+                  }}
+                  onMouseEnter={() => setActive(i)}
+                >
+                  {r.name}
+                </li>
+              ))}
+          </ul>
+        )}
       </div>
-      {error && <div className="error-message">{error}</div>}
-      {results && results.length === 0 && !error && <p className="no-results">No concepts match.</p>}
-      {results && results.length > 0 && (
-        <ul className="concept-picker-results" aria-label={`Concepts for ${label}`}>
-          {results.map((r) => (
-            <li key={r.id}>
-              <button type="button" onClick={() => pick(r)} title={r.id}>
-                {r.name}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
     </div>
   );
 }
